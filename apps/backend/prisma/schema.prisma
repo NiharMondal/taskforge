@@ -1,0 +1,306 @@
+// ============================================================
+// Multi-Tenant SaaS — Prisma Schema (Final Merged)
+// Best of both: original design + ChatGPT's Payment table
+// DB: PostgreSQL
+// ============================================================
+
+generator client {
+  provider = "prisma-client"
+  output = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────
+
+enum Role {
+  ADMIN    // Full tenant control — manage members, billing, settings
+  MANAGER  // Manage projects and members, cannot touch billing
+  USER     // Read/write own data only
+}
+
+enum Plan {
+  FREE
+  PRO
+  ENTERPRISE
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELED
+  PAST_DUE
+  TRIALING
+  INCOMPLETE  // Stripe: payment action required
+}
+
+enum AuditAction {
+  CREATED
+  UPDATED
+  DELETED
+  INVITED
+  ROLE_CHANGED
+  LOGIN
+  LOGOUT
+  SUBSCRIPTION_CHANGED
+}
+
+// ─────────────────────────────────────────────
+// TENANT
+// Root of the multi-tenant tree.
+// Every business table hangs off this via tenantId.
+// Naming: "Tenant" (shorter, industry standard for SaaS)
+// ─────────────────────────────────────────────
+
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique   // "acme-corp" — used in URLs + subdomains
+  logoUrl   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  members      Membership[]
+  invitations  Invitation[]
+  subscription Subscription?   // @unique enforced on Subscription.tenantId
+  payments     Payment[]
+  projects     Project[]
+  auditLogs    AuditLog[]
+  apiKeys      ApiKey[]
+
+  @@index([slug])
+}
+
+// ─────────────────────────────────────────────
+// USER
+// Global — decoupled from any single tenant.
+// One user can belong to many tenants with different roles.
+// ─────────────────────────────────────────────
+
+model User {
+  id             String   @id @default(cuid())
+  email          String   @unique
+  hashedPassword String
+  name           String
+  avatarUrl      String?
+  emailVerified  Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Relations
+  memberships   Membership[]
+  invitesSent   Invitation[]   @relation("InvitedBy")
+  refreshTokens RefreshToken[]
+  auditLogs     AuditLog[]
+  projects      Project[]      @relation("CreatedBy")
+
+  @@index([email])
+}
+
+// ─────────────────────────────────────────────
+// MEMBERSHIP  (User ↔ Tenant join table)
+// Holds the role for this user inside this tenant.
+// THE key multi-tenant pattern — scope every query by tenantId.
+// ─────────────────────────────────────────────
+
+model Membership {
+  id       String   @id @default(cuid())
+  tenantId String
+  userId   String
+  role     Role     @default(USER)
+  joinedAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId])  // One membership per tenant per user
+  @@index([tenantId])
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────
+// INVITATION
+// Token-based email invite flow (Notion/Slack style).
+// ─────────────────────────────────────────────
+
+model Invitation {
+  id          String    @id @default(cuid())
+  tenantId    String
+  email       String
+  role        Role      @default(USER)
+  token       String    @unique @default(cuid())  // sent in invite URL
+  invitedById String
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invitedBy User   @relation("InvitedBy", fields: [invitedById], references: [id])
+
+  @@index([tenantId])
+  @@index([token])
+}
+
+// ─────────────────────────────────────────────
+// SUBSCRIPTION  (Stripe — one per tenant, enforced)
+// @unique on tenantId prevents the duplicate-subscription bug.
+// Always update this record via Stripe webhooks, not direct API calls.
+// ─────────────────────────────────────────────
+
+model Subscription {
+  id                   String             @id @default(cuid())
+  tenantId             String             @unique   // ← enforces one subscription per tenant
+  stripeCustomerId     String             @unique
+  stripeSubscriptionId String?            @unique
+  plan                 Plan               @default(FREE)
+  status               SubscriptionStatus @default(TRIALING)
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean            @default(false)
+  trialEndsAt          DateTime?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([stripeCustomerId])
+}
+
+// ─────────────────────────────────────────────
+// PAYMENT  (from ChatGPT — good addition)
+// Immutable payment history. One row per invoice/charge.
+// Never update rows — append only.
+// Note: all Stripe IDs are nullable so one-time payments
+//       don't require a subscription to exist.
+// ─────────────────────────────────────────────
+
+model Payment {
+  id       String @id @default(cuid())
+  tenantId String
+
+  stripeCustomerId     String
+  stripeSubscriptionId String?  // nullable — one-time charges have no subscription
+  stripePriceId        String?
+  stripeInvoiceId      String?  @unique
+
+  amountCents Int     // store in smallest currency unit, never Float
+  currency    String  @default("usd")
+
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([stripeCustomerId])
+}
+
+// ─────────────────────────────────────────────
+// FEATURE  (per-plan feature gating)
+// Seed once. Check at runtime via isFeatureEnabled(tenantId, 'key').
+// plans[] uses a PostgreSQL native array — no join table needed.
+// ─────────────────────────────────────────────
+
+model Feature {
+  id          String @id @default(cuid())
+  key         String @unique  // e.g. "advanced_analytics", "custom_domain"
+  description String
+  plans       Plan[]          // which plans include this feature
+
+  @@index([key])
+}
+
+// ─────────────────────────────────────────────
+// PROJECT  (example tenant-scoped business resource)
+// Replace/extend this with your actual domain models.
+// Rules every business table must follow:
+//   1. Always has tenantId with @@index
+//   2. createdById is a proper FK to User (never a raw String)
+// ─────────────────────────────────────────────
+
+model Project {
+  id          String   @id @default(cuid())
+  tenantId    String                          // ← tenantId pattern
+  createdById String                          // ← proper FK, not raw String
+  name        String
+  description String?
+  isArchived  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy User   @relation("CreatedBy", fields: [createdById], references: [id])
+
+  @@index([tenantId])
+  @@index([createdById])
+}
+
+// ─────────────────────────────────────────────
+// AUDIT LOG
+// Append-only. Never expose UPDATE or DELETE on this table.
+// Index on (tenantId, createdAt) for paginated log queries.
+// ─────────────────────────────────────────────
+
+model AuditLog {
+  id         String      @id @default(cuid())
+  tenantId   String
+  userId     String?     // null = system-generated event
+  action     AuditAction
+  entityType String      // "Project" | "User" | "Subscription" etc.
+  entityId   String?
+  metadata   Json?       // { before, after, ip, userAgent }
+  createdAt  DateTime    @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([tenantId, createdAt])  // for paginated audit log queries
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────
+// REFRESH TOKEN
+// SHA-256 hash stored — never the raw token.
+// Rotate on every use (refresh token rotation pattern).
+// ─────────────────────────────────────────────
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique   // SHA-256(rawToken)
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+  userAgent String?
+  ipAddress String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────
+// API KEY  (programmatic / webhook access per tenant)
+// Return raw key ONCE on creation — store only the hash.
+// prefix stores first 8 chars for display: "sk_live_abcd..."
+// ─────────────────────────────────────────────
+
+model ApiKey {
+  id        String    @id @default(cuid())
+  tenantId  String
+  name      String
+  keyHash   String    @unique   // SHA-256(rawKey)
+  prefix    String              // first 8 chars shown in UI
+  lastUsed  DateTime?
+  expiresAt DateTime?
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}

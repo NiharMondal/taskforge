@@ -6,6 +6,7 @@ import { AppService } from "@/app.service";
 import { PrismaModule } from "@/prisma/prisma.module";
 import { UserModule } from "@/modules/user/user.module";
 import { AuthModule } from "@/modules/auth/auth.module";
+import { TenantsModule } from "@/modules/tenants/tenants.module";
 import { JwtAuthGuard } from "@/modules/auth/guards/jwt-auth.guard";
 import { RolesGuard } from "@/modules/auth/guards/roles.guard";
 

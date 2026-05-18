@@ -19,6 +19,10 @@ export class RegisterDto {
   name: string;
 
   @IsString()
+  @MinLength(2)
+  tenantName: string;
+
+  @IsString()
   @IsUrl()
   @IsOptional()
   avatarUrl?: string;

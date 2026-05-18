@@ -44,3 +44,8 @@ invariants being worked on, last failing test name.
 @src/auth/CLAUDE.md         — read before touching anything in src/auth/
 @src/tenants/CLAUDE.md      — read before any service that queries the DB
 @docs/DECISIONS.md          — architectural decision log
+
+## Installation
+npm install
+npx prisma generate
+npx prisma migrate dev

@@ -46,6 +46,7 @@ invariants being worked on, last failing test name.
 @docs/DECISIONS.md          — architectural decision log
 
 ## Installation
-pnpm install
-pnpm generate
-pnpm migrate dev
+Use pnpm as package manager.
+pnpm add <package_name>
+npx prisma generate
+npx prisma migrate dev

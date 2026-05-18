@@ -269,7 +269,7 @@ model AuditLog {
 model RefreshToken {
   id        String    @id @default(uuid())
   userId    String
-  tenantId  String
+  tenantId  String?
   tokenHash String    @unique   // SHA-256(rawToken)
   expiresAt DateTime
   revokedAt DateTime?
@@ -277,8 +277,8 @@ model RefreshToken {
   userAgent String?
   ipAddress String?
 
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([tenantId])

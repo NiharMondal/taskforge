@@ -1,0 +1,36 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "git add -A && git commit -m 'wip: claude edit at $(date +%H:%M:%S)' --allow-empty -q"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo \"## Session $(date -u +%Y-%m-%dT%H:%M:%SZ)\n$(git log --oneline -10)\n\" >> docs/DECISIONS.md"
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(npx prisma *)",
+      "Bash(git *)",
+      "Read(**)",
+      "Write(src/**)",
+      "Write(docs/**)"
+    ],
+    "deny": ["Bash(rm -rf *)", "Bash(curl *)", "Bash(wget *)"]
+  }
+}

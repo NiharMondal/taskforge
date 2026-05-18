@@ -46,6 +46,6 @@ invariants being worked on, last failing test name.
 @docs/DECISIONS.md          — architectural decision log
 
 ## Installation
-npm install
-npx prisma generate
-npx prisma migrate dev
+pnpm install
+pnpm generate
+pnpm migrate dev

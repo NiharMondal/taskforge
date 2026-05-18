@@ -61,13 +61,14 @@ model Tenant {
   updatedAt DateTime @updatedAt
 
   // Relations
-  members      Membership[]
-  invitations  Invitation[]
-  subscription Subscription?   // @unique enforced on Subscription.tenantId
-  payments     Payment[]
-  projects     Project[]
-  auditLogs    AuditLog[]
-  apiKeys      ApiKey[]
+  members       Membership[]
+  invitations   Invitation[]
+  subscription  Subscription?   // @unique enforced on Subscription.tenantId
+  payments      Payment[]
+  projects      Project[]
+  auditLogs     AuditLog[]
+  apiKeys       ApiKey[]
+  refreshTokens RefreshToken[]
 
   @@index([slug])
 }

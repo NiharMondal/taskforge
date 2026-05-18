@@ -1,8 +1,4 @@
-// ============================================================
-// Multi-Tenant SaaS — Prisma Schema (Final Merged)
-// Best of both: original design + ChatGPT's Payment table
-// DB: PostgreSQL
-// ============================================================
+
 
 generator client {
   provider     = "prisma-client"

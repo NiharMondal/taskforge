@@ -11,6 +11,7 @@ import { Role } from "generated/prisma/client";
 import { PrismaService } from "@/prisma/prisma.service";
 import { RegisterDto } from "@/modules/auth/dto/register.dto";
 import { LoginDto } from "@/modules/auth/dto/login.dto";
+import { generateSlug } from "@/utils/generate-slug";
 
 type SafeUser = {
   id: string;
@@ -51,10 +52,7 @@ export class AuthService {
     });
     if (existing) throw new ConflictException("Email already in use");
 
-    const slug = dto.tenantName
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "");
+    const slug = generateSlug(dto.tenantName);
 
     const tenantExists = await this.prisma.tenant.findUnique({
       where: { slug },

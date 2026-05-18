@@ -7,11 +7,9 @@ import { JwtService } from "@nestjs/jwt";
 import { ConfigService } from "@nestjs/config";
 import { createHash, randomBytes } from "crypto";
 import bcrypt from "bcryptjs";
-import { Role } from "generated/prisma/client";
 import { PrismaService } from "@/prisma/prisma.service";
 import { RegisterDto } from "@/modules/auth/dto/register.dto";
 import { LoginDto } from "@/modules/auth/dto/login.dto";
-import { generateSlug } from "@/utils/generate-slug";
 
 type SafeUser = {
   id: string;
@@ -52,41 +50,18 @@ export class AuthService {
     });
     if (existing) throw new ConflictException("Email already in use");
 
-    const slug = generateSlug(dto.tenantName);
-
-    const tenantExists = await this.prisma.tenant.findUnique({
-      where: { slug },
-    });
-    if (tenantExists) throw new ConflictException("Tenant name already taken");
-
     const hashedPassword = await bcrypt.hash(dto.password, 12);
 
-    const { user, membership } = await this.prisma.$transaction(async (tx) => {
-      const user = await tx.user.create({
-        data: {
-          email: dto.email,
-          hashedPassword,
-          name: dto.name,
-          avatarUrl: dto.avatarUrl,
-        },
-      });
-      const tenant = await tx.tenant.create({
-        data: { name: dto.tenantName, slug },
-      });
-      const membership = await tx.membership.create({
-        data: { userId: user.id, tenantId: tenant.id, role: Role.ADMIN },
-      });
-      return { user, membership };
+    const user = await this.prisma.user.create({
+      data: {
+        email: dto.email,
+        hashedPassword,
+        name: dto.name,
+        avatarUrl: dto.avatarUrl,
+      },
     });
 
-    const tokens = await this.issueTokens(
-      user.id,
-      user.email,
-      membership.tenantId,
-      [membership.role],
-      meta,
-    );
-
+    const tokens = await this.issueTokens(user.id, user.email, null, [], meta);
     return { ...tokens, user: this.safeUser(user) };
   }
 
@@ -107,8 +82,17 @@ export class AuthService {
       include: { tenant: { select: { id: true, name: true, slug: true } } },
     });
 
-    if (!memberships.length)
-      throw new UnauthorizedException("No tenant membership found");
+    // No tenant yet — user is mid-onboarding
+    if (!memberships.length) {
+      const tokens = await this.issueTokens(
+        user.id,
+        user.email,
+        null,
+        [],
+        meta,
+      );
+      return { ...tokens, user: this.safeUser(user) };
+    }
 
     let membership: (typeof memberships)[0];
 
@@ -137,7 +121,6 @@ export class AuthService {
       [membership.role],
       meta,
     );
-
     return { ...tokens, user: this.safeUser(user) };
   }
 
@@ -160,11 +143,24 @@ export class AuthService {
       data: { revokedAt: new Date() },
     });
 
+    // No tenant on this token — user hasn't created/joined one yet
+    if (!stored.tenantId) {
+      const user = await this.prisma.user.findUnique({
+        where: { id: stored.userId },
+      });
+      if (!user) throw new UnauthorizedException();
+      return this.issueTokens(user.id, user.email, null, [], meta);
+    }
+
+    // Re-fetch to pick up any role changes since token was issued
     const [user, membership] = await Promise.all([
       this.prisma.user.findUnique({ where: { id: stored.userId } }),
       this.prisma.membership.findUnique({
         where: {
-          tenantId_userId: { tenantId: stored.tenantId, userId: stored.userId },
+          tenantId_userId: {
+            tenantId: stored.tenantId,
+            userId: stored.userId,
+          },
         },
       }),
     ]);
@@ -191,7 +187,7 @@ export class AuthService {
   private async issueTokens(
     userId: string,
     email: string,
-    tenantId: string,
+    tenantId: string | null,
     roles: string[],
     meta: { userAgent?: string; ipAddress?: string },
   ): Promise<TokenPair> {

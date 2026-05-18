@@ -16,6 +16,7 @@ import { RolesGuard } from "@/modules/auth/guards/roles.guard";
     PrismaModule,
     UserModule,
     AuthModule,
+    TenantsModule,
   ],
   controllers: [AppController],
   providers: [

@@ -8,6 +8,7 @@ type TMetaData = {
 };
 
 type TApiResponse<T> = {
+  success: boolean;
   statusCode: number;
   message: string;
   metaData?: TMetaData;
@@ -26,6 +27,7 @@ export const sendResponse = <T>({
   metaData?: TMetaData;
 }): TApiResponse<T> => {
   return {
+    success: true,
     statusCode,
     message,
     metaData,

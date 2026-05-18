@@ -53,7 +53,7 @@ enum AuditAction {
 // ─────────────────────────────────────────────
 
 model Tenant {
-  id        String   @id @default(cuid())
+  id        String   @id @default(uuid())
   name      String
   slug      String   @unique   // "acme-corp" — used in URLs + subdomains
   logoUrl   String?
@@ -79,7 +79,7 @@ model Tenant {
 // ─────────────────────────────────────────────
 
 model User {
-  id             String   @id @default(cuid())
+  id             String   @id @default(uuid())
   email          String   @unique
   hashedPassword String
   name           String
@@ -105,7 +105,7 @@ model User {
 // ─────────────────────────────────────────────
 
 model Membership {
-  id       String   @id @default(cuid())
+  id       String   @id @default(uuid())
   tenantId String
   userId   String
   role     Role     @default(USER)
@@ -125,11 +125,11 @@ model Membership {
 // ─────────────────────────────────────────────
 
 model Invitation {
-  id          String    @id @default(cuid())
+  id          String    @id @default(uuid())
   tenantId    String
   email       String
   role        Role      @default(USER)
-  token       String    @unique @default(cuid())  // sent in invite URL
+  token       String    @unique @default(uuid())  // sent in invite URL
   invitedById String
   expiresAt   DateTime
   acceptedAt  DateTime?
@@ -149,7 +149,7 @@ model Invitation {
 // ─────────────────────────────────────────────
 
 model Subscription {
-  id                   String             @id @default(cuid())
+  id                   String             @id @default(uuid())
   tenantId             String             @unique   // ← enforces one subscription per tenant
   stripeCustomerId     String             @unique
   stripeSubscriptionId String?            @unique
@@ -176,7 +176,7 @@ model Subscription {
 // ─────────────────────────────────────────────
 
 model Payment {
-  id       String @id @default(cuid())
+  id       String @id @default(uuid())
   tenantId String
 
   stripeCustomerId     String
@@ -202,7 +202,7 @@ model Payment {
 // ─────────────────────────────────────────────
 
 model Feature {
-  id          String @id @default(cuid())
+  id          String @id @default(uuid())
   key         String @unique  // e.g. "advanced_analytics", "custom_domain"
   description String
   plans       Plan[]          // which plans include this feature
@@ -219,7 +219,7 @@ model Feature {
 // ─────────────────────────────────────────────
 
 model Project {
-  id          String   @id @default(cuid())
+  id          String   @id @default(uuid())
   tenantId    String                          // ← tenantId pattern
   createdById String                          // ← proper FK, not raw String
   name        String
@@ -242,7 +242,7 @@ model Project {
 // ─────────────────────────────────────────────
 
 model AuditLog {
-  id         String      @id @default(cuid())
+  id         String      @id @default(uuid())
   tenantId   String
   userId     String?     // null = system-generated event
   action     AuditAction
@@ -266,7 +266,7 @@ model AuditLog {
 // ─────────────────────────────────────────────
 
 model RefreshToken {
-  id        String    @id @default(cuid())
+  id        String    @id @default(uuid())
   userId    String
   tokenHash String    @unique   // SHA-256(rawToken)
   expiresAt DateTime
@@ -287,7 +287,7 @@ model RefreshToken {
 // ─────────────────────────────────────────────
 
 model ApiKey {
-  id        String    @id @default(cuid())
+  id        String    @id @default(uuid())
   tenantId  String
   name      String
   keyHash   String    @unique   // SHA-256(rawKey)

@@ -1,5 +1,5 @@
 import { BadRequestException } from "@nestjs/common";
-import slugify = require("slugify");
+import slugify from "slugify";
 
 export const generateSlug = (text: string): string => {
   if (!text) {

@@ -1,0 +1,88 @@
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
+  Req,
+  UseGuards,
+} from "@nestjs/common";
+import { WorkspaceService } from "./workspace.service";
+import { CreateWorkspaceDto } from "./dto/create-workspace.dto";
+import { UpdateWorkspaceDto } from "./dto/update-workspace.dto";
+import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
+import { sendResponse } from "@/common/utils/send-response";
+
+@Controller("workspaces")
+@UseGuards(JwtAuthGuard)
+export class WorkspaceController {
+  constructor(private workspaceService: WorkspaceService) {}
+
+  // CREATE
+  @Post()
+  @HttpCode(HttpStatus.CREATED)
+  async create(@Req() req, @Body() dto: CreateWorkspaceDto) {
+    const res = await this.workspaceService.create(req.user.sub, dto.name);
+    return sendResponse({
+      statusCode: HttpStatus.CREATED,
+      message: "Workspace created successfully",
+      data: res.workspace,
+    });
+  }
+
+  // GET ALL
+  @Get()
+  @HttpCode(HttpStatus.OK)
+  async findAll(@Req() req) {
+    const res = await this.workspaceService.getUserWorkspaces(req.user.sub);
+    return sendResponse({
+      statusCode: HttpStatus.OK,
+      message: "Workspaces fetched successfully",
+      data: res,
+    });
+  }
+
+  // GET ONE
+  @Get(":id")
+  @HttpCode(HttpStatus.OK)
+  async findOne(@Req() req, @Param("id") id: string) {
+    const res = await this.workspaceService.findOne(id, req.user.sub);
+    return sendResponse({
+      statusCode: HttpStatus.OK,
+      message: "Workspace fetched successfully",
+      data: res,
+    });
+  }
+
+  // UPDATE
+  @Patch(":id")
+  @HttpCode(HttpStatus.OK)
+  async update(
+    @Req() req,
+    @Param("id") id: string,
+    @Body() dto: UpdateWorkspaceDto,
+  ) {
+    const res = await this.workspaceService.update(id, req.user.sub, dto);
+    return sendResponse({
+      statusCode: HttpStatus.OK,
+      message: "Workspace updated successfully",
+      data: res,
+    });
+  }
+
+  // DELETE
+  @Delete(":id")
+  @HttpCode(HttpStatus.OK)
+  async delete(@Req() req, @Param("id") id: string) {
+    const res = await this.workspaceService.delete(id, req.user.sub);
+    return sendResponse({
+      statusCode: HttpStatus.OK,
+      message: "Workspace deleted successfully",
+      data: res,
+    });
+  }
+}

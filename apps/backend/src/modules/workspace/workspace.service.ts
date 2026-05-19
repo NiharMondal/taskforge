@@ -40,13 +40,13 @@ export class WorkspaceService {
 
   // get user workspace
   async getUserWorkspaces(userId: string) {
-    const workspaces = await this.prisma.membership.findMany({
+    const workspaces = await this.prisma.workspace.findMany({
       where: {
-        userId,
+        memberships: {
+          some: { userId },
+        },
       },
-      include: {
-        workspace: true,
-      },
+      orderBy: { createdAt: "desc" },
     });
 
     return workspaces;

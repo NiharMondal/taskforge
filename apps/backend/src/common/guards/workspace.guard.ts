@@ -1,3 +1,4 @@
+import { JwtPayload } from "@/modules/auth/strategies/jwt.strategy";
 import { PrismaService } from "@/prisma/prisma.service";
 import {
   CanActivate,
@@ -6,14 +7,14 @@ import {
   Injectable,
 } from "@nestjs/common";
 import { Request } from "express";
-import { JwtPayload } from "@/modules/auth/strategies/jwt.strategy";
+import { AuthenticatedRequest } from "../types/authenticated-request.interface";
 
 @Injectable()
 export class WorkspaceGuard implements CanActivate {
   constructor(private prisma: PrismaService) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const request = context.switchToHttp().getRequest<Request>();
+    const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const user = request.user as JwtPayload;
 
     const rawHeader = request.headers["x-workspace-id"];
@@ -40,8 +41,8 @@ export class WorkspaceGuard implements CanActivate {
       throw new ForbiddenException("No access to this workspace");
     }
 
-    (request as Request & { workspaceId: string; membershipRole: string }).workspaceId = workspaceId;
-    (request as Request & { workspaceId: string; membershipRole: string }).membershipRole = membership.role;
+    request.workspaceId = workspaceId;
+    request.membershipRole = membership.role;
 
     return true;
   }

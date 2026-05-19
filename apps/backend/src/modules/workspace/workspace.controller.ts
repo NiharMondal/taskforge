@@ -16,7 +16,7 @@ import { UpdateWorkspaceDto } from "./dto/update-workspace.dto";
 import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
 import { sendResponse } from "@/common/utils/send-response";
 import { CurrentUser } from "@/common/decorators/current-user.decorator";
-import { JwtPayload } from "@/modules/auth/strategies/jwt.strategy";
+import type { JwtPayload } from "@/modules/auth/strategies/jwt.strategy";
 
 @Controller("workspaces")
 @UseGuards(JwtAuthGuard)
@@ -26,7 +26,10 @@ export class WorkspaceController {
   // CREATE
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  async create(@CurrentUser() user: JwtPayload, @Body() dto: CreateWorkspaceDto) {
+  async create(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: CreateWorkspaceDto,
+  ) {
     const res = await this.workspaceService.create(user.sub, dto.name);
     return sendResponse({
       statusCode: HttpStatus.CREATED,

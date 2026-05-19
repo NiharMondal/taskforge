@@ -40,17 +40,35 @@ export class MembershipService {
   ) {
     const actor = await this.getMembership(workspaceId, actorUserId);
 
-    if (!actor || actor.role !== WorkspaceRole.OWNER) {
-      throw new ForbiddenException("Only owner can update member role");
+    if (
+      !actor ||
+      !([WorkspaceRole.OWNER, WorkspaceRole.ADMIN] as WorkspaceRole[]).includes(
+        actor.role,
+      )
+    ) {
+      throw new ForbiddenException("Insufficient permissions");
+    }
+
+    if (targetUserId === actorUserId) {
+      throw new ForbiddenException("You cannot change your own role");
     }
 
     const targetMember = await this.getMembership(workspaceId, targetUserId);
+
     if (!targetMember) {
-      throw new NotFoundException("Target Member not found");
+      throw new NotFoundException("Target member not found");
     }
-    // prevent OWNER demotion edge case
+
+    // prevent modifying OWNER
     if (targetMember.role === WorkspaceRole.OWNER) {
       throw new ForbiddenException("Cannot modify OWNER role");
+    }
+
+    // ADMIN cannot assign OWNER
+    if (role === WorkspaceRole.OWNER) {
+      throw new ForbiddenException(
+        "Use transferOwnership API instead of assigning OWNER role",
+      );
     }
 
     return this.prisma.membership.update({
@@ -64,7 +82,11 @@ export class MembershipService {
     });
   }
 
-  async remove(workspaceId: string, targetUserId: string, actorUserId: string) {
+  async removeMember(
+    workspaceId: string,
+    targetUserId: string,
+    actorUserId: string,
+  ) {
     const actor = await this.getMembership(workspaceId, actorUserId);
 
     if (

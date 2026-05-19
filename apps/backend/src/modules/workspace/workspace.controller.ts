@@ -1,6 +1,6 @@
 import { CurrentUser } from "@/common/decorators/current-user.decorator";
+import type { JwtPayload } from "@/common/strategies/jwt.strategy";
 import { sendResponse } from "@/common/utils/send-response";
-import type { JwtPayload } from "@/modules/auth/strategies/jwt.strategy";
 import {
   Body,
   Controller,

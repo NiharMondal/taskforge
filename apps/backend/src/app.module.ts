@@ -9,6 +9,7 @@ import { AuthModule } from "@/modules/auth/auth.module";
 import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
 import { RolesGuard } from "@/common/guards/roles.guard";
 import { WorkspaceModule } from "./modules/workspace/workspace.module";
+import { MembershipModule } from "./modules/memberships/membership.module";
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { WorkspaceModule } from "./modules/workspace/workspace.module";
     AuthModule,
     UserModule,
     WorkspaceModule,
+    MembershipModule,
   ],
   controllers: [AppController],
   providers: [

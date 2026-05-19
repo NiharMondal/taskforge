@@ -93,7 +93,11 @@ export class WorkspaceService {
       throw new ForbiddenException("Not allowed to update this workspace");
     }
 
-    if (!([WorkspaceRole.ADMIN, WorkspaceRole.OWNER] as WorkspaceRole[]).includes(membership.role)) {
+    if (
+      !([WorkspaceRole.ADMIN, WorkspaceRole.OWNER] as WorkspaceRole[]).includes(
+        membership.role,
+      )
+    ) {
       throw new ForbiddenException(
         "Only owner and admin can update the workspace",
       );

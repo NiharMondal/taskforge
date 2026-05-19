@@ -1,9 +1,3 @@
-// ============================================================
-// Multi-Tenant SaaS — Prisma Schema (Final Merged)
-// Best of both: original design + ChatGPT's Payment table
-// DB: PostgreSQL
-// ============================================================
-
 generator client {
   provider     = "prisma-client"
   output       = "../generated/prisma"
@@ -14,294 +8,285 @@ datasource db {
   provider = "postgresql"
 }
 
-// ─────────────────────────────────────────────
-// ENUMS
-// ─────────────────────────────────────────────
+//// ENUMS
 
-enum Role {
-  ADMIN    // Full tenant control — manage members, billing, settings
-  MANAGER  // Manage projects and members, cannot touch billing
-  USER     // Read/write own data only
+enum WorkspaceRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
 }
 
-enum Plan {
+enum IssueStatus {
+  BACKLOG
+  TODO
+  IN_PROGRESS
+  IN_REVIEW
+  DONE
+}
+
+enum IssuePriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum SubscriptionPlan {
   FREE
   PRO
   ENTERPRISE
 }
 
-enum SubscriptionStatus {
-  ACTIVE
-  CANCELED
-  PAST_DUE
-  TRIALING
-  INCOMPLETE  // Stripe: payment action required
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
 }
 
-enum AuditAction {
-  CREATED
-  UPDATED
-  DELETED
-  INVITED
-  ROLE_CHANGED
-  LOGIN
-  LOGOUT
-  SUBSCRIPTION_CHANGED
-}
+//// USERS
+model User {
+  id           String  @id @default(uuid())
+  name         String
+  email        String  @unique
+  passwordHash String
+  avatarUrl    String?
 
-// ─────────────────────────────────────────────
-// TENANT
-// Root of the multi-tenant tree.
-// Every business table hangs off this via tenantId.
-// Naming: "Tenant" (shorter, industry standard for SaaS)
-// ─────────────────────────────────────────────
-
-model Tenant {
-  id        String   @id @default(cuid())
-  name      String
-  slug      String   @unique   // "acme-corp" — used in URLs + subdomains
-  logoUrl   String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relations
-  members      Membership[]
-  invitations  Invitation[]
-  subscription Subscription?   // @unique enforced on Subscription.tenantId
-  payments     Payment[]
+  memberships    Membership[]
+  createdIssues  Issue[]      @relation("CreatedIssues")
+  assignedIssues Issue[]      @relation("AssignedIssues")
+
+  comments  Comment[]
+  auditLogs AuditLog[]
+}
+
+//// WORKSPACE (TENANT ROOT)
+
+model Workspace {
+  id          String  @id @default(uuid())
+  name        String
+  slug        String  @unique
+  description String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships  Membership[]
   projects     Project[]
+  issues       Issue[]
+  sprints      Sprint[]
+  invitations  Invitation[]
+  subscription Subscription?
   auditLogs    AuditLog[]
-  apiKeys      ApiKey[]
-
-  @@index([slug])
+  labels       Label[]
 }
 
-// ─────────────────────────────────────────────
-// USER
-// Global — decoupled from any single tenant.
-// One user can belong to many tenants with different roles.
-// ─────────────────────────────────────────────
-
-model User {
-  id             String   @id @default(cuid())
-  email          String   @unique
-  hashedPassword String
-  name           String
-  avatarUrl      String?
-  emailVerified  Boolean  @default(false)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  // Relations
-  memberships   Membership[]
-  invitesSent   Invitation[]   @relation("InvitedBy")
-  refreshTokens RefreshToken[]
-  auditLogs     AuditLog[]
-  projects      Project[]      @relation("CreatedBy")
-
-  @@index([email])
-}
-
-// ─────────────────────────────────────────────
-// MEMBERSHIP  (User ↔ Tenant join table)
-// Holds the role for this user inside this tenant.
-// THE key multi-tenant pattern — scope every query by tenantId.
-// ─────────────────────────────────────────────
+//// MEMBERSHIP (RBAC CORE)
 
 model Membership {
-  id       String   @id @default(cuid())
-  tenantId String
-  userId   String
-  role     Role     @default(USER)
-  joinedAt DateTime @default(now())
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([tenantId, userId])  // One membership per tenant per user
-  @@index([tenantId])
-  @@index([userId])
-}
-
-// ─────────────────────────────────────────────
-// INVITATION
-// Token-based email invite flow (Notion/Slack style).
-// ─────────────────────────────────────────────
-
-model Invitation {
-  id          String    @id @default(cuid())
-  tenantId    String
-  email       String
-  role        Role      @default(USER)
-  token       String    @unique @default(cuid())  // sent in invite URL
-  invitedById String
-  expiresAt   DateTime
-  acceptedAt  DateTime?
-  createdAt   DateTime  @default(now())
-
-  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  invitedBy User   @relation("InvitedBy", fields: [invitedById], references: [id])
-
-  @@index([tenantId])
-  @@index([token])
-}
-
-// ─────────────────────────────────────────────
-// SUBSCRIPTION  (Stripe — one per tenant, enforced)
-// @unique on tenantId prevents the duplicate-subscription bug.
-// Always update this record via Stripe webhooks, not direct API calls.
-// ─────────────────────────────────────────────
-
-model Subscription {
-  id                   String             @id @default(cuid())
-  tenantId             String             @unique   // ← enforces one subscription per tenant
-  stripeCustomerId     String             @unique
-  stripeSubscriptionId String?            @unique
-  plan                 Plan               @default(FREE)
-  status               SubscriptionStatus @default(TRIALING)
-  currentPeriodStart   DateTime?
-  currentPeriodEnd     DateTime?
-  cancelAtPeriodEnd    Boolean            @default(false)
-  trialEndsAt          DateTime?
-  createdAt            DateTime           @default(now())
-  updatedAt            DateTime           @updatedAt
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@index([stripeCustomerId])
-}
-
-// ─────────────────────────────────────────────
-// PAYMENT  (from ChatGPT — good addition)
-// Immutable payment history. One row per invoice/charge.
-// Never update rows — append only.
-// Note: all Stripe IDs are nullable so one-time payments
-//       don't require a subscription to exist.
-// ─────────────────────────────────────────────
-
-model Payment {
-  id       String @id @default(cuid())
-  tenantId String
-
-  stripeCustomerId     String
-  stripeSubscriptionId String?  // nullable — one-time charges have no subscription
-  stripePriceId        String?
-  stripeInvoiceId      String?  @unique
-
-  amountCents Int     // store in smallest currency unit, never Float
-  currency    String  @default("usd")
+  id          String        @id @default(uuid())
+  userId      String
+  workspaceId String
+  role        WorkspaceRole @default(MEMBER)
 
   createdAt DateTime @default(now())
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
-  @@index([tenantId])
-  @@index([stripeCustomerId])
+  @@unique([userId, workspaceId])
+  @@index([workspaceId])
 }
 
-// ─────────────────────────────────────────────
-// FEATURE  (per-plan feature gating)
-// Seed once. Check at runtime via isFeatureEnabled(tenantId, 'key').
-// plans[] uses a PostgreSQL native array — no join table needed.
-// ─────────────────────────────────────────────
-
-model Feature {
-  id          String @id @default(cuid())
-  key         String @unique  // e.g. "advanced_analytics", "custom_domain"
-  description String
-  plans       Plan[]          // which plans include this feature
-
-  @@index([key])
-}
-
-// ─────────────────────────────────────────────
-// PROJECT  (example tenant-scoped business resource)
-// Replace/extend this with your actual domain models.
-// Rules every business table must follow:
-//   1. Always has tenantId with @@index
-//   2. createdById is a proper FK to User (never a raw String)
-// ─────────────────────────────────────────────
+//// PROJECTS
 
 model Project {
-  id          String   @id @default(cuid())
-  tenantId    String                          // ← tenantId pattern
-  createdById String                          // ← proper FK, not raw String
+  id          String  @id @default(uuid())
   name        String
+  key         String
   description String?
-  isArchived  Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
 
-  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  createdBy User   @relation("CreatedBy", fields: [createdById], references: [id])
+  workspaceId String
 
-  @@index([tenantId])
-  @@index([createdById])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  issues  Issue[]
+  sprints Sprint[]
+
+  @@unique([workspaceId, key])
+  @@index([workspaceId])
 }
 
-// ─────────────────────────────────────────────
-// AUDIT LOG
-// Append-only. Never expose UPDATE or DELETE on this table.
-// Index on (tenantId, createdAt) for paginated log queries.
-// ─────────────────────────────────────────────
+//// SPRINTS
+
+model Sprint {
+  id   String  @id @default(uuid())
+  name String
+  goal String?
+
+  startDate DateTime?
+  endDate   DateTime?
+  isActive  Boolean   @default(false)
+
+  projectId   String
+  workspaceId String
+
+  createdAt DateTime @default(now())
+
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  issues Issue[]
+
+  @@index([projectId])
+  @@index([workspaceId])
+}
+
+//// ISSUES (CORE)
+
+model Issue {
+  id          String  @id @default(uuid())
+  title       String
+  description String?
+
+  status   IssueStatus   @default(BACKLOG)
+  priority IssuePriority @default(MEDIUM)
+
+  workspaceId String
+  projectId   String
+  sprintId    String?
+
+  reporterId String
+  assigneeId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sprint    Sprint?   @relation(fields: [sprintId], references: [id], onDelete: SetNull)
+
+  reporter User  @relation("CreatedIssues", fields: [reporterId], references: [id], onDelete: Cascade)
+  assignee User? @relation("AssignedIssues", fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  comments Comment[]
+  labels   IssueLabel[]
+
+  @@index([workspaceId, projectId])
+  @@index([workspaceId, status])
+  @@index([workspaceId, assigneeId])
+}
+
+//// COMMENTS
+
+model Comment {
+  id      String @id @default(uuid())
+  content String
+
+  issueId String
+  userId  String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  issue Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([issueId])
+}
+
+//// LABELS
+
+model Label {
+  id    String @id @default(uuid())
+  name  String
+  color String
+
+  workspaceId String
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  issues IssueLabel[]
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId])
+}
+
+model IssueLabel {
+  issueId String
+  labelId String
+
+  issue Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  label Label @relation(fields: [labelId], references: [id], onDelete: Cascade)
+
+  @@id([issueId, labelId])
+}
+
+//// INVITATIONS
+model Invitation {
+  id    String @id @default(uuid())
+  email String
+  token String @unique
+
+  workspaceId String
+  role        WorkspaceRole @default(MEMBER)
+
+  status    InvitationStatus @default(PENDING)
+  expiresAt DateTime
+
+  createdAt DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([email])
+}
+
+//// SUBSCRIPTION (SAAS LAYER)
+
+model Subscription {
+  id          String @id @default(uuid())
+  workspaceId String @unique
+
+  plan   SubscriptionPlan @default(FREE)
+  status String?
+
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+
+  currentPeriodEnd DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+//// AUDIT LOGS
 
 model AuditLog {
-  id         String      @id @default(cuid())
-  tenantId   String
-  userId     String?     // null = system-generated event
-  action     AuditAction
-  entityType String      // "Project" | "User" | "Subscription" etc.
+  id String @id @default(uuid())
+
+  workspaceId String
+  userId      String?
+
+  action     String
+  entityType String
   entityId   String?
-  metadata   Json?       // { before, after, ip, userAgent }
-  createdAt  DateTime    @default(now())
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user   User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+  metadata Json?
 
-  @@index([tenantId])
-  @@index([tenantId, createdAt])  // for paginated audit log queries
-  @@index([userId])
-}
+  createdAt DateTime @default(now())
 
-// ─────────────────────────────────────────────
-// REFRESH TOKEN
-// SHA-256 hash stored — never the raw token.
-// Rotate on every use (refresh token rotation pattern).
-// ─────────────────────────────────────────────
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
 
-model RefreshToken {
-  id        String    @id @default(cuid())
-  userId    String
-  tokenHash String    @unique   // SHA-256(rawToken)
-  expiresAt DateTime
-  revokedAt DateTime?
-  createdAt DateTime  @default(now())
-  userAgent String?
-  ipAddress String?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-}
-
-// ─────────────────────────────────────────────
-// API KEY  (programmatic / webhook access per tenant)
-// Return raw key ONCE on creation — store only the hash.
-// prefix stores first 8 chars for display: "sk_live_abcd..."
-// ─────────────────────────────────────────────
-
-model ApiKey {
-  id        String    @id @default(cuid())
-  tenantId  String
-  name      String
-  keyHash   String    @unique   // SHA-256(rawKey)
-  prefix    String              // first 8 chars shown in UI
-  lastUsed  DateTime?
-  expiresAt DateTime?
-  revokedAt DateTime?
-  createdAt DateTime  @default(now())
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@index([tenantId])
+  @@index([workspaceId])
+  @@index([entityType])
 }

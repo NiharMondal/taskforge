@@ -35,6 +35,7 @@ export class AuthService {
 
     const workspaceSlug = generateSlug(dto.name);
 
+    const randomStr = Math.random().toString(36).substring(2, 10);
     // 3. Transaction (VERY IMPORTANT)
     const result = await this.prisma.$transaction(async (tx) => {
       // Create user
@@ -50,7 +51,7 @@ export class AuthService {
       const workspace = await tx.workspace.create({
         data: {
           name: `${name}'s Workspace`,
-          slug: workspaceSlug,
+          slug: `${workspaceSlug}-${randomStr}`,
         },
       });
 

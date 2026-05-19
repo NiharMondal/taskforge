@@ -10,6 +10,6 @@ export const WorkspaceId = createParamDecorator(
       );
     }
 
-    return request.workspaceId;
+    return request.workspaceId as string;
   },
 );

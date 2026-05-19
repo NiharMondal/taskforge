@@ -9,19 +9,16 @@ import {
   HttpStatus,
   HttpCode,
 } from "@nestjs/common";
-import { Role } from "generated/prisma/client";
 import { UserService } from "./user.service";
 import { CreateUserDto } from "./dto/create-user.dto";
 import { UpdateUserDto } from "./dto/update-user.dto";
-import { Roles } from "@/modules/auth/decorators/roles.decorator";
-import { sendResponse } from "@/utils/send-response";
+import { sendResponse } from "@/common/utils/send-response";
 
 @Controller("users")
 export class UserController {
   constructor(private readonly userService: UserService) {}
 
   @Post()
-  @Roles(Role.ADMIN)
   async create(@Body() dto: CreateUserDto) {
     const user = await this.userService.create(dto);
     return sendResponse({
@@ -33,7 +30,7 @@ export class UserController {
 
   @Get()
   @HttpCode(HttpStatus.OK)
-  @Roles(Role.ADMIN, Role.MANAGER)
+  // @Roles(Role.ADMIN, Role.MANAGER)
   async findAll() {
     const users = await this.userService.findAll();
     return sendResponse({
@@ -67,7 +64,7 @@ export class UserController {
 
   @Delete(":id")
   @HttpCode(HttpStatus.OK)
-  @Roles(Role.ADMIN)
+  // @Roles(Role.ADMIN)
   async remove(@Param("id") id: string) {
     await this.userService.remove(id);
     return sendResponse({

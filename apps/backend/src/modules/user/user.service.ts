@@ -9,7 +9,7 @@ import { CreateUserDto } from "@/modules/user/dto/create-user.dto";
 import { UpdateUserDto } from "@/modules/user/dto/update-user.dto";
 import { User } from "generated/prisma/client";
 
-export type SafeUser = Omit<User, "hashedPassword">;
+export type SafeUser = Omit<User, "passwordHash">;
 
 @Injectable()
 export class UserService {
@@ -21,12 +21,12 @@ export class UserService {
     });
     if (existing) throw new ConflictException("Email already in use");
 
-    const hashedPassword = await this.hashPassword(dto.password);
+    const passwordHash = await this.hashPassword(dto.password);
 
     const user = await this.prisma.user.create({
       data: {
         email: dto.email,
-        hashedPassword,
+        passwordHash,
         name: dto.name,
         avatarUrl: dto.avatarUrl,
       },
@@ -69,14 +69,14 @@ export class UserService {
 
   async verifyPassword(
     password: string,
-    hashedPassword: string,
+    passwordHash: string,
   ): Promise<boolean> {
-    return bcrypt.compare(password, hashedPassword);
+    return bcrypt.compare(password, passwordHash);
   }
 
   private omitPassword(user: User): SafeUser {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { hashedPassword, ...safe } = user;
+    const { passwordHash, ...safe } = user;
     return safe;
   }
 }

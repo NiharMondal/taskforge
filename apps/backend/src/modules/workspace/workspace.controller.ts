@@ -1,3 +1,6 @@
+import { CurrentUser } from "@/common/decorators/current-user.decorator";
+import { sendResponse } from "@/common/utils/send-response";
+import type { JwtPayload } from "@/modules/auth/strategies/jwt.strategy";
 import {
   Body,
   Controller,
@@ -10,13 +13,10 @@ import {
   Post,
   UseGuards,
 } from "@nestjs/common";
-import { WorkspaceService } from "./workspace.service";
+import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
 import { CreateWorkspaceDto } from "./dto/create-workspace.dto";
 import { UpdateWorkspaceDto } from "./dto/update-workspace.dto";
-import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
-import { sendResponse } from "@/common/utils/send-response";
-import { CurrentUser } from "@/common/decorators/current-user.decorator";
-import type { JwtPayload } from "@/modules/auth/strategies/jwt.strategy";
+import { WorkspaceService } from "./workspace.service";
 
 @Controller("workspaces")
 @UseGuards(JwtAuthGuard)
@@ -38,7 +38,7 @@ export class WorkspaceController {
     });
   }
 
-  // GET ALL
+  // GET ALL workspaces of user
   @Get()
   @HttpCode(HttpStatus.OK)
   async findAll(@CurrentUser() user: JwtPayload) {

@@ -1,4 +1,5 @@
 import { generateSlug } from "@/common/utils/generate-slug";
+import { generateSuffix } from "@/common/utils/generate-suffix";
 import { PrismaService } from "@/prisma/prisma.service";
 import {
   ForbiddenException,
@@ -81,6 +82,8 @@ export class WorkspaceService {
   }
   // update workspace
   async update(workspaceId: string, userId: string, data: UpdateWorkspaceDto) {
+    const suffix = generateSuffix();
+    const slug = data.name ? `${generateSlug(data.name)}-${suffix}` : undefined;
     const membership = await this.prisma.membership.findUnique({
       where: {
         userId_workspaceId: {
@@ -105,7 +108,10 @@ export class WorkspaceService {
     }
     return this.prisma.workspace.update({
       where: { id: workspaceId },
-      data: data,
+      data: {
+        name: data.name,
+        slug,
+      },
     });
   }
 

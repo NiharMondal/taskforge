@@ -1,9 +1,7 @@
 {
   "editor.formatOnSave": true,
-  "editor.defaultFormatter": "esbenp.prettier-vscode",
   "editor.codeActionsOnSave": {
-    "source.fixAll.ts": "explicit",
-    "source.organizeImports.ts": "explicit",
-    "source.removeUnusedImports": "always",    
+    "source.organizeImports": "always",
+    "source.fixAll.ts": "explicit"
   }
 }

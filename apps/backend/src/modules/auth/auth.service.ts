@@ -1,15 +1,17 @@
-import bcryptjs from "bcryptjs";
+import { generateSlug } from "@/common/utils/generate-slug";
+import { generateSuffix } from "@/common/utils/generate-suffix";
+import { passwordUtils } from "@/common/utils/password";
 import { PrismaService } from "@/prisma/prisma.service";
 import {
-  Injectable,
   ConflictException,
+  Injectable,
   NotFoundException,
   UnauthorizedException,
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
-import { generateSlug } from "@/common/utils/generate-slug";
-import { RegisterDto } from "./dto/register.dto";
+import { WorkspaceRole } from "generated/prisma/enums";
 import { LoginDto } from "./dto/login.dto";
+import { RegisterDto } from "./dto/register.dto";
 
 @Injectable()
 export class AuthService {
@@ -31,11 +33,10 @@ export class AuthService {
     }
 
     // 2. Hash password
-    const passwordHash = await bcryptjs.hash(password, 12);
+    const passwordHash = await passwordUtils.hashPassword(password);
 
-    const workspaceSlug = generateSlug(dto.name);
-
-    const randomStr = Math.random().toString(36).substring(2, 10);
+    const suffix = generateSuffix();
+    const slug = `${generateSlug(name)}-${suffix}`;
     // 3. Transaction (VERY IMPORTANT)
     const result = await this.prisma.$transaction(async (tx) => {
       // Create user
@@ -51,7 +52,7 @@ export class AuthService {
       const workspace = await tx.workspace.create({
         data: {
           name: `${name}'s Workspace`,
-          slug: `${workspaceSlug}-${randomStr}`,
+          slug,
         },
       });
 
@@ -60,7 +61,7 @@ export class AuthService {
         data: {
           userId: user.id,
           workspaceId: workspace.id,
-          role: "OWNER",
+          role: WorkspaceRole.OWNER,
         },
       });
 
@@ -93,7 +94,7 @@ export class AuthService {
     });
     if (!user) throw new NotFoundException("User not found");
 
-    const isPasswordValid = await bcryptjs.compare(
+    const isPasswordValid = await passwordUtils.comparePassword(
       dto.password,
       user.passwordHash,
     );

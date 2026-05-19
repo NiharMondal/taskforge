@@ -42,7 +42,6 @@ export class WorkspaceController {
   @Get()
   @HttpCode(HttpStatus.OK)
   async findAll(@CurrentUser() user: JwtPayload) {
-    console.log(user);
     const res = await this.workspaceService.getUserWorkspaces(user.sub);
     return sendResponse({
       statusCode: HttpStatus.OK,

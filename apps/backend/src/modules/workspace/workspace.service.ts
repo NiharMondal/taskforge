@@ -14,7 +14,8 @@ export class WorkspaceService {
 
   // create workspace
   async create(userId: string, name: string) {
-    const slug = generateSlug(name);
+    const suffix = Math.random().toString(36).substring(2, 8);
+    const slug = `${generateSlug(name)}-${suffix}`;
 
     const result = await this.prisma.$transaction(async (tx) => {
       const workspace = await tx.workspace.create({

@@ -8,7 +8,6 @@ import {
   Param,
   Patch,
   Post,
-  Req,
   UseGuards,
 } from "@nestjs/common";
 import { WorkspaceService } from "./workspace.service";
@@ -16,6 +15,8 @@ import { CreateWorkspaceDto } from "./dto/create-workspace.dto";
 import { UpdateWorkspaceDto } from "./dto/update-workspace.dto";
 import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
 import { sendResponse } from "@/common/utils/send-response";
+import { CurrentUser } from "@/common/decorators/current-user.decorator";
+import { JwtPayload } from "@/modules/auth/strategies/jwt.strategy";
 
 @Controller("workspaces")
 @UseGuards(JwtAuthGuard)

@@ -26,8 +26,8 @@ export class WorkspaceController {
   // CREATE
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  async create(@Req() req, @Body() dto: CreateWorkspaceDto) {
-    const res = await this.workspaceService.create(req.user.sub, dto.name);
+  async create(@CurrentUser() user: JwtPayload, @Body() dto: CreateWorkspaceDto) {
+    const res = await this.workspaceService.create(user.sub, dto.name);
     return sendResponse({
       statusCode: HttpStatus.CREATED,
       message: "Workspace created successfully",
@@ -38,8 +38,8 @@ export class WorkspaceController {
   // GET ALL
   @Get()
   @HttpCode(HttpStatus.OK)
-  async findAll(@Req() req) {
-    const res = await this.workspaceService.getUserWorkspaces(req.user.sub);
+  async findAll(@CurrentUser() user: JwtPayload) {
+    const res = await this.workspaceService.getUserWorkspaces(user.sub);
     return sendResponse({
       statusCode: HttpStatus.OK,
       message: "Workspaces fetched successfully",
@@ -50,8 +50,8 @@ export class WorkspaceController {
   // GET ONE
   @Get(":id")
   @HttpCode(HttpStatus.OK)
-  async findOne(@Req() req, @Param("id") id: string) {
-    const res = await this.workspaceService.findOne(id, req.user.sub);
+  async findOne(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
+    const res = await this.workspaceService.findOne(id, user.sub);
     return sendResponse({
       statusCode: HttpStatus.OK,
       message: "Workspace fetched successfully",
@@ -63,11 +63,11 @@ export class WorkspaceController {
   @Patch(":id")
   @HttpCode(HttpStatus.OK)
   async update(
-    @Req() req,
+    @CurrentUser() user: JwtPayload,
     @Param("id") id: string,
     @Body() dto: UpdateWorkspaceDto,
   ) {
-    const res = await this.workspaceService.update(id, req.user.sub, dto);
+    const res = await this.workspaceService.update(id, user.sub, dto);
     return sendResponse({
       statusCode: HttpStatus.OK,
       message: "Workspace updated successfully",
@@ -78,8 +78,8 @@ export class WorkspaceController {
   // DELETE
   @Delete(":id")
   @HttpCode(HttpStatus.OK)
-  async delete(@Req() req, @Param("id") id: string) {
-    const res = await this.workspaceService.delete(id, req.user.sub);
+  async delete(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
+    const res = await this.workspaceService.delete(id, user.sub);
     return sendResponse({
       statusCode: HttpStatus.OK,
       message: "Workspace deleted successfully",

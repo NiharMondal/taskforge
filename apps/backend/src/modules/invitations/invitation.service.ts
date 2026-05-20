@@ -6,8 +6,8 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { InvitationStatus, WorkspaceRole } from "generated/prisma/enums";
 import * as crypto from "crypto";
+import { InvitationStatus, WorkspaceRole } from "generated/prisma/enums";
 import { SendInvitationDto } from "./dto/send-invitation.dto";
 
 const INVITATION_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
@@ -27,9 +27,9 @@ export class InvitationService {
 
     if (
       !actor ||
-      !(
-        [WorkspaceRole.OWNER, WorkspaceRole.ADMIN] as WorkspaceRole[]
-      ).includes(actor.role)
+      !([WorkspaceRole.OWNER, WorkspaceRole.ADMIN] as WorkspaceRole[]).includes(
+        actor.role,
+      )
     ) {
       throw new ForbiddenException("Insufficient permissions");
     }
@@ -52,7 +52,11 @@ export class InvitationService {
     }
 
     const pendingInvitation = await this.prisma.invitation.findFirst({
-      where: { email: dto.email, workspaceId, status: InvitationStatus.PENDING },
+      where: {
+        email: dto.email,
+        workspaceId,
+        status: InvitationStatus.PENDING,
+      },
     });
 
     if (pendingInvitation) {
@@ -93,9 +97,9 @@ export class InvitationService {
 
     if (
       !actor ||
-      !(
-        [WorkspaceRole.OWNER, WorkspaceRole.ADMIN] as WorkspaceRole[]
-      ).includes(actor.role)
+      !([WorkspaceRole.OWNER, WorkspaceRole.ADMIN] as WorkspaceRole[]).includes(
+        actor.role,
+      )
     ) {
       throw new ForbiddenException("Insufficient permissions");
     }
@@ -109,7 +113,9 @@ export class InvitationService {
     }
 
     if (invitation.status !== InvitationStatus.PENDING) {
-      throw new BadRequestException("Only pending invitations can be cancelled");
+      throw new BadRequestException(
+        "Only pending invitations can be cancelled",
+      );
     }
 
     return this.prisma.invitation.delete({ where: { id: invitationId } });
@@ -156,9 +162,7 @@ export class InvitationService {
     });
 
     if (existingMembership) {
-      throw new ConflictException(
-        "You are already a member of this workspace",
-      );
+      throw new ConflictException("You are already a member of this workspace");
     }
 
     return this.prisma.$transaction(async (tx) => {

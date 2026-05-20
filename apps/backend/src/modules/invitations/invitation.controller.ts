@@ -1,4 +1,5 @@
 import { CurrentUser } from "@/common/decorators/current-user.decorator";
+import { Public } from "@/common/decorators/public.decorator";
 import { WorkspaceId } from "@/common/decorators/workspaceId.decorator";
 import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
 import { WorkspaceGuard } from "@/common/guards/workspace.guard";
@@ -12,6 +13,7 @@ import {
   HttpStatus,
   Param,
   Post,
+  Query,
   UseGuards,
 } from "@nestjs/common";
 import { AcceptInvitationDto } from "./dto/accept-invitation.dto";
@@ -53,22 +55,14 @@ export class InvitationController {
     });
   }
 
-  @Delete(":id")
-  @UseGuards(JwtAuthGuard, WorkspaceGuard)
-  async cancelInvitation(
-    @WorkspaceId() workspaceId: string,
-    @Param("id") invitationId: string,
-    @CurrentUser() user: JwtPayload,
-  ) {
-    const invitation = await this.invitationService.cancelInvitation(
-      workspaceId,
-      invitationId,
-      user.sub,
-    );
+  @Get("validate")
+  @Public()
+  async validateToken(@Query("token") token: string) {
+    const data = await this.invitationService.validateToken(token);
     return sendResponse({
       statusCode: HttpStatus.OK,
-      message: "Invitation cancelled successfully",
-      data: invitation,
+      message: "Invitation is valid",
+      data,
     });
   }
 
@@ -77,14 +71,33 @@ export class InvitationController {
     @CurrentUser() user: JwtPayload,
     @Body() dto: AcceptInvitationDto,
   ) {
-    const membership = await this.invitationService.acceptInvitation(
+    const result = await this.invitationService.acceptInvitation(
       dto.token,
       user.sub,
     );
     return sendResponse({
       statusCode: HttpStatus.OK,
       message: "Invitation accepted successfully",
-      data: membership,
+      data: result,
+    });
+  }
+
+  @Delete(":id")
+  @UseGuards(JwtAuthGuard, WorkspaceGuard)
+  async revokeInvitation(
+    @WorkspaceId() workspaceId: string,
+    @Param("id") invitationId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    const invitation = await this.invitationService.revokeInvitation(
+      workspaceId,
+      invitationId,
+      user.sub,
+    );
+    return sendResponse({
+      statusCode: HttpStatus.OK,
+      message: "Invitation revoked successfully",
+      data: invitation,
     });
   }
 }

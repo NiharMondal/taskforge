@@ -13,8 +13,7 @@ The strategy reads secretOrKey from ConfigService.get('JWT_SECRET') — never pr
 {
   sub: string,       // userId (UUID)
   email: string,
-  tenantId: string,  // UUID — the source of truth for tenant scoping
-  roles: string[]
+  workspaceId: string  // UUID — the source of truth for workspace scoping
 }
 
 ## Refresh token pattern
@@ -25,4 +24,4 @@ The strategy reads secretOrKey from ConfigService.get('JWT_SECRET') — never pr
 ## What NOT to do
 - Never call JwtService.sign() outside AuthService
 - Never expose the raw refresh token in a JSON response body
-- Never add tenantId to a JWT claim from client input — derive from DB on login only
+- Never add workspaceId to a JWT claim from client input — derive from DB on login only

@@ -4,16 +4,19 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from "@nestjs/common";
-import * as crypto from "crypto";
 import { InvitationStatus, WorkspaceRole } from "generated/prisma/enums";
+import * as crypto from "crypto";
 import { SendInvitationDto } from "./dto/send-invitation.dto";
 
 const INVITATION_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 
 @Injectable()
 export class InvitationService {
+  private readonly logger = new Logger(InvitationService.name);
+
   constructor(private prisma: PrismaService) {}
 
   async sendInvitation(
@@ -27,9 +30,9 @@ export class InvitationService {
 
     if (
       !actor ||
-      !([WorkspaceRole.OWNER, WorkspaceRole.ADMIN] as WorkspaceRole[]).includes(
-        actor.role,
-      )
+      !(
+        [WorkspaceRole.OWNER, WorkspaceRole.ADMIN] as WorkspaceRole[]
+      ).includes(actor.role)
     ) {
       throw new ForbiddenException("Insufficient permissions");
     }
@@ -46,20 +49,16 @@ export class InvitationService {
       });
       if (existingMembership) {
         throw new ConflictException(
-          "User is already a member of this workspace",
+          "This email is already a member of the workspace",
         );
       }
     }
 
-    const pendingInvitation = await this.prisma.invitation.findFirst({
-      where: {
-        email: dto.email,
-        workspaceId,
-        status: InvitationStatus.PENDING,
-      },
+    const existing = await this.prisma.invitation.findUnique({
+      where: { email_workspaceId: { email: dto.email, workspaceId } },
     });
 
-    if (pendingInvitation) {
+    if (existing?.status === InvitationStatus.PENDING) {
       throw new ConflictException(
         "A pending invitation already exists for this email",
       );
@@ -67,16 +66,32 @@ export class InvitationService {
 
     const token = crypto.randomBytes(32).toString("hex");
     const expiresAt = new Date(Date.now() + INVITATION_EXPIRY_MS);
+    const role = dto.role ?? WorkspaceRole.MEMBER;
 
-    return this.prisma.invitation.create({
-      data: {
-        email: dto.email,
-        token,
-        workspaceId,
-        role: dto.role ?? WorkspaceRole.MEMBER,
-        expiresAt,
-      },
+    const invitation = await this.prisma.invitation.upsert({
+      where: { email_workspaceId: { email: dto.email, workspaceId } },
+      create: { email: dto.email, token, workspaceId, role, expiresAt },
+      update: { token, role, expiresAt, status: InvitationStatus.PENDING },
     });
+
+    const workspace = await this.prisma.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { name: true },
+    });
+
+    const actor_user = await this.prisma.user.findUnique({
+      where: { id: actorUserId },
+      select: { name: true },
+    });
+
+    this.sendInvitationEmail({
+      to: dto.email,
+      inviterName: actor_user?.name ?? "A workspace member",
+      workspaceName: workspace?.name ?? "a workspace",
+      token,
+    });
+
+    return invitation;
   }
 
   async listInvitations(workspaceId: string) {
@@ -86,26 +101,10 @@ export class InvitationService {
     });
   }
 
-  async cancelInvitation(
-    workspaceId: string,
-    invitationId: string,
-    actorUserId: string,
-  ) {
-    const actor = await this.prisma.membership.findUnique({
-      where: { userId_workspaceId: { userId: actorUserId, workspaceId } },
-    });
-
-    if (
-      !actor ||
-      !([WorkspaceRole.OWNER, WorkspaceRole.ADMIN] as WorkspaceRole[]).includes(
-        actor.role,
-      )
-    ) {
-      throw new ForbiddenException("Insufficient permissions");
-    }
-
-    const invitation = await this.prisma.invitation.findFirst({
-      where: { id: invitationId, workspaceId },
+  async validateToken(token: string) {
+    const invitation = await this.prisma.invitation.findUnique({
+      where: { token },
+      include: { workspace: { select: { name: true } } },
     });
 
     if (!invitation) {
@@ -113,12 +112,24 @@ export class InvitationService {
     }
 
     if (invitation.status !== InvitationStatus.PENDING) {
-      throw new BadRequestException(
-        "Only pending invitations can be cancelled",
-      );
+      throw new BadRequestException("Invitation has already been used or revoked");
     }
 
-    return this.prisma.invitation.delete({ where: { id: invitationId } });
+    if (invitation.expiresAt < new Date()) {
+      await this.prisma.invitation.update({
+        where: { id: invitation.id },
+        data: { status: InvitationStatus.EXPIRED },
+      });
+      throw new BadRequestException("Invitation has expired");
+    }
+
+    return {
+      email: invitation.email,
+      workspaceId: invitation.workspaceId,
+      workspaceName: invitation.workspace.name,
+      role: invitation.role,
+      expiresAt: invitation.expiresAt,
+    };
   }
 
   async acceptInvitation(token: string, userId: string) {
@@ -132,7 +143,7 @@ export class InvitationService {
 
     if (invitation.status !== InvitationStatus.PENDING) {
       throw new BadRequestException(
-        "Invitation has already been used or cancelled",
+        "Invitation has already been accepted, revoked, or expired",
       );
     }
 
@@ -179,7 +190,56 @@ export class InvitationService {
         data: { status: InvitationStatus.ACCEPTED },
       });
 
-      return membership;
+      return { workspaceId: invitation.workspaceId, membership };
     });
+  }
+
+  async revokeInvitation(
+    workspaceId: string,
+    invitationId: string,
+    actorUserId: string,
+  ) {
+    const actor = await this.prisma.membership.findUnique({
+      where: { userId_workspaceId: { userId: actorUserId, workspaceId } },
+    });
+
+    if (
+      !actor ||
+      !(
+        [WorkspaceRole.OWNER, WorkspaceRole.ADMIN] as WorkspaceRole[]
+      ).includes(actor.role)
+    ) {
+      throw new ForbiddenException("Insufficient permissions");
+    }
+
+    const invitation = await this.prisma.invitation.findFirst({
+      where: { id: invitationId, workspaceId },
+    });
+
+    if (!invitation) {
+      throw new NotFoundException("Invitation not found");
+    }
+
+    if (invitation.status !== InvitationStatus.PENDING) {
+      throw new BadRequestException("Only pending invitations can be revoked");
+    }
+
+    return this.prisma.invitation.update({
+      where: { id: invitationId },
+      data: { status: InvitationStatus.REVOKED },
+    });
+  }
+
+  private sendInvitationEmail(params: {
+    to: string;
+    inviterName: string;
+    workspaceName: string;
+    token: string;
+  }) {
+    this.logger.log(
+      `[EMAIL] Invitation to ${params.to} from ${params.inviterName} ` +
+        `for workspace "${params.workspaceName}" — ` +
+        `token: ${params.token} (expires in 7 days)`,
+    );
   }
 }

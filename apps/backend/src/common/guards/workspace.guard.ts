@@ -16,14 +16,14 @@ export class WorkspaceGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const user = request.user as JwtPayload;
 
+    if (!user) {
+      throw new ForbiddenException("User not authenticated");
+    }
+
     const rawHeader = request.headers["x-workspace-id"];
     const workspaceId =
       (Array.isArray(rawHeader) ? rawHeader[0] : rawHeader) ??
       request.params["workspaceId"];
-
-    if (!user) {
-      throw new ForbiddenException("User not authenticated");
-    }
 
     if (!workspaceId) {
       throw new ForbiddenException("Workspace ID missing");

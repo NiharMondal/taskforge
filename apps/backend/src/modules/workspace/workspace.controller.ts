@@ -12,7 +12,6 @@ import {
   Get,
   HttpCode,
   HttpStatus,
-  Param,
   Patch,
   Post,
   UseGuards,
@@ -46,8 +45,6 @@ export class WorkspaceController {
   // GET ALL workspaces of user
   @Get()
   @HttpCode(HttpStatus.OK)
-  @UseGuards(WorkspaceGuard, RolesGuard)
-  @Roles(WorkspaceRole.OWNER, WorkspaceRole.ADMIN)
   async findAll(@CurrentUser() user: JwtPayload) {
     const res = await this.workspaceService.getUserWorkspaces(user.sub);
     return sendResponse({
@@ -58,11 +55,11 @@ export class WorkspaceController {
   }
 
   // GET ONE
-  @Get(":id")
+  @Get(":workspaceId")
   @HttpCode(HttpStatus.OK)
   @UseGuards(WorkspaceGuard, RolesGuard)
-  @Roles(WorkspaceRole.OWNER, WorkspaceRole.ADMIN, WorkspaceRole.MEMBER)
-  async findOne(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
+  @Roles(WorkspaceRole.OWNER, WorkspaceRole.ADMIN)
+  async findOne(@CurrentUser() user: JwtPayload, @WorkspaceId() id: string) {
     const res = await this.workspaceService.findOne(id, user.sub);
     return sendResponse({
       statusCode: HttpStatus.OK,
@@ -77,11 +74,10 @@ export class WorkspaceController {
   @UseGuards(WorkspaceGuard, RolesGuard)
   @Roles(WorkspaceRole.OWNER, WorkspaceRole.ADMIN)
   async update(
-    @CurrentUser() user: JwtPayload,
     @WorkspaceId() workspaceId: string,
     @Body() dto: UpdateWorkspaceDto,
   ) {
-    const res = await this.workspaceService.update(workspaceId, user.sub, dto);
+    const res = await this.workspaceService.update(workspaceId, dto);
     return sendResponse({
       statusCode: HttpStatus.OK,
       message: "Workspace updated successfully",

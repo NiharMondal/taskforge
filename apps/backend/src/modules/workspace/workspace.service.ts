@@ -1,5 +1,4 @@
 import { generateSlug } from "@/common/utils/generate-slug";
-import { generateSuffix } from "@/common/utils/generate-suffix";
 import { PrismaService } from "@/prisma/prisma.service";
 import {
   ForbiddenException,
@@ -81,36 +80,11 @@ export class WorkspaceService {
     return workspace;
   }
   // update workspace
-  async update(workspaceId: string, userId: string, data: UpdateWorkspaceDto) {
-    const suffix = generateSuffix();
-    const slug = data.name ? `${generateSlug(data.name)}-${suffix}` : undefined;
-    const membership = await this.prisma.membership.findUnique({
-      where: {
-        userId_workspaceId: {
-          userId,
-          workspaceId,
-        },
-      },
-    });
-
-    if (!membership) {
-      throw new ForbiddenException("Not allowed to update this workspace");
-    }
-
-    if (
-      !([WorkspaceRole.ADMIN, WorkspaceRole.OWNER] as WorkspaceRole[]).includes(
-        membership.role,
-      )
-    ) {
-      throw new ForbiddenException(
-        "Only owner and admin can update the workspace",
-      );
-    }
+  async update(workspaceId: string, data: UpdateWorkspaceDto) {
     return this.prisma.workspace.update({
       where: { id: workspaceId },
       data: {
         name: data.name,
-        slug,
       },
     });
   }

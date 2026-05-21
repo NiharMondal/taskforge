@@ -1,6 +1,6 @@
-import { Injectable, CanActivate, ExecutionContext } from "@nestjs/common";
-import { Reflector } from "@nestjs/core";
 import { ROLES_KEY } from "@/common/decorators/roles.decorator";
+import { CanActivate, ExecutionContext, Injectable } from "@nestjs/common";
+import { Reflector } from "@nestjs/core";
 import { WorkspaceRole } from "generated/prisma/enums";
 
 @Injectable()
@@ -15,8 +15,13 @@ export class RolesGuard implements CanActivate {
 
     if (!required?.length) return true;
 
-    // Workspace roles live in DB membership, not JWT claims.
-    // Enforce role checks inside the service layer instead.
-    return false;
+    const request = context
+      .switchToHttp()
+      .getRequest<{ membershipRole: WorkspaceRole }>();
+    const membershipRole = request.membershipRole;
+
+    if (!membershipRole) return false;
+
+    return required.includes(membershipRole);
   }
 }

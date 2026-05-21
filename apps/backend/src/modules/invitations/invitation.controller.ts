@@ -10,6 +10,7 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
   HttpStatus,
   Param,
   Post,
@@ -25,6 +26,7 @@ export class InvitationController {
   constructor(private invitationService: InvitationService) {}
 
   @Post()
+  @HttpCode(HttpStatus.CREATED)
   @UseGuards(JwtAuthGuard, WorkspaceGuard)
   async sendInvitation(
     @WorkspaceId() workspaceId: string,

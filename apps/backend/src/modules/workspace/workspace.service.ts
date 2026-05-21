@@ -116,19 +116,7 @@ export class WorkspaceService {
   }
 
   // delete workspace (only admin)
-  async delete(workspaceId: string, userId: string) {
-    const membership = await this.prisma.membership.findUnique({
-      where: {
-        userId_workspaceId: {
-          userId,
-          workspaceId,
-        },
-      },
-    });
-
-    if (!membership || membership.role !== WorkspaceRole.OWNER) {
-      throw new ForbiddenException("Only owner can delete the workspace");
-    }
+  async delete(workspaceId: string) {
     return this.prisma.workspace.delete({
       where: { id: workspaceId },
     });

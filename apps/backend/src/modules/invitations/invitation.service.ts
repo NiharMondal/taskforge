@@ -1,3 +1,4 @@
+import { futureDate, generateToken } from "@/helper";
 import { PrismaService } from "@/prisma/prisma.service";
 import {
   BadRequestException,
@@ -8,10 +9,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { InvitationStatus, WorkspaceRole } from "generated/prisma/enums";
-import * as crypto from "crypto";
 import { SendInvitationDto } from "./dto/send-invitation.dto";
-
-const INVITATION_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 
 @Injectable()
 export class InvitationService {
@@ -30,9 +28,9 @@ export class InvitationService {
 
     if (
       !actor ||
-      !(
-        [WorkspaceRole.OWNER, WorkspaceRole.ADMIN] as WorkspaceRole[]
-      ).includes(actor.role)
+      !([WorkspaceRole.OWNER, WorkspaceRole.ADMIN] as WorkspaceRole[]).includes(
+        actor.role,
+      )
     ) {
       throw new ForbiddenException("Insufficient permissions");
     }
@@ -64,8 +62,8 @@ export class InvitationService {
       );
     }
 
-    const token = crypto.randomBytes(32).toString("hex");
-    const expiresAt = new Date(Date.now() + INVITATION_EXPIRY_MS);
+    const token = generateToken();
+    const expiresAt = futureDate(); // By Default 7 Days
     const role = dto.role ?? WorkspaceRole.MEMBER;
 
     const invitation = await this.prisma.invitation.upsert({
@@ -112,7 +110,9 @@ export class InvitationService {
     }
 
     if (invitation.status !== InvitationStatus.PENDING) {
-      throw new BadRequestException("Invitation has already been used or revoked");
+      throw new BadRequestException(
+        "Invitation has already been used or revoked",
+      );
     }
 
     if (invitation.expiresAt < new Date()) {
@@ -205,9 +205,9 @@ export class InvitationService {
 
     if (
       !actor ||
-      !(
-        [WorkspaceRole.OWNER, WorkspaceRole.ADMIN] as WorkspaceRole[]
-      ).includes(actor.role)
+      !([WorkspaceRole.OWNER, WorkspaceRole.ADMIN] as WorkspaceRole[]).includes(
+        actor.role,
+      )
     ) {
       throw new ForbiddenException("Insufficient permissions");
     }

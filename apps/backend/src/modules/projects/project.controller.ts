@@ -76,7 +76,11 @@ export class ProjectController {
     @Param("projectId") projectId: string,
     @Body() dto: UpdateProjectDto,
   ) {
-    const project = await this.projectService.update(workspaceId, projectId, dto);
+    const project = await this.projectService.update(
+      workspaceId,
+      projectId,
+      dto,
+    );
     return sendResponse({
       statusCode: HttpStatus.OK,
       message: "Project updated successfully",

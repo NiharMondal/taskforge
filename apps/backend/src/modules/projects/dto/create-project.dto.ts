@@ -17,7 +17,8 @@ export class CreateProjectDto {
   @IsString()
   @IsNotEmpty()
   @Matches(/^[A-Z][A-Z0-9]{1,9}$/, {
-    message: "Key must be 2–10 uppercase letters/digits, starting with a letter",
+    message:
+      "Key must be 2–10 uppercase letters/digits, starting with a letter",
   })
   key: string;
 

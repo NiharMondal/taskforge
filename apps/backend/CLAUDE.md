@@ -46,8 +46,8 @@ Always return { success: boolean, data: T | null, message: string, metaData?: TM
 
 - DTOs validated with class-validator + class-transformer (use ValidationPipe globally)
 - Services are injectable, controllers are thin (no business logic)
-- Decorators go in src/auth/decorators/ or src/common/decorators/
-- No raw SQL — Prisma only. Exceptions require a DECISIONS.md entry.
+- Decorators go in src/common/decorators/
+- No raw SQL — Prisma only
 
 ## When compacting
 

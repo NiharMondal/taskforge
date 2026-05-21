@@ -21,7 +21,7 @@ import { CreateProjectDto } from "./dto/create-project.dto";
 import { UpdateProjectDto } from "./dto/update-project.dto";
 import { ProjectService } from "./project.service";
 
-@Controller("workspaces/:workspaceId/projects")
+@Controller("projects")
 @UseGuards(JwtAuthGuard, WorkspaceGuard)
 export class ProjectController {
   constructor(private projectService: ProjectService) {}

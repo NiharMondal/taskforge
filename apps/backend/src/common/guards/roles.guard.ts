@@ -1,5 +1,10 @@
 import { ROLES_KEY } from "@/common/decorators/roles.decorator";
-import { CanActivate, ExecutionContext, Injectable } from "@nestjs/common";
+import {
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+  Injectable,
+} from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import { WorkspaceRole } from "generated/prisma/enums";
 
@@ -20,7 +25,14 @@ export class RolesGuard implements CanActivate {
       .getRequest<{ membershipRole: WorkspaceRole }>();
     const membershipRole = request.membershipRole;
 
-    if (!membershipRole) return false;
+    if (
+      !membershipRole ||
+      !([WorkspaceRole.OWNER, WorkspaceRole.ADMIN] as WorkspaceRole[]).includes(
+        membershipRole,
+      )
+    ) {
+      throw new ForbiddenException("Insufficient permissions");
+    }
 
     return required.includes(membershipRole);
   }

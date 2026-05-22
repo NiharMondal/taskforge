@@ -1,4 +1,3 @@
-import { IssueStatus, IssuePriority } from "generated/prisma/enums";
 import {
   IsEnum,
   IsNotEmpty,
@@ -8,6 +7,7 @@ import {
   MaxLength,
   MinLength,
 } from "class-validator";
+import { IssuePriority, IssueStatus } from "generated/prisma/enums";
 
 export class CreateIssueDto {
   @IsString()

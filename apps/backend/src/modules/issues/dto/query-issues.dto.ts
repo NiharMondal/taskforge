@@ -1,13 +1,6 @@
-import { IssueStatus, IssuePriority } from "generated/prisma/enums";
 import { Type } from "class-transformer";
-import {
-  IsEnum,
-  IsInt,
-  IsOptional,
-  IsUUID,
-  Max,
-  Min,
-} from "class-validator";
+import { IsEnum, IsInt, IsOptional, IsUUID, Max, Min } from "class-validator";
+import { IssuePriority, IssueStatus } from "generated/prisma/enums";
 
 export class QueryIssuesDto {
   @IsOptional()

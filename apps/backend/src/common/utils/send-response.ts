@@ -1,17 +1,11 @@
+import { IPaginationMeta } from "@/lib/PrismQueryBuilder";
 import { HttpStatus } from "@nestjs/common";
-
-type TMetaData = {
-  page: number;
-  limit: number;
-  total: number;
-  totalPages: number;
-};
 
 type TApiResponse<T> = {
   success: boolean;
   statusCode: number;
   message: string;
-  metaData?: TMetaData;
+  metaData?: IPaginationMeta;
   data: T;
 };
 
@@ -24,7 +18,7 @@ export const sendResponse = <T>({
   statusCode: HttpStatus;
   message: string;
   data: T;
-  metaData?: TMetaData;
+  metaData?: IPaginationMeta;
 }): TApiResponse<T> => {
   return {
     success: true,

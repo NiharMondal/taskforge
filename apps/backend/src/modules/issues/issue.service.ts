@@ -1,3 +1,4 @@
+import PrismaQueryBuilder from "@/lib/PrismQueryBuilder";
 import { PrismaService } from "@/prisma/prisma.service";
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { CreateIssueDto } from "./dto/create-issue.dto";
@@ -34,37 +35,40 @@ export class IssueService {
   async findAll(workspaceId: string, projectId: string, query: QueryIssuesDto) {
     await this.validateProject(workspaceId, projectId);
 
-    const page = query.page ?? 1;
-    const limit = query.limit ?? 20;
-    const skip = (page - 1) * limit;
+    const qb = new PrismaQueryBuilder(query, {
+      defaultField: "createdAt",
+      defaultOrder: "desc",
+      allowedFields: ["createdAt", "priority", "status"],
+    })
+      // always applied filters
+      .withDefaultFilter({
+        workspaceId,
+        projectId,
+      })
 
-    const where = {
-      workspaceId,
-      projectId,
-      ...(query.status && { status: query.status }),
-      ...(query.priority && { priority: query.priority }),
-      ...(query.assigneeId && { assigneeId: query.assigneeId }),
-      ...(query.sprintId && { sprintId: query.sprintId }),
-    };
+      // dynamic filters from query (?status=OPEN&priority=HIGH)
+      .filter()
 
-    const [issues, total] = await this.prisma.$transaction([
-      this.prisma.issue.findMany({
-        where,
-        orderBy: { createdAt: "desc" },
-        skip,
-        take: limit,
-      }),
-      this.prisma.issue.count({ where }),
-    ]);
+      // search (optional)
+      .search(["title", "description"])
+
+      // pagination (?page=1&limit=10)
+      .paginate()
+
+      // sorting (?sort=priority:asc)
+      .sort()
+
+      // optional relations
+      .include({
+        assignee: true,
+        sprint: true,
+      });
+
+    const { data, metaData } = await qb.execute(this.prisma.issue);
 
     return {
-      issues,
-      metaData: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-      },
+      issues: data,
+      metaData,
     };
   }
 

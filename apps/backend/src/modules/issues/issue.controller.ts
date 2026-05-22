@@ -1,4 +1,5 @@
 import { CurrentUser } from "@/common/decorators/current-user.decorator";
+import { MembershipRole } from "@/common/decorators/membership-role.decorator";
 import { Roles } from "@/common/decorators/roles.decorator";
 import { WorkspaceId } from "@/common/decorators/workspaceId.decorator";
 import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
@@ -32,6 +33,8 @@ export class IssueController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @UseGuards(RolesGuard)
+  @Roles(WorkspaceRole.OWNER, WorkspaceRole.ADMIN)
   async create(
     @WorkspaceId() workspaceId: string,
     @Param("projectId") projectId: string,
@@ -96,12 +99,14 @@ export class IssueController {
     @WorkspaceId() workspaceId: string,
     @Param("projectId") projectId: string,
     @Param("issueId") issueId: string,
+    @MembershipRole() membershipRole: WorkspaceRole,
     @Body() dto: UpdateIssueDto,
   ) {
     const issue = await this.issueService.update(
       workspaceId,
       projectId,
       issueId,
+      membershipRole,
       dto,
     );
     return sendResponse({

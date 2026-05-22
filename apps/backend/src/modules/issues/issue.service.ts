@@ -79,7 +79,6 @@ export class IssueService {
     if (membershipRole === WorkspaceRole.MEMBER) {
       const restrictedFields = [
         "title",
-        "description",
         "priority",
         "sprintId",
         "assigneeId",
@@ -88,7 +87,9 @@ export class IssueService {
         (f) => dto[f] !== undefined,
       );
       if (hasRestrictedField) {
-        throw new ForbiddenException("Members can only update the issue status");
+        throw new ForbiddenException(
+          "Members can only update the issue status",
+        );
       }
       if (dto.status === IssueStatus.DONE) {
         throw new ForbiddenException("Members cannot mark an issue as DONE");

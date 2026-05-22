@@ -23,7 +23,6 @@ export class JwtAuthGuard extends AuthGuard("jwt") {
 
     const request = context.switchToHttp().getRequest<Request>();
 
-
     const authHeader = request?.headers?.["authorization"];
     if (!authHeader) throw new ForbiddenException("Token not provided!");
 

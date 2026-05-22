@@ -8,6 +8,7 @@ import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { APP_GUARD } from "@nestjs/core";
 import { InvitationModule } from "./modules/invitations/invitation.module";
+import { IssueModule } from "./modules/issues/issue.module";
 import { MembershipModule } from "./modules/memberships/membership.module";
 import { ProjectModule } from "./modules/projects/project.module";
 import { WorkspaceModule } from "./modules/workspace/workspace.module";
@@ -22,6 +23,7 @@ import { WorkspaceModule } from "./modules/workspace/workspace.module";
     MembershipModule,
     InvitationModule,
     ProjectModule,
+    IssueModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: JwtAuthGuard }],

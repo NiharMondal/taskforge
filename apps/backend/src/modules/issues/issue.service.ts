@@ -1,6 +1,11 @@
 import PrismaQueryBuilder from "@/lib/PrismQueryBuilder";
 import { PrismaService } from "@/prisma/prisma.service";
-import { Injectable, NotFoundException } from "@nestjs/common";
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
+import { IssueStatus, WorkspaceRole } from "generated/prisma/enums";
 import { CreateIssueDto } from "./dto/create-issue.dto";
 import { QueryIssuesDto } from "./dto/query-issues.dto";
 import { UpdateIssueDto } from "./dto/update-issue.dto";
@@ -40,36 +45,16 @@ export class IssueService {
       defaultOrder: "desc",
       allowedFields: ["createdAt", "priority", "status"],
     })
-      // always applied filters
-      .withDefaultFilter({
-        workspaceId,
-        projectId,
-      })
-
-      // dynamic filters from query (?status=OPEN&priority=HIGH)
+      .withDefaultFilter({ workspaceId, projectId })
       .filter()
-
-      // search (optional)
       .search(["title", "description"])
-
-      // pagination (?page=1&limit=10)
       .paginate()
-
-      // sorting (?sort=priority:asc)
       .sort()
-
-      // optional relations
-      .include({
-        assignee: true,
-        sprint: true,
-      });
+      .include({ assignee: true, sprint: true });
 
     const { data, metaData } = await qb.execute(this.prisma.issue);
 
-    return {
-      issues: data,
-      metaData,
-    };
+    return { issues: data, metaData };
   }
 
   async findOne(workspaceId: string, projectId: string, issueId: string) {
@@ -88,8 +73,28 @@ export class IssueService {
     workspaceId: string,
     projectId: string,
     issueId: string,
+    membershipRole: WorkspaceRole,
     dto: UpdateIssueDto,
   ) {
+    if (membershipRole === WorkspaceRole.MEMBER) {
+      const restrictedFields = [
+        "title",
+        "description",
+        "priority",
+        "sprintId",
+        "assigneeId",
+      ] as const;
+      const hasRestrictedField = restrictedFields.some(
+        (f) => dto[f] !== undefined,
+      );
+      if (hasRestrictedField) {
+        throw new ForbiddenException("Members can only update the issue status");
+      }
+      if (dto.status === IssueStatus.DONE) {
+        throw new ForbiddenException("Members cannot mark an issue as DONE");
+      }
+    }
+
     await this.findOne(workspaceId, projectId, issueId);
 
     return this.prisma.issue.update({

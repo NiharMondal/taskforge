@@ -50,7 +50,10 @@ export class IssueService {
       .search(["title", "description"])
       .paginate()
       .sort()
-      .include({ assignee: true, sprint: true });
+      .include({
+        assignee: { select: { id: true, name: true, email: true } },
+        sprint: { select: { id: true, name: true } },
+      });
 
     const { data, metaData } = await qb.execute(this.prisma.issue);
 

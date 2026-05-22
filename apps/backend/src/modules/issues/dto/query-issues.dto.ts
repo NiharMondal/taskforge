@@ -12,6 +12,10 @@ import { IssuePriority, IssueStatus } from "generated/prisma/enums";
 
 export class QueryIssuesDto {
   @IsOptional()
+  @IsString()
+  search?: string;
+
+  @IsOptional()
   @IsEnum(IssueStatus)
   status?: IssueStatus;
 

@@ -82,22 +82,7 @@ export class MembershipService {
     });
   }
 
-  async removeMember(
-    workspaceId: string,
-    targetUserId: string,
-    actorUserId: string,
-  ) {
-    const actor = await this.getMembership(workspaceId, actorUserId);
-
-    if (
-      !actor ||
-      !([WorkspaceRole.ADMIN, WorkspaceRole.OWNER] as WorkspaceRole[]).includes(
-        actor.role,
-      )
-    ) {
-      throw new ForbiddenException("Insufficient permissions");
-    }
-
+  async removeMember(workspaceId: string, targetUserId: string) {
     const targetMember = await this.getMembership(workspaceId, targetUserId);
     if (!targetMember) {
       throw new NotFoundException("Member not found");

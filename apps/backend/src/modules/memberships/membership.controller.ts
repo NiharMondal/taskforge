@@ -1,6 +1,8 @@
 import { CurrentUser } from "@/common/decorators/current-user.decorator";
+import { Roles } from "@/common/decorators/roles.decorator";
 import { WorkspaceId } from "@/common/decorators/workspaceId.decorator";
 import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
+import { RolesGuard } from "@/common/guards/roles.guard";
 import { WorkspaceGuard } from "@/common/guards/workspace.guard";
 import type { JwtPayload } from "@/common/strategies/jwt.strategy";
 import { sendResponse } from "@/common/utils/send-response";
@@ -14,6 +16,7 @@ import {
   Patch,
   UseGuards,
 } from "@nestjs/common";
+import { WorkspaceRole } from "generated/prisma/enums";
 import { UpdateRoleDto } from "./dto/update-role.dto";
 import { MembershipService } from "./membership.service";
 
@@ -71,15 +74,15 @@ export class MembershipController {
 
   // remove member
   @Delete(":userId")
+  @UseGuards(RolesGuard)
+  @Roles(WorkspaceRole.ADMIN, WorkspaceRole.OWNER)
   async removeMember(
     @WorkspaceId() workspaceId: string,
     @Param("userId") userId: string,
-    @CurrentUser() user: JwtPayload,
   ) {
     const member = await this.membershipService.removeMember(
       workspaceId,
       userId,
-      user.sub,
     );
     return sendResponse({
       statusCode: HttpStatus.OK,

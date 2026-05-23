@@ -16,12 +16,14 @@ export class WorkspaceGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const user = request.user as JwtPayload;
 
-    const rawHeader = request.headers["x-workspace-id"];
-    const workspaceId = Array.isArray(rawHeader) ? rawHeader[0] : rawHeader;
-
     if (!user) {
       throw new ForbiddenException("User not authenticated");
     }
+
+    const rawHeader = request.headers["x-workspace-id"];
+    const workspaceId =
+      (Array.isArray(rawHeader) ? rawHeader[0] : rawHeader) ??
+      request.params["workspaceId"];
 
     if (!workspaceId) {
       throw new ForbiddenException("Workspace ID missing");
@@ -31,7 +33,7 @@ export class WorkspaceGuard implements CanActivate {
       where: {
         userId_workspaceId: {
           userId: user.sub,
-          workspaceId,
+          workspaceId: workspaceId as string,
         },
       },
     });
@@ -40,7 +42,7 @@ export class WorkspaceGuard implements CanActivate {
       throw new ForbiddenException("No access to this workspace");
     }
 
-    request.workspaceId = workspaceId;
+    request.workspaceId = workspaceId as string;
     request.membershipRole = membership.role;
 
     return true;

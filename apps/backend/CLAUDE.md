@@ -25,8 +25,8 @@ npx prisma studio # Open Prisma Studio
 ## Multi-workspace rules — CRITICAL
 
 - Every Prisma query in a service MUST include WHERE workspaceId = user.workspaceId
-- Use TenantInterceptor to inject workspace context — never pass workspaceId as a function param
-- Row-level isolation: a user from tenant A must NEVER see tenant B's data
+- Use WorkspaceGuard to inject workspace context — never pass workspaceId as a function param
+- Row-level isolation: a user from Workspace A must NEVER see Workspace B's data
 - When writing new service methods, always add a workspaceId filter. Failing to do so is a
   data breach — treat it with the same severity as a SQL injection.
 
@@ -51,7 +51,7 @@ invariants being worked on, last failing test name.
 
 @prisma/schema.prisma — prisma schema, critical for understanding database structure
 @src/auth/CLAUDE.md — read before touching anything in src/auth/
-@src/tenants/CLAUDE.md — read before any service that queries the DB
+@src/workspace/CLAUDE.md — read before any service that queries the DB
 @docs/DECISIONS.md — architectural decision log
 
 ## Installation

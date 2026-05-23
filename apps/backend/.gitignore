@@ -58,3 +58,6 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 /generated/*
 /context/*
 /prisma/migrations/*
+/spec/*
+/.claude
+CLAUDE.md

@@ -1,24 +1,25 @@
+import { sendResponse } from "@/common/utils/send-response";
 import {
-  Controller,
-  Get,
-  Post,
-  Patch,
-  Delete,
-  Param,
   Body,
-  HttpStatus,
+  Controller,
+  Delete,
+  Get,
   HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
 } from "@nestjs/common";
-import { UserService } from "./user.service";
 import { CreateUserDto } from "./dto/create-user.dto";
 import { UpdateUserDto } from "./dto/update-user.dto";
-import { sendResponse } from "@/common/utils/send-response";
+import { UserService } from "./user.service";
 
 @Controller("users")
 export class UserController {
   constructor(private readonly userService: UserService) {}
 
   @Post()
+  @HttpCode(HttpStatus.CREATED)
   async create(@Body() dto: CreateUserDto) {
     const user = await this.userService.create(dto);
     return sendResponse({
@@ -64,7 +65,6 @@ export class UserController {
 
   @Delete(":id")
   @HttpCode(HttpStatus.OK)
-  // @Roles(Role.ADMIN)
   async remove(@Param("id") id: string) {
     await this.userService.remove(id);
     return sendResponse({

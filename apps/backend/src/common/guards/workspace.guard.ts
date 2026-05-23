@@ -1,4 +1,4 @@
-import { JwtPayload } from "@/modules/auth/strategies/jwt.strategy";
+import { JwtPayload } from "@/common/strategies/jwt.strategy";
 import { PrismaService } from "@/prisma/prisma.service";
 import {
   CanActivate,
@@ -6,7 +6,6 @@ import {
   ForbiddenException,
   Injectable,
 } from "@nestjs/common";
-import { Request } from "express";
 import { AuthenticatedRequest } from "../types/authenticated-request.interface";
 
 @Injectable()

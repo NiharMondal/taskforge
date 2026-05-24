@@ -107,7 +107,7 @@ model Membership {
 model Project {
   id          String  @id @default(uuid())
   name        String
-  key         String
+  key         String  @default(cuid())
   description String?
 
   workspaceId String

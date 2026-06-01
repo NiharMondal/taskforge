@@ -22,6 +22,7 @@ export class IssueService {
   ) {
     await this.validateProject(workspaceId, projectId);
     await this.validateAssignee(workspaceId, dto.assigneeId);
+    await this.validateSprint(workspaceId, projectId, dto.sprintId);
     return this.prisma.issue.create({
       data: {
         title: dto.title,

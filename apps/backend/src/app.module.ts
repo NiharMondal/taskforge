@@ -11,6 +11,7 @@ import { InvitationModule } from "./modules/invitations/invitation.module";
 import { IssueModule } from "./modules/issues/issue.module";
 import { MembershipModule } from "./modules/memberships/membership.module";
 import { ProjectModule } from "./modules/projects/project.module";
+import { SprintModule } from "./modules/sprints/sprint.module";
 import { WorkspaceModule } from "./modules/workspace/workspace.module";
 
 @Module({
@@ -24,6 +25,7 @@ import { WorkspaceModule } from "./modules/workspace/workspace.module";
     InvitationModule,
     ProjectModule,
     IssueModule,
+    SprintModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: JwtAuthGuard }],

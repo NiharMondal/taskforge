@@ -21,7 +21,7 @@ export class IssueService {
     dto: CreateIssueDto,
   ) {
     await this.validateProject(workspaceId, projectId);
-
+    await this.validateAssignee(workspaceId, dto.assigneeId);
     return this.prisma.issue.create({
       data: {
         title: dto.title,
@@ -100,7 +100,8 @@ export class IssueService {
     }
 
     await this.findOne(workspaceId, projectId, issueId);
-
+    await this.validateAssignee(workspaceId, dto.assigneeId);
+    await this.validateSprint(workspaceId, projectId, dto.sprintId);
     return this.prisma.issue.update({
       where: { id: issueId },
       data: {
@@ -132,5 +133,42 @@ export class IssueService {
     }
 
     return project;
+  }
+
+  private async validateAssignee(workspaceId: string, assigneeId?: string) {
+    if (!assigneeId) return;
+
+    const member = await this.prisma.membership.findUnique({
+      where: {
+        userId_workspaceId: {
+          userId: assigneeId,
+          workspaceId,
+        },
+      },
+    });
+
+    if (!member) {
+      throw new ForbiddenException("Assignee must belong to workspace");
+    }
+  }
+
+  private async validateSprint(
+    workspaceId: string,
+    projectId: string,
+    sprintId?: string,
+  ) {
+    if (!sprintId) return;
+
+    const sprint = await this.prisma.sprint.findFirst({
+      where: {
+        id: sprintId,
+        workspaceId,
+        projectId,
+      },
+    });
+
+    if (!sprint) {
+      throw new ForbiddenException("Invalid sprint assignment");
+    }
   }
 }

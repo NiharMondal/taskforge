@@ -1,11 +1,22 @@
 /**
  * Shared API contract types.
  *
- * Backend (NestJS-style) error payloads typically look like:
- *   { statusCode: 401, message: "Unauthorized", error: "Unauthorized" }
- *   { statusCode: 400, message: ["email must be an email"], error: "Bad Request" }
+ * The backend wraps EVERY response in a `{ success, statusCode, message, ... }`
+ * envelope:
+ *   success: { success: true,  statusCode: 200, message: "...", data: T }
+ *   error:   { success: false, statusCode: 401, message: "Invalid password", error: "Unauthorized" }
+ *
+ * Note that error messages can be a single string or an array (validation).
  */
+export interface ApiResponse<T> {
+  success: true;
+  statusCode: number;
+  message: string;
+  data: T;
+}
+
 export interface ApiErrorResponse {
+  success?: false;
   statusCode?: number;
   message?: string | string[];
   error?: string;

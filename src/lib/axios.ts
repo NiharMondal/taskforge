@@ -1,7 +1,7 @@
 import axios from "axios";
 
-import { getAuthToken } from "./auth-token";
 import { toApiError } from "./api-error";
+import { getAuthToken } from "./auth-token";
 
 /**
  * Central axios instance. Import `apiClient` everywhere — never call axios
@@ -10,7 +10,7 @@ import { toApiError } from "./api-error";
  * All data access belongs in the service / feature-api layer, never in
  * components (see AGENTS.md).
  */
-const baseURL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+const baseURL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000/api/v1";
 
 export const apiClient = axios.create({
   baseURL,

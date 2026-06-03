@@ -1,0 +1,280 @@
+enum WorkspaceRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+enum IssueStatus {
+  BACKLOG
+  TODO
+  IN_PROGRESS
+  IN_REVIEW
+  DONE
+}
+
+enum IssuePriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum SubscriptionPlan {
+  FREE
+  PRO
+  ENTERPRISE
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
+//// USERS
+model User {
+  id           String  @id @default(uuid())
+  name         String
+  email        String  @unique
+  passwordHash String
+  avatarUrl    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships    Membership[]
+  createdIssues  Issue[]      @relation("CreatedIssues")
+  assignedIssues Issue[]      @relation("AssignedIssues")
+
+  comments  Comment[]
+  auditLogs AuditLog[]
+}
+
+//// WORKSPACE (TENANT ROOT)
+
+model Workspace {
+  id          String  @id @default(uuid())
+  name        String
+  slug        String  @default(cuid())
+  description String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships  Membership[]
+  projects     Project[]
+  issues       Issue[]
+  sprints      Sprint[]
+  invitations  Invitation[]
+  subscription Subscription?
+  auditLogs    AuditLog[]
+  labels       Label[]
+}
+
+//// MEMBERSHIP (RBAC CORE)
+
+model Membership {
+  id          String        @id @default(uuid())
+  userId      String
+  workspaceId String
+  role        WorkspaceRole @default(MEMBER)
+
+  createdAt DateTime @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workspaceId])
+  @@index([workspaceId])
+}
+
+//// PROJECTS
+
+model Project {
+  id          String  @id @default(uuid())
+  name        String
+  key         String  @default(cuid())
+  description String?
+
+  workspaceId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  issues  Issue[]
+  sprints Sprint[]
+
+  @@unique([workspaceId, key])
+  @@index([workspaceId])
+}
+
+//// SPRINTS
+
+model Sprint {
+  id   String  @id @default(uuid())
+  name String
+  goal String?
+
+  startDate DateTime?
+  endDate   DateTime?
+  isActive  Boolean   @default(false)
+
+  projectId   String
+  workspaceId String
+
+  createdAt DateTime @default(now())
+
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  issues Issue[]
+
+  @@index([projectId])
+  @@index([workspaceId])
+}
+
+//// ISSUES (CORE)
+
+model Issue {
+  id          String  @id @default(uuid())
+  title       String
+  description String?
+
+  status   IssueStatus   @default(BACKLOG)
+  priority IssuePriority @default(MEDIUM)
+
+  workspaceId String
+  projectId   String
+  sprintId    String?
+
+  reporterId String
+  assigneeId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sprint    Sprint?   @relation(fields: [sprintId], references: [id], onDelete: SetNull)
+
+  reporter User  @relation("CreatedIssues", fields: [reporterId], references: [id], onDelete: Cascade)
+  assignee User? @relation("AssignedIssues", fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  comments Comment[]
+  labels   IssueLabel[]
+
+  @@index([workspaceId, projectId])
+  @@index([workspaceId, status])
+  @@index([workspaceId, assigneeId])
+}
+
+//// COMMENTS
+
+model Comment {
+  id      String @id @default(uuid())
+  content String
+
+  issueId String
+  userId  String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  issue Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([issueId])
+}
+
+//// LABELS
+
+model Label {
+  id    String @id @default(uuid())
+  name  String
+  color String
+
+  workspaceId String
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  issues IssueLabel[]
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId])
+}
+
+model IssueLabel {
+  issueId String
+  labelId String
+
+  issue Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  label Label @relation(fields: [labelId], references: [id], onDelete: Cascade)
+
+  @@id([issueId, labelId])
+}
+
+//// INVITATIONS
+model Invitation {
+  id          String           @id @default(uuid())
+  email       String
+  workspaceId String
+  role        WorkspaceRole    @default(MEMBER)
+  token       String           @unique
+  status      InvitationStatus @default(PENDING)
+  expiresAt   DateTime
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+
+  @@unique([email, workspaceId])
+  @@index([token])
+  @@index([workspaceId])
+}
+
+//// SUBSCRIPTION (SAAS LAYER)
+
+model Subscription {
+  id          String @id @default(uuid())
+  workspaceId String @unique
+
+  plan   SubscriptionPlan @default(FREE)
+  status String?
+
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+
+  currentPeriodEnd DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+//// AUDIT LOGS
+
+model AuditLog {
+  id String @id @default(uuid())
+
+  workspaceId String
+  userId      String?
+
+  action     String
+  entityType String
+  entityId   String?
+
+  metadata Json?
+
+  createdAt DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([entityType])
+}

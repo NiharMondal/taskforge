@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "TaskForge",
+  title: "Task Forge",
   description: "TaskForge is a task management tool that helps you manage your tasks and projects.",
 };
 

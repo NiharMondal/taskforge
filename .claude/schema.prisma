@@ -147,6 +147,13 @@ model Issue {
   status   IssueStatus   @default(BACKLOG)
   priority IssuePriority @default(MEDIUM)
 
+  // Board ordering within a (project, status) lane. Fractional index
+  // (base-62 string, e.g. "a0", "a0V") so a card can be inserted between any
+  // two neighbors without renumbering siblings — generated client-side via the
+  // `fractional-indexing` lib. Nullable so it can be added over existing rows;
+  // backfill then sort lanes by `rank ASC` (NULLS LAST as a safety net).
+  rank String?
+
   workspaceId String
   projectId   String
   sprintId    String?
@@ -170,6 +177,8 @@ model Issue {
   @@index([workspaceId, projectId])
   @@index([workspaceId, status])
   @@index([workspaceId, assigneeId])
+  // Serves the board query: WHERE projectId=? AND status=? ORDER BY rank.
+  @@index([projectId, status, rank])
 }
 
 //// COMMENTS

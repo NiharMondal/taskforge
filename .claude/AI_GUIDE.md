@@ -145,7 +145,10 @@ Each feature should have:
 
 * Every request must include:
 
-  * workspace context (header or route)
+  * workspace context (header: x-workspace-id)
+
+# MOST IMPORTANT
+When user login they receive accessToken consist of id as sub and email, not workspaceId, because one user can be a member of multiple workspace, so when they switch the workspace id they will see thats' workspace projects and issues, they will come from backend. 
 
 ---
 
@@ -282,5 +285,38 @@ If the user asks for something unclear:
 → Do NOT guess
 
 ---
+
+# Backend endpoint
+Update always implement PATCH Method
+
+- Root endpoint: http://localhost:5001/api/v1
+- Users: /users
+- Auth: /auth -> register: /register, login: login
+- Workspaces: /workspaces(GET,POST) (workspace create when user register),
+  - :workspaceId(GET, UPDATE, DELETE)
+- Memberships: /memberships(GET-> all members of a workspace) @workspaceId from header: x-workspace-Id
+  - :userId(GET, UPDATE, DELETE)
+- Invitations: /invitations(GET, POST)
+  - /validate(GET)
+  - /accept(POST)
+  - :id(DELETE)
+- Projects: /projects(GET, POST)
+  - :projectId(GET, UPDATE, DELETE)
+- Sprints: /projects/:projectId/sprints(GET, POST),
+  - :sprintId/start(UPDATE)
+  - :sprintId/end(UPDATE)
+- Issues: /projects/:projectId/issues(GET, POST)
+  - :issueId(GET, UPDATE, DELETE)
+
+**Upcoming**
+- Comments: /comments(GET, POST)
+  - :commentId(GET, UPDATE, DELETE)
+- Label: /labels(GET, POST)
+  - :commentId(GET, UPDATE, DELETE)
+- Subscriptions: /labels(GET, POST)
+  - :commentId(GET, UPDATE, DELETE)
+- AuditLog: /audit-log(GET, POST)
+  - :commentId(GET, UPDATE, DELETE)
+
 
 Act like a **strict senior engineer**, not a code generator.

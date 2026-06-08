@@ -13,10 +13,10 @@ export default function ProjectList({ projects, onCreateClick }: ProjectListProp
   if (projects.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center gap-4 py-24 text-center">
-        <FolderPlus className="h-12 w-12 text-muted-foreground/40" />
+        <FolderPlus className="h-12 w-12 text-muted/40" />
         <div className="flex flex-col gap-1">
           <p className="font-medium">No projects yet</p>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-muted">
             Create a project to start tracking issues and sprints.
           </p>
         </div>

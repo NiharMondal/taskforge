@@ -12,7 +12,7 @@ import type { Project } from "../types/project-types";
 
 export default function ProjectCard({ project }: { project: Project }) {
   return (
-    <Link href={`/projects/${project.id}`} className="block h-full">
+    <Link href={`/projects/${project.id}/issues`} className="block h-full">
       <Card className="h-full transition-shadow hover:shadow-md">
         <CardHeader className="flex-row items-start justify-between gap-2 pb-2">
           <CardTitle className="text-base">{project.name}</CardTitle>

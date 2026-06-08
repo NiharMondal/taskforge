@@ -1,85 +1,27 @@
+import { apiClient } from "@/lib/axios";
+
+import type { ApiResponse } from "@/types/api";
+
 import type { Project, CreateProjectDto } from "../types/project-types";
 
 /**
- * Project API layer. All project network calls belong here.
+ * Project API layer. All project network calls belong here (AI_GUIDE: never
+ * call axios/fetch directly from components).
  *
- * ⚠️ STUB: backend endpoints not yet available. Functions return typed mock
- * data and are structured so swapping in the real axios calls is a one-liner
- * per function. Real calls are commented out inline.
+ * These endpoints are workspace-scoped via the `x-workspace-id` header that the
+ * axios interceptor attaches automatically (see `lib/active-workspace`), so the
+ * routes themselves carry no workspace id — switching workspaces transparently
+ * changes which tenant's projects come back.
  */
 
-const MOCK_PROJECTS: Project[] = [
-  {
-    id: "proj_eng",
-    name: "Engineering",
-    key: "ENG",
-    description: "Core platform development",
-    workspaceId: "ws_acme",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    _count: { issues: 12, sprints: 2 },
-  },
-  {
-    id: "proj_ds",
-    name: "Design System",
-    key: "DS",
-    description: "Component library and design tokens",
-    workspaceId: "ws_acme",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    _count: { issues: 5, sprints: 1 },
-  },
-  {
-    id: "proj_mkt",
-    name: "Marketing",
-    key: "MKT",
-    workspaceId: "ws_acme",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    _count: { issues: 3, sprints: 0 },
-  },
-];
-
-// In-memory store for mock creates so the list updates within a session.
-let mockStore = [...MOCK_PROJECTS];
-
-/**
- * List projects for a workspace.
- *
- * TODO(backend): replace mock with real call once GET /workspaces/:id/projects
- * is documented:
- *   const { data } = await apiClient.get<{ data: Project[] }>(
- *     `/workspaces/${workspaceId}/projects`
- *   );
- *   return data.data;
- */
-export async function getProjects(workspaceId: string): Promise<Project[]> {
-  return Promise.resolve(mockStore.filter((p) => p.workspaceId === workspaceId));
+/** List the active workspace's projects (`GET /projects`). */
+export async function getProjects(): Promise<Project[]> {
+  const { data } = await apiClient.get<ApiResponse<Project[]>>("/projects");
+  return data.data;
 }
 
-/**
- * Create a project within a workspace.
- *
- * TODO(backend): replace mock with real call once POST /workspaces/:id/projects
- * is documented:
- *   const { data } = await apiClient.post<{ data: Project }>(
- *     `/workspaces/${workspaceId}/projects`,
- *     dto
- *   );
- *   return data.data;
- */
-export async function createProject(
-  workspaceId: string,
-  dto: CreateProjectDto,
-): Promise<Project> {
-  const project: Project = {
-    id: `proj_${Date.now()}`,
-    ...dto,
-    workspaceId,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    _count: { issues: 0, sprints: 0 },
-  };
-  mockStore = [...mockStore, project];
-  return Promise.resolve(project);
+/** Create a project in the active workspace (`POST /projects`). */
+export async function createProject(dto: CreateProjectDto): Promise<Project> {
+  const { data } = await apiClient.post<ApiResponse<Project>>("/projects", dto);
+  return data.data;
 }

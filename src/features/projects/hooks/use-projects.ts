@@ -1,12 +1,21 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { createProject, getProjects } from "../api/project-api";
-import type { CreateProjectDto } from "../types/project-types";
 
+/** Centralized query keys for the projects feature. */
+export const projectKeys = {
+  list: (workspaceId: string) => ["projects", workspaceId] as const,
+};
+
+/**
+ * Projects in a workspace. The request is scoped by the `x-workspace-id` header,
+ * but we still key the cache by workspaceId so switching tenants refetches
+ * (and never shows the previous workspace's projects from cache).
+ */
 export function useProjects(workspaceId: string) {
   return useQuery({
-    queryKey: ["projects", workspaceId],
-    queryFn: () => getProjects(workspaceId),
+    queryKey: projectKeys.list(workspaceId),
+    queryFn: getProjects,
     enabled: !!workspaceId,
   });
 }
@@ -15,9 +24,9 @@ export function useCreateProject(workspaceId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (dto: CreateProjectDto) => createProject(workspaceId, dto),
+    mutationFn: createProject,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["projects", workspaceId] });
+      queryClient.invalidateQueries({ queryKey: projectKeys.list(workspaceId) });
     },
   });
 }

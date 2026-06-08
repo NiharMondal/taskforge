@@ -33,8 +33,10 @@ export default function WorkspaceSwitcher() {
   return (
     <Select
       aria-label="Switch workspace"
-      defaultValue={activeWorkspaceId}
-      onChange={(key) => setActiveWorkspaceId(String(key))}
+      value={activeWorkspaceId}
+      onChange={(key) => {
+        if (key != null) setActiveWorkspaceId(String(key));
+      }}
       fullWidth
     >
       <Select.Trigger>

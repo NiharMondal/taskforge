@@ -27,9 +27,9 @@ export default function RegisterPage() {
       <CardContent className="flex flex-col gap-6">
         <RegisterForm />
 
-        <p className="text-center text-sm text-muted-foreground">
+        <p className="text-center text-sm text-muted">
           Already have an account?{" "}
-          <Link href="/login" className="font-medium text-primary hover:underline">
+          <Link href="/login" className="font-medium text-accent hover:underline">
             Sign in
           </Link>
         </p>

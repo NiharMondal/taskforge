@@ -34,7 +34,7 @@ export default function ProjectsPage() {
       </div>
 
       {isLoading ? (
-        <p className="text-muted-foreground">Loading projects…</p>
+        <p className="text-muted">Loading projects…</p>
       ) : (
         <ProjectList
           projects={projects}

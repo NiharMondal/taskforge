@@ -34,6 +34,8 @@ export default function FormTextArea({
 					<TextArea
 						placeholder={placeholder}
 						aria-label={!label ? (placeholder ?? name) : undefined}
+						rows={5}
+						className={"outline-1 outline-primary-300"}
 					/>
 
 					<FieldError>{fieldState.error?.message}</FieldError>

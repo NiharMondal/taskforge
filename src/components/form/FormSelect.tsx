@@ -57,6 +57,7 @@ export default function FormSelect({
 										textValue={option.label}
 									>
 										{option.label}
+										<ListBox.ItemIndicator />
 									</ListBox.Item>
 								))
 							)}

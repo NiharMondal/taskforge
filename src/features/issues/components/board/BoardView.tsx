@@ -41,6 +41,11 @@ import IssueCardBody from "./IssueCardBody";
 
 type Columns = Record<IssueStatus, Issue[]>;
 
+// Stable empty reference for the loading/disabled window. A fresh `[]` literal
+// each render would make the render-time resync below fire every render (it
+// compares by reference), looping until React throws "Too many re-renders".
+const EMPTY_ISSUES: Issue[] = [];
+
 /**
  * Bucket a flat issue list into one array per status (empty columns included),
  * each lane sorted by fractional rank so order matches what was persisted.
@@ -75,11 +80,13 @@ export default function BoardView({ projectId }: { projectId: string }) {
   const project = projects.find((p) => p.id === projectId);
 
   const { data: members = [] } = useMemberships(workspaceId);
+  
   const {
-    data: issues = [],
+    data,
     isLoading,
     isError,
   } = useIssues(workspaceId, projectId);
+  const issues = data ?? EMPTY_ISSUES;
 
   const { mutateAsync: createIssue, isPending } = useCreateIssue(
     workspaceId,

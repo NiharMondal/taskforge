@@ -95,140 +95,66 @@ export default function CreateIssueModal({
   };
 
   return (
-    <Modal isOpen={isOpen} onOpenChange={onOpenChange}>
-      <Modal.Backdrop>
-        <Modal.Container>
-          <Modal.Dialog>
-            <form onSubmit={handleSubmit(submit)}>
-              <Modal.Header>
-                <Modal.Heading>New Issue</Modal.Heading>
-                <Modal.CloseTrigger onPress={handleClose} />
-              </Modal.Header>
+    <Modal.Backdrop isOpen={isOpen} onOpenChange={onOpenChange}>
+      <Modal.Container>
+        <Modal.Dialog>
+          <form onSubmit={handleSubmit(submit)}>
+            <Modal.Header>
+              <Modal.Heading>New Issue</Modal.Heading>
+              <Modal.CloseTrigger onPress={handleClose} />
+            </Modal.Header>
 
-              <Modal.Body className="flex flex-col gap-4">
-                {submitError && (
-                  <Alert status="danger">
-                    <Alert.Indicator />
-                    <Alert.Content>
-                      <Alert.Description>{submitError}</Alert.Description>
-                    </Alert.Content>
-                  </Alert>
+            <Modal.Body className="flex flex-col gap-4">
+              {submitError && (
+                <Alert status="danger">
+                  <Alert.Indicator />
+                  <Alert.Content>
+                    <Alert.Description>{submitError}</Alert.Description>
+                  </Alert.Content>
+                </Alert>
+              )}
+
+              <Controller
+                name="title"
+                control={control}
+                render={({ field }) => (
+                  <TextField isInvalid={!!errors.title} isRequired>
+                    <Label>Title</Label>
+                    <Input
+                      {...field}
+                      placeholder="e.g. Login button is misaligned"
+                      autoFocus
+                    />
+                    <FieldError>{errors.title?.message}</FieldError>
+                  </TextField>
                 )}
+              />
 
+              <Controller
+                name="description"
+                control={control}
+                render={({ field }) => (
+                  <TextField isInvalid={!!errors.description}>
+                    <Label>Description</Label>
+                    <TextArea
+                      {...field}
+                      placeholder="Optional details, steps to reproduce, acceptance criteria…"
+                      rows={3}
+                    />
+                    <FieldError>{errors.description?.message}</FieldError>
+                  </TextField>
+                )}
+              />
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Controller
-                  name="title"
-                  control={control}
-                  render={({ field }) => (
-                    <TextField isInvalid={!!errors.title} isRequired>
-                      <Label>Title</Label>
-                      <Input
-                        {...field}
-                        placeholder="e.g. Login button is misaligned"
-                        autoFocus
-                      />
-                      <FieldError>{errors.title?.message}</FieldError>
-                    </TextField>
-                  )}
-                />
-
-                <Controller
-                  name="description"
-                  control={control}
-                  render={({ field }) => (
-                    <TextField isInvalid={!!errors.description}>
-                      <Label>Description</Label>
-                      <TextArea
-                        {...field}
-                        placeholder="Optional details, steps to reproduce, acceptance criteria…"
-                        rows={3}
-                      />
-                      <FieldError>{errors.description?.message}</FieldError>
-                    </TextField>
-                  )}
-                />
-
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <Controller
-                    name="status"
-                    control={control}
-                    render={({ field }) => (
-                      <div className="flex flex-col gap-1.5">
-                        <Label>Status</Label>
-                        <Select
-                          aria-label="Status"
-                          selectedKey={field.value}
-                          onSelectionChange={(key) =>
-                            key != null && field.onChange(String(key))
-                          }
-                          fullWidth
-                        >
-                          <Select.Trigger>
-                            <Select.Value />
-                            <Select.Indicator />
-                          </Select.Trigger>
-                          <Select.Popover>
-                            <ListBox>
-                              {ISSUE_STATUSES.map((s) => (
-                                <ListBox.Item
-                                  key={s.value}
-                                  id={s.value}
-                                  textValue={s.label}
-                                >
-                                  {s.label}
-                                </ListBox.Item>
-                              ))}
-                            </ListBox>
-                          </Select.Popover>
-                        </Select>
-                      </div>
-                    )}
-                  />
-
-                  <Controller
-                    name="priority"
-                    control={control}
-                    render={({ field }) => (
-                      <div className="flex flex-col gap-1.5">
-                        <Label>Priority</Label>
-                        <Select
-                          aria-label="Priority"
-                          selectedKey={field.value}
-                          onSelectionChange={(key) =>
-                            key != null && field.onChange(String(key))
-                          }
-                          fullWidth
-                        >
-                          <Select.Trigger>
-                            <Select.Value />
-                            <Select.Indicator />
-                          </Select.Trigger>
-                          <Select.Popover>
-                            <ListBox>
-                              {ISSUE_PRIORITIES.map((p) => (
-                                <ListBox.Item
-                                  key={p.value}
-                                  id={p.value}
-                                  textValue={p.label}
-                                >
-                                  {p.label}
-                                </ListBox.Item>
-                              ))}
-                            </ListBox>
-                          </Select.Popover>
-                        </Select>
-                      </div>
-                    )}
-                  />
-                </div>
-
-                <Controller
-                  name="assigneeId"
+                  name="status"
                   control={control}
                   render={({ field }) => (
                     <div className="flex flex-col gap-1.5">
-                      <Label>Assignee</Label>
+                      <Label>Status</Label>
                       <Select
-                        aria-label="Assignee"
+                        aria-label="Status"
                         selectedKey={field.value}
                         onSelectionChange={(key) =>
                           key != null && field.onChange(String(key))
@@ -241,20 +167,13 @@ export default function CreateIssueModal({
                         </Select.Trigger>
                         <Select.Popover>
                           <ListBox>
-                            <ListBox.Item
-                              key={UNASSIGNED}
-                              id={UNASSIGNED}
-                              textValue="Unassigned"
-                            >
-                              Unassigned
-                            </ListBox.Item>
-                            {members.map((m) => (
+                            {ISSUE_STATUSES.map((s) => (
                               <ListBox.Item
-                                key={m.userId}
-                                id={m.userId}
-                                textValue={m.user?.name ?? m.user?.email ?? m.userId}
+                                key={s.value}
+                                id={s.value}
+                                textValue={s.label}
                               >
-                                {m.user?.name ?? m.user?.email ?? m.userId}
+                                {s.label}
                               </ListBox.Item>
                             ))}
                           </ListBox>
@@ -263,20 +182,99 @@ export default function CreateIssueModal({
                     </div>
                   )}
                 />
-              </Modal.Body>
 
-              <Modal.Footer>
-                <Button variant="outline" onPress={handleClose} type="button">
-                  Cancel
-                </Button>
-                <Button type="submit" isDisabled={isLoading}>
-                  {isLoading ? "Creating…" : "Create Issue"}
-                </Button>
-              </Modal.Footer>
-            </form>
-          </Modal.Dialog>
-        </Modal.Container>
-      </Modal.Backdrop>
-    </Modal>
+                <Controller
+                  name="priority"
+                  control={control}
+                  render={({ field }) => (
+                    <div className="flex flex-col gap-1.5">
+                      <Label>Priority</Label>
+                      <Select
+                        aria-label="Priority"
+                        selectedKey={field.value}
+                        onSelectionChange={(key) =>
+                          key != null && field.onChange(String(key))
+                        }
+                        fullWidth
+                      >
+                        <Select.Trigger>
+                          <Select.Value />
+                          <Select.Indicator />
+                        </Select.Trigger>
+                        <Select.Popover>
+                          <ListBox>
+                            {ISSUE_PRIORITIES.map((p) => (
+                              <ListBox.Item
+                                key={p.value}
+                                id={p.value}
+                                textValue={p.label}
+                              >
+                                {p.label}
+                              </ListBox.Item>
+                            ))}
+                          </ListBox>
+                        </Select.Popover>
+                      </Select>
+                    </div>
+                  )}
+                />
+              </div>
+
+              <Controller
+                name="assigneeId"
+                control={control}
+                render={({ field }) => (
+                  <div className="flex flex-col gap-1.5">
+                    <Label>Assignee</Label>
+                    <Select
+                      aria-label="Assignee"
+                      selectedKey={field.value}
+                      onSelectionChange={(key) =>
+                        key != null && field.onChange(String(key))
+                      }
+                      fullWidth
+                    >
+                      <Select.Trigger>
+                        <Select.Value />
+                        <Select.Indicator />
+                      </Select.Trigger>
+                      <Select.Popover>
+                        <ListBox>
+                          <ListBox.Item
+                            key={UNASSIGNED}
+                            id={UNASSIGNED}
+                            textValue="Unassigned"
+                          >
+                            Unassigned
+                          </ListBox.Item>
+                          {members.map((m) => (
+                            <ListBox.Item
+                              key={m.userId}
+                              id={m.userId}
+                              textValue={m.user?.name ?? m.user?.email ?? m.userId}
+                            >
+                              {m.user?.name ?? m.user?.email ?? m.userId}
+                            </ListBox.Item>
+                          ))}
+                        </ListBox>
+                      </Select.Popover>
+                    </Select>
+                  </div>
+                )}
+              />
+            </Modal.Body>
+
+            <Modal.Footer>
+              <Button variant="outline" onPress={handleClose} type="button">
+                Cancel
+              </Button>
+              <Button type="submit" isDisabled={isLoading}>
+                {isLoading ? "Creating…" : "Create Issue"}
+              </Button>
+            </Modal.Footer>
+          </form>
+        </Modal.Dialog>
+      </Modal.Container>
+    </Modal.Backdrop>
   );
 }

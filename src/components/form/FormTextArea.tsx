@@ -1,25 +1,20 @@
-"use client";
-
+import { FieldError, Label, TextArea, TextField } from "@heroui/react";
 import { Controller, useFormContext } from "react-hook-form";
-import { TextField, Label, Input, FieldError } from "@heroui/react";
 
-type Props = {
+type TProps = {
 	name: string;
 	label?: string;
-	type?: string;
 	placeholder?: string;
 	isRequired?: boolean;
 };
 
-export default function FormTextField({
+export default function FormTextArea({
 	name,
 	label,
-	type = "text",
 	placeholder,
 	isRequired,
-}: Props) {
+}: TProps) {
 	const { control } = useFormContext();
-
 	return (
 		<Controller
 			name={name}
@@ -27,7 +22,6 @@ export default function FormTextField({
 			render={({ field, fieldState }) => (
 				<TextField
 					name={field.name}
-					type={type}
 					value={field.value ?? ""}
 					onChange={field.onChange}
 					onBlur={field.onBlur}
@@ -37,7 +31,10 @@ export default function FormTextField({
 				>
 					{label && <Label>{label}</Label>}
 
-					<Input ref={field.ref} placeholder={placeholder} />
+					<TextArea
+						placeholder={placeholder}
+						aria-label={!label ? (placeholder ?? name) : undefined}
+					/>
 
 					<FieldError>{fieldState.error?.message}</FieldError>
 				</TextField>

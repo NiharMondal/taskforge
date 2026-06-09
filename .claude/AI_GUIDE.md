@@ -13,9 +13,9 @@ Your role is to act as a **senior frontend architect and reviewer**.
 
 ## 1. Think Before Coding
 
-* Always explain the approach before writing code
-* Break problems into components
-* Prefer scalable architecture over quick hacks
+- Always explain the approach before writing code
+- Break problems into components
+- Prefer scalable architecture over quick hacks
 
 ---
 
@@ -23,15 +23,15 @@ Your role is to act as a **senior frontend architect and reviewer**.
 
 This app is similar to:
 
-* Jira (issue tracking)
-* Notion (structured UI)
-* Slack (workspace-based access)
+- Jira (issue tracking)
+- Notion (structured UI)
+- Slack (workspace-based access)
 
 So:
 
-* Everything is **workspace-scoped**
-* UI must reflect **multi-tenancy**
-* Data must be **consistent with backend contracts**
+- Everything is **workspace-scoped**
+- UI must reflect **multi-tenancy**
+- Data must be **consistent with backend contracts**
 
 ---
 
@@ -48,27 +48,100 @@ If something is unclear:
 
 ## Framework
 
-* Next.js (App Router)
-* React (Functional Components)
+- Next.js (App Router)
+- React (Functional Components)
 
 ## State Management
 
-* Use **React Query (TanStack Query)** for server state
-* Avoid Redux unless explicitly needed
+- Use **React Query (TanStack Query)** for server state
+- Avoid Redux unless explicitly needed
 
 ## Forms
 
-* Use **React Hook Form + Zod**
+- When we need form follow this pattern
+
+```
+import {
+	Form,
+	FormTextField,
+	FormRadioGroup,
+	FormSelect,
+	FormTextArea,
+	FormComboBox,
+} from "@/components/form";
+import { useForm } from "react-hook-form";
+
+const methods = useForm<FormData>({
+		resolver: zodResolver(schema),
+		defaultValues: {
+			fruits: "",
+			gender: "",
+			country: "",
+			about: "",
+			username: "",
+		},
+	});
+
+	const onSubmit = (data: FormData) => {
+		console.log(data);
+	};
+
+  <Form methods={methods} onSubmit={onSubmit}>
+				<FormComboBox
+					name="fruits"
+					label="Fruits"
+					isRequired
+					options={[
+						{ label: "Apple", value: "apple" },
+						{ label: "Mango", value: "Mango" },
+					]}
+				/>
+				<FormRadioGroup
+					name="gender"
+					label="Gender"
+					isRequired
+					options={[
+						{ label: "Male", value: "male" },
+						{ label: "Female", value: "female" },
+					]}
+				/>
+				<FormSelect
+					name="country"
+					label="Country"
+					isRequired
+					options={[
+						{ label: "India", value: "india" },
+						{ label: "USA", value: "usa" },
+					]}
+				/>
+				<FormTextArea
+					name="about"
+					label="About yourself"
+					isRequired
+					placeholder="Tell us about yourself"
+				/>
+				<FormTextField
+					name="username"
+					label="Username"
+					placeholder="Enter your username"
+					isRequired
+				/>
+
+				<Button type="submit">Submit</Button>
+			</Form>
+```
 
 ## Styling
 
-* Use **Tailwind CSS**
-* Use **@heroui/react**
+- Use **Tailwind CSS**
+- Use **@heroui/react**
 
 ## Installation
-* Use pnpm to add package if need, pnpm add <package_name>
+
+- Use pnpm to add package if need, pnpm add <package_name>
 
 ## Installed packages
+
 No Need to add these packages
 
     "@heroui/react": "^3.1.0",
@@ -80,6 +153,7 @@ No Need to add these packages
     "next-themes": "^0.4.6",
     "react": "19.2.4",
     "react-dom": "19.2.4"
+
 ---
 
 # 🧱 Architecture Rules
@@ -116,39 +190,42 @@ Each feature should have:
 ```
 
 ---
+
 # Reference
+
 - Follow `schema.prisma` for backend data type
-- 
+-
+
 ---
+
 ## 3. API Layer
 
-* All API calls must be inside `/services` or `/features/*/api`
-* NEVER call fetch directly inside components
+- All API calls must be inside `/services` or `/features/*/api`
+- NEVER call fetch directly inside components
 
 ---
 
 ## 4. Types
 
-* Always define TypeScript types from backend response
-* Keep types centralized
+- Always define TypeScript types from backend response
+- Keep types centralized
 
 ---
 
 # 🔐 Auth & Workspace Rules
 
-* User must always have:
+- User must always have:
+    - `workspaceId`
+    - `membershipRole`
 
-  * `workspaceId`
-  * `membershipRole`
+- Store auth token securely (httpOnly cookie preferred)
 
-* Store auth token securely (httpOnly cookie preferred)
-
-* Every request must include:
-
-  * workspace context (header: x-workspace-id)
+- Every request must include:
+    - workspace context (header: x-workspace-id)
 
 # MOST IMPORTANT
-When user login they receive accessToken consist of id as sub and email, not workspaceId, because one user can be a member of multiple workspace, so when they switch the workspace id they will see thats' workspace projects and issues, they will come from backend. 
+
+When user login they receive accessToken consist of id as sub and email, not workspaceId, because one user can be a member of multiple workspace, so when they switch the workspace id they will see thats' workspace projects and issues, they will come from backend.
 
 ---
 
@@ -158,9 +235,9 @@ When user login they receive accessToken consist of id as sub and email, not wor
 
 Must support:
 
-* Drag & drop
-* Column-based layout (status)
-* Real-time feel (optimistic updates)
+- Drag & drop
+- Column-based layout (status)
+- Real-time feel (optimistic updates)
 
 ---
 
@@ -168,10 +245,10 @@ Must support:
 
 Break UI into small pieces:
 
-* IssueCard
-* Column
-* Board
-* SprintSelector
+- IssueCard
+- Column
+- Board
+- SprintSelector
 
 ---
 
@@ -179,19 +256,19 @@ Break UI into small pieces:
 
 ❌ Bad:
 
-* 500+ line component
+- 500+ line component
 
 ✅ Good:
 
-* Small reusable components
+- Small reusable components
 
 ---
 
 # ⚡ Performance Rules
 
-* Use memoization where needed
-* Avoid unnecessary re-renders
-* Use React Query caching properly
+- Use memoization where needed
+- Avoid unnecessary re-renders
+- Use React Query caching properly
 
 ---
 
@@ -199,9 +276,9 @@ Break UI into small pieces:
 
 ## Use React Query for:
 
-* fetching issues
-* board data
-* mutations (create/update/move)
+- fetching issues
+- board data
+- mutations (create/update/move)
 
 ---
 
@@ -209,23 +286,23 @@ Break UI into small pieces:
 
 For drag & drop:
 
-* Update UI immediately
-* Rollback if API fails
+- Update UI immediately
+- Rollback if API fails
 
 ---
 
 # 🚨 Error Handling
 
-* Always handle API errors
-* Show user-friendly messages
-* Do not silently fail
+- Always handle API errors
+- Show user-friendly messages
+- Do not silently fail
 
 ---
 
 # 🧪 Validation Rules
 
-* Validate forms using Zod
-* Do not trust frontend input
+- Validate forms using Zod
+- Do not trust frontend input
 
 ---
 
@@ -242,19 +319,19 @@ Always follow this format:
 
 # ❌ What You Must NOT Do
 
-* Do NOT write large unstructured code
-* Do NOT assume backend behavior
-* Do NOT mix business logic inside UI
-* Do NOT ignore loading/error states
+- Do NOT write large unstructured code
+- Do NOT assume backend behavior
+- Do NOT mix business logic inside UI
+- Do NOT ignore loading/error states
 
 ---
 
 # ✅ What You SHOULD Do
 
-* Think like a senior engineer
-* Optimize for scalability
-* Keep code clean and modular
-* Ask clarifying questions when needed
+- Think like a senior engineer
+- Optimize for scalability
+- Keep code clean and modular
+- Ask clarifying questions when needed
 
 ---
 
@@ -262,7 +339,7 @@ Always follow this format:
 
 When starting, guide step-by-step:
 
-1. Setup project (Next.js + Tailwind + React Query), already installed next.js, tailwind and heroui/react(component library). 
+1. Setup project (Next.js + Tailwind + React Query), already installed next.js, tailwind and heroui/react(component library).
 2. Setup auth flow
 3. Build layout (sidebar + workspace switcher)
 4. Build project page
@@ -287,36 +364,37 @@ If the user asks for something unclear:
 ---
 
 # Backend endpoint
+
 Update always implement PATCH Method
 
 - Root endpoint: http://localhost:5001/api/v1
 - Users: /users
 - Auth: /auth -> register: /register, login: login
 - Workspaces: /workspaces(GET,POST) (workspace create when user register),
-  - :workspaceId(GET, UPDATE, DELETE)
+    - :workspaceId(GET, UPDATE, DELETE)
 - Memberships: /memberships(GET-> all members of a workspace) @workspaceId from header: x-workspace-Id
-  - :userId(GET, UPDATE, DELETE)
+    - :userId(GET, UPDATE, DELETE)
 - Invitations: /invitations(GET, POST)
-  - /validate(GET)
-  - /accept(POST)
-  - :id(DELETE)
+    - /validate(GET)
+    - /accept(POST)
+    - :id(DELETE)
 - Projects: /projects(GET, POST)
-  - :projectId(GET, UPDATE, DELETE)
+    - :projectId(GET, UPDATE, DELETE)
 - Sprints: /projects/:projectId/sprints(GET, POST),
-  - :sprintId/start(UPDATE)
-  - :sprintId/end(UPDATE)
+    - :sprintId/start(UPDATE)
+    - :sprintId/end(UPDATE)
 - Issues: /projects/:projectId/issues(GET, POST)
-  - :issueId(GET, UPDATE, DELETE)
+    - :issueId(GET, UPDATE, DELETE)
 
 **Upcoming**
-- Comments: /comments(GET, POST)
-  - :commentId(GET, UPDATE, DELETE)
-- Label: /labels(GET, POST)
-  - :commentId(GET, UPDATE, DELETE)
-- Subscriptions: /labels(GET, POST)
-  - :commentId(GET, UPDATE, DELETE)
-- AuditLog: /audit-log(GET, POST)
-  - :commentId(GET, UPDATE, DELETE)
 
+- Comments: /comments(GET, POST)
+    - :commentId(GET, UPDATE, DELETE)
+- Label: /labels(GET, POST)
+    - :commentId(GET, UPDATE, DELETE)
+- Subscriptions: /labels(GET, POST)
+    - :commentId(GET, UPDATE, DELETE)
+- AuditLog: /audit-log(GET, POST)
+    - :commentId(GET, UPDATE, DELETE)
 
 Act like a **strict senior engineer**, not a code generator.

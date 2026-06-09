@@ -69,83 +69,81 @@ export default function CreateProjectModal({
   };
 
   return (
-    <Modal isOpen={isOpen} onOpenChange={onOpenChange}>
-      <Modal.Backdrop>
-        <Modal.Container>
-          <Modal.Dialog>
-            <form onSubmit={handleSubmit(submit)}>
-              <Modal.Header>
-                <Modal.Heading>New Project</Modal.Heading>
-                <Modal.CloseTrigger onPress={handleClose} />
-              </Modal.Header>
+    <Modal.Backdrop isOpen={isOpen} onOpenChange={onOpenChange}>
+      <Modal.Container>
+        <Modal.Dialog>
+          <form onSubmit={handleSubmit(submit)}>
+            <Modal.Header>
+              <Modal.Heading>New Project</Modal.Heading>
+              <Modal.CloseTrigger onPress={handleClose} />
+            </Modal.Header>
 
-              <Modal.Body className="flex flex-col gap-4">
-                <Controller
-                  name="name"
-                  control={control}
-                  render={({ field }) => (
-                    <TextField isInvalid={!!errors.name} isRequired>
-                      <Label>Project Name</Label>
-                      <Input
-                        {...field}
-                        placeholder="e.g. Engineering"
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                          field.onChange(e);
-                          setValue("key", deriveKey(e.target.value));
-                        }}
-                      />
-                      <FieldError>{errors.name?.message}</FieldError>
-                    </TextField>
-                  )}
-                />
+            <Modal.Body className="flex flex-col gap-4">
+              <Controller
+                name="name"
+                control={control}
+                render={({ field }) => (
+                  <TextField isInvalid={!!errors.name} isRequired>
+                    <Label>Project Name</Label>
+                    <Input
+                      {...field}
+                      placeholder="e.g. Engineering"
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                        field.onChange(e);
+                        setValue("key", deriveKey(e.target.value));
+                      }}
+                    />
+                    <FieldError>{errors.name?.message}</FieldError>
+                  </TextField>
+                )}
+              />
 
-                <Controller
-                  name="key"
-                  control={control}
-                  render={({ field }) => (
-                    <TextField isInvalid={!!errors.key} isRequired>
-                      <Label>Project Key</Label>
-                      <Input
-                        {...field}
-                        placeholder="e.g. ENG"
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                          field.onChange(e.target.value.toUpperCase());
-                        }}
-                      />
-                      <FieldError>{errors.key?.message}</FieldError>
-                    </TextField>
-                  )}
-                />
+              <Controller
+                name="key"
+                control={control}
+                render={({ field }) => (
+                  <TextField isInvalid={!!errors.key} isRequired>
+                    <Label>Project Key</Label>
+                    <Input
+                      {...field}
+                      placeholder="e.g. ENG"
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                        field.onChange(e.target.value.toUpperCase());
+                      }}
+                    />
+                    <FieldError>{errors.key?.message}</FieldError>
+                  </TextField>
+                )}
+              />
 
-                <Controller
-                  name="description"
-                  control={control}
-                  render={({ field }) => (
-                    <TextField isInvalid={!!errors.description}>
-                      <Label>Description</Label>
-                      <TextArea
-                        {...field}
-                        placeholder="Optional project description"
-                        rows={3}
-                      />
-                      <FieldError>{errors.description?.message}</FieldError>
-                    </TextField>
-                  )}
-                />
-              </Modal.Body>
+              <Controller
+                name="description"
+                control={control}
+                render={({ field }) => (
+                  <TextField isInvalid={!!errors.description}>
+                    <Label>Description</Label>
+                    <TextArea
+                      {...field}
+                      placeholder="Optional project description"
+                      rows={3}
+                    />
+                    <FieldError>{errors.description?.message}</FieldError>
+                  </TextField>
+                )}
+              />
+            </Modal.Body>
 
-              <Modal.Footer>
-                <Button variant="outline" onPress={handleClose} type="button">
-                  Cancel
-                </Button>
-                <Button type="submit" isDisabled={isLoading}>
-                  {isLoading ? "Creating…" : "Create Project"}
-                </Button>
-              </Modal.Footer>
-            </form>
-          </Modal.Dialog>
-        </Modal.Container>
-      </Modal.Backdrop>
-    </Modal>
+            <Modal.Footer>
+              <Button variant="outline" onPress={handleClose} type="button">
+                Cancel
+              </Button>
+              <Button type="submit" isDisabled={isLoading}>
+                {isLoading ? "Creating…" : "Create Project"}
+              </Button>
+            </Modal.Footer>
+          </form>
+        </Modal.Dialog>
+      </Modal.Container>
+    </Modal.Backdrop>
   );
 }

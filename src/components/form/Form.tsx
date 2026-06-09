@@ -2,6 +2,7 @@
 "use client";
 
 import { FormProvider, UseFormReturn } from "react-hook-form";
+import { Form as AriaForm } from "@heroui/react";
 
 type Props = {
   methods: UseFormReturn<any>;
@@ -9,12 +10,23 @@ type Props = {
   children: React.ReactNode;
 };
 
-export function Form({ methods, onSubmit, children }: Props) {
+export default function Form({ methods, onSubmit, children }: Props) {
   return (
     <FormProvider {...methods}>
-      <form onSubmit={methods.handleSubmit(onSubmit)} className="space-y-2">
+      {/*
+       * HeroUI's Form (react-aria) sets validationBehavior="aria" -> the <form>
+       * gets `noValidate`, so native browser validation no longer blocks submit,
+       * and every child field defers validation to React Hook Form (driven by the
+       * `isInvalid` + <FieldError> we pass). Without this, fields with `isRequired`
+       * trigger native validation that silently blocks handleSubmit.
+       */}
+      <AriaForm
+        onSubmit={methods.handleSubmit(onSubmit)}
+        validationBehavior="aria"
+        className="space-y-2"
+      >
         {children}
-      </form>
+      </AriaForm>
     </FormProvider>
   );
 }

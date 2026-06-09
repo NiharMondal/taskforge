@@ -20,7 +20,7 @@ export default function ProjectList({ projects, onCreateClick }: ProjectListProp
             Create a project to start tracking issues and sprints.
           </p>
         </div>
-        <Button variant="outline" onPress={onCreateClick}>
+        <Button variant="outline" onClick={onCreateClick}>
           Create your first project
         </Button>
       </div>

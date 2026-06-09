@@ -32,10 +32,8 @@ export default function RootLayout({
 			className={`${inter.variable} ${geistMono.variable} h-full antialiased`}
 		>
 			<body className="bg-background text-foreground">
-				<Providers>
-					<Toast.Provider placement="top" />
-					{children}
-				</Providers>
+				<Toast.Provider placement="top" />
+				<Providers>{children}</Providers>
 			</body>
 		</html>
 	);

@@ -14,5 +14,5 @@ export interface Member {
 	workspaceId: string;
 	role: WorkspaceRole;
 	createdAt: string;
-	user?: ICommonUserEntity;
+	user: ICommonUserEntity | null;
 }

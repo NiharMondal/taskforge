@@ -51,7 +51,7 @@ export default function IssueDetailModal({
 			onOpenChange={(open) => !open && onClose()}
 		>
 			<Modal.Container>
-				<Modal.Dialog className="min-w-2xl">
+				<Modal.Dialog className="min-w-3xl">
 					{issue && (
 						<IssueDetailForm
 							key={issue.id}

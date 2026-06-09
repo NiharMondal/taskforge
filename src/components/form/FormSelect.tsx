@@ -31,6 +31,7 @@ export default function FormSelect({
 					onBlur={field.onBlur}
 					isInvalid={!!fieldState.error}
 					aria-label={!label ? (placeholder ?? name) : undefined}
+					fullWidth
 				>
 					{label && <Label>{label}</Label>}
 					<Select.Trigger>

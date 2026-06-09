@@ -6,7 +6,7 @@ export interface ICommonUserEntity {
 }
 
 export interface IFormSelectOption {
-	value: string;
-	label: string;
+	value: string | undefined;
+	label: string | undefined;
 	description?: string;
 }

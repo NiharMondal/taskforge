@@ -5,7 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { signIn } from "next-auth/react";
 import { useForm } from "react-hook-form";
 import { LoginInput, loginSchema } from "../schemas/auth-schema";
-import { Form, FormTextField } from "@/components/form";
+import { FormTextField, FormWrapper } from "@/components/form";
 
 export default function LoginForm() {
 	const methods = useForm<LoginInput>({
@@ -30,7 +30,7 @@ export default function LoginForm() {
 		}
 	};
 	return (
-		<Form methods={methods} onSubmit={onSubmit}>
+		<FormWrapper methods={methods} onSubmit={onSubmit}>
 			<FormTextField
 				isRequired
 				name="email"
@@ -47,6 +47,6 @@ export default function LoginForm() {
 			<Button type="submit" className={"w-full"}>
 				Login
 			</Button>
-		</Form>
+		</FormWrapper>
 	);
 }

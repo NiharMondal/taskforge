@@ -15,7 +15,7 @@ export default function StatCard({ label, value, icon: Icon }: StatCardProps) {
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
           <Icon className="h-5 w-5" />
         </span>
-        <div className="flex flex-col">
+        <div className="flex flex-col items-center">
           <span className="text-2xl font-semibold leading-none tabular-nums">
             {value}
           </span>

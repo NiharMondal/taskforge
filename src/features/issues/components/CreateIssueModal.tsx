@@ -11,8 +11,8 @@ import type { Member } from "@/features/memberships/types/membership-types";
 import { ISSUE_PRIORITIES, ISSUE_STATUSES } from "../constants";
 import type { CreateIssueDto } from "../types/issue-types";
 import {
+	FormRichTextEditor,
 	FormSelect,
-	FormTextArea,
 	FormTextField,
 	FormWrapper,
 } from "@/components/form-element";
@@ -79,8 +79,8 @@ export default function CreateIssueModal({
 
 	return (
 		<Modal.Backdrop isOpen={isOpen} onOpenChange={onOpenChange}>
-			<Modal.Container>
-				<Modal.Dialog className="min-w-3xl">
+			<Modal.Container size="cover">
+				<Modal.Dialog>
 					<FormWrapper methods={methods} onSubmit={submit}>
 						<Modal.Header>
 							<Modal.Heading>New Issue</Modal.Heading>
@@ -93,7 +93,7 @@ export default function CreateIssueModal({
 								placeholder="e.g. Login button is misaligned"
 								isRequired
 							/>
-							<FormTextArea
+							<FormRichTextEditor
 								name="description"
 								label="Description"
 								placeholder="Optional details, steps to reproduce, acceptance criteria…"

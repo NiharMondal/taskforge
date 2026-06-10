@@ -88,3 +88,134 @@
 	--warning: oklch(82.03% 0.1416 78.74);
 	--warning-foreground: oklch(21.03% 0.0059 78.74);
 }
+
+/* ---------------------------------------------------------------------------
+ * Rich text editor (Tiptap)
+ * ------------------------------------------------------------------------- */
+.rich-text-editor {
+	border: var(--field-border-width) solid var(--field-border);
+	border-radius: var(--field-radius);
+	background: var(--field-background);
+	overflow: hidden;
+}
+
+.rich-text-editor:focus-within {
+	outline: 2px solid var(--focus);
+	outline-offset: -1px;
+}
+
+.rich-text-editor[data-invalid] {
+	border-color: var(--danger);
+}
+
+.rich-text-editor__toolbar {
+	display: flex;
+	align-items: center;
+	gap: 0.125rem;
+	flex-wrap: wrap;
+	padding: 0.25rem;
+	border-bottom: var(--field-border-width) solid var(--field-border);
+	background: var(--surface-secondary);
+}
+
+.rich-text-editor__btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.75rem;
+	height: 1.75rem;
+	border-radius: var(--radius);
+	color: var(--field-foreground);
+	cursor: pointer;
+}
+
+.rich-text-editor__btn:hover:not(:disabled) {
+	background: var(--surface-tertiary);
+}
+
+.rich-text-editor__btn[data-active] {
+	background: var(--accent);
+	color: var(--accent-foreground);
+}
+
+.rich-text-editor__btn:disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
+}
+
+.rich-text-editor__divider {
+	width: 1px;
+	align-self: stretch;
+	margin: 0.125rem 0.25rem;
+	background: var(--separator);
+}
+
+.rich-text-editor__body {
+	position: relative;
+}
+
+.rich-text-editor__placeholder {
+	position: absolute;
+	top: 0.625rem;
+	left: 0.75rem;
+	color: var(--field-placeholder);
+	pointer-events: none;
+	user-select: none;
+}
+
+.tiptap-content {
+	height: 400px;
+	overflow-y: auto;
+	padding: 0.625rem 0.75rem;
+	color: var(--field-foreground);
+	outline: none;
+}
+
+.tiptap-content > * + * {
+	margin-top: 0.5rem;
+}
+
+.tiptap-content h2 {
+	font-size: 1.25rem;
+	font-weight: 600;
+}
+
+.tiptap-content ul,
+.tiptap-content ol {
+	padding-left: 1.25rem;
+}
+
+.tiptap-content ul {
+	list-style: disc;
+}
+
+.tiptap-content ol {
+	list-style: decimal;
+}
+
+.tiptap-content blockquote {
+	border-left: 3px solid var(--border);
+	padding-left: 0.75rem;
+	color: var(--muted);
+}
+
+.tiptap-content code {
+	background: var(--surface-secondary);
+	border-radius: var(--radius);
+	padding: 0.1rem 0.3rem;
+	font-family: var(--font-mono);
+	font-size: 0.875em;
+}
+
+.tiptap-content pre {
+	background: var(--surface-secondary);
+	border-radius: var(--field-radius);
+	padding: 0.75rem;
+	font-family: var(--font-mono);
+	overflow-x: auto;
+}
+
+.tiptap-content pre code {
+	background: none;
+	padding: 0;
+}

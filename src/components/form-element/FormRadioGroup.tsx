@@ -53,8 +53,11 @@ export default function FormRadioGroup({
 							</Radio.Content>
 						</Radio>
 					) : (
-						options.map((option) => (
-							<Radio value={option.value} key={option.value}>
+						options?.map((option) => (
+							<Radio
+								value={option?.value as string}
+								key={option.value}
+							>
 								<Radio.Control>
 									<Radio.Indicator />
 								</Radio.Control>

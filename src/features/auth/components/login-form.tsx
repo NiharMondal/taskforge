@@ -5,7 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { signIn } from "next-auth/react";
 import { useForm } from "react-hook-form";
 import { LoginInput, loginSchema } from "../schemas/auth-schema";
-import { FormTextField, FormWrapper } from "@/components/form";
+import { FormTextField, FormWrapper } from "@/components/form-element";
 
 export default function LoginForm() {
 	const methods = useForm<LoginInput>({

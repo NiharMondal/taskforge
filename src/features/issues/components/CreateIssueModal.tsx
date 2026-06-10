@@ -2,7 +2,7 @@
 
 import { Button, Modal, toast } from "@heroui/react";
 import { zodResolver } from "@hookform/resolvers/zod";
-import {  useForm } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import { z } from "zod";
 
 import { getApiErrorMessage } from "@/lib/api-error";
@@ -15,7 +15,7 @@ import {
 	FormTextArea,
 	FormTextField,
 	FormWrapper,
-} from "@/components/form";
+} from "@/components/form-element";
 
 /** Sentinel ListBox key for "no assignee" (react-aria keys can't be empty). */
 const UNASSIGNED = "__unassigned__";
@@ -149,3 +149,5 @@ export default function CreateIssueModal({
 		</Modal.Backdrop>
 	);
 }
+
+

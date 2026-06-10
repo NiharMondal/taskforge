@@ -10,11 +10,7 @@ import ProjectHeader from "@/features/projects/components/ProjectHeader";
 import { useProjects } from "@/features/projects/hooks/use-projects";
 import { useWorkspace } from "@/features/workspace/context/workspace-context";
 
-import {
-  useCreateIssue,
-  useIssues,
-  useUpdateIssue,
-} from "../hooks/use-issues";
+import { useCreateIssue, useIssues, useUpdateIssue } from "../hooks/use-issues";
 import type { CreateIssueDto, Issue, IssueStatus } from "../types/issue-types";
 import CreateIssueModal from "./CreateIssueModal";
 import IssueDetailModal from "./IssueDetailModal";
@@ -26,105 +22,107 @@ import IssueList from "./IssueList";
  * route file so the same view can back a future tab layout without change.
  */
 export default function IssuesView({ projectId }: { projectId: string }) {
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedIssue, setSelectedIssue] = useState<Issue | null>(null);
-  const { activeWorkspaceId } = useWorkspace();
-  const workspaceId = activeWorkspaceId ?? "";
+	const [isModalOpen, setIsModalOpen] = useState(false);
+	const [selectedIssue, setSelectedIssue] = useState<Issue | null>(null);
+	const { activeWorkspaceId } = useWorkspace();
+	const workspaceId = activeWorkspaceId ?? "";
 
-  // The project header reuses the cached workspace projects list — no extra
-  // request, and it stays correct after a workspace switch invalidates caches.
-  const { data: projects = [] } = useProjects(workspaceId);
-  const project = projects.find((p) => p.id === projectId);
+	// The project header reuses the cached workspace projects list — no extra
+	// request, and it stays correct after a workspace switch invalidates caches.
+	const { data: projects = [] } = useProjects(workspaceId);
+	const project = projects.find((p) => p.id === projectId);
 
-  const { data: members = [] } = useMemberships(workspaceId);
-  const {
-    data: issues = [],
-    isLoading,
-    isError,
-  } = useIssues(workspaceId, projectId);
+	const { data: members = [] } = useMemberships(workspaceId);
+	const {
+		data: issues = [],
+		isLoading,
+		isError,
+	} = useIssues(workspaceId, projectId);
 
-  const { mutateAsync: createIssue, isPending } = useCreateIssue(
-    workspaceId,
-    projectId,
-  );
-  const {
-    mutate: updateIssue,
-    variables: updatingVars,
-    isPending: isUpdatingIssue,
-  } = useUpdateIssue(workspaceId, projectId);
+	const { mutateAsync: createIssue, isPending } = useCreateIssue(
+		workspaceId,
+		projectId,
+	);
+	const {
+		mutate: updateIssue,
+		variables: updatingVars,
+		isPending: isUpdatingIssue,
+	} = useUpdateIssue(workspaceId, projectId);
 
-  // userId → display name, for resolving issue assignees in the list.
-  const assigneeNames = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const m of members) {
-      if (m.user) map.set(m.userId, m.user.name || m.user.email);
-    }
-    return map;
-  }, [members]);
+	// userId → display name, for resolving issue assignees in the list.
+	const assigneeNames = useMemo(() => {
+		const map = new Map<string, string>();
+		for (const m of members) {
+			if (m.user) map.set(m.userId, m.user.name || m.user.email);
+		}
+		return map;
+	}, [members]);
 
-  const handleCreate = async (dto: CreateIssueDto) => {
-    await createIssue(dto);
-  };
+	const handleCreate = async (dto: CreateIssueDto) => {
+		await createIssue(dto);
+	};
 
-  const handleStatusChange = (issueId: string, status: IssueStatus) => {
-    updateIssue({ issueId, dto: { status } });
-  };
+	const handleStatusChange = (issueId: string, status: IssueStatus) => {
+		updateIssue({ issueId, dto: { status } });
+	};
 
-  return (
-    <div className="flex flex-col gap-6">
-      <ProjectHeader
-        projectId={projectId}
-        project={project}
-        active="issues"
-        actions={
-          <Button onPress={() => setIsModalOpen(true)}>
-            <Plus className="h-4 w-4" />
-            New Issue
-          </Button>
-        }
-      />
+	return (
+		<div className="flex flex-col gap-6">
+			<ProjectHeader
+				projectId={projectId}
+				project={project}
+				active="issues"
+				actions={
+					<Button onPress={() => setIsModalOpen(true)}>
+						<Plus className="h-4 w-4" />
+						New Issue
+					</Button>
+				}
+			/>
 
-      {isError ? (
-        <Alert status="danger">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Title>Couldn’t load issues</Alert.Title>
-            <Alert.Description>
-              Check your connection and try again.
-            </Alert.Description>
-          </Alert.Content>
-        </Alert>
-      ) : isLoading ? (
-        <div className="flex items-center gap-2 py-12 text-muted">
-          <Spinner size="sm" />
-          Loading issues…
-        </div>
-      ) : (
-        <IssueList
-          issues={issues}
-          assigneeNames={assigneeNames}
-          onStatusChange={handleStatusChange}
-          onOpenIssue={setSelectedIssue}
-          onCreateClick={() => setIsModalOpen(true)}
-          updatingIssueId={isUpdatingIssue ? updatingVars?.issueId : undefined}
-        />
-      )}
+			{isError ? (
+				<Alert status="danger">
+					<Alert.Indicator />
+					<Alert.Content>
+						<Alert.Title>Couldn’t load issues</Alert.Title>
+						<Alert.Description>
+							Check your connection and try again.
+						</Alert.Description>
+					</Alert.Content>
+				</Alert>
+			) : isLoading ? (
+				<div className="flex items-center gap-2 py-12 text-muted">
+					<Spinner size="sm" />
+					Loading issues…
+				</div>
+			) : (
+				<IssueList
+					issues={issues}
+					assigneeNames={assigneeNames}
+					onStatusChange={handleStatusChange}
+					onOpenIssue={setSelectedIssue}
+					onCreateClick={() => setIsModalOpen(true)}
+					updatingIssueId={
+						isUpdatingIssue ? updatingVars?.issueId : undefined
+					}
+				/>
+			)}
 
-      <CreateIssueModal
-        isOpen={isModalOpen}
-        onOpenChange={setIsModalOpen}
-        onSubmit={handleCreate}
-        members={members}
-        isLoading={isPending}
-      />
+			<CreateIssueModal
+				isOpen={isModalOpen}
+				onOpenChange={setIsModalOpen}
+				onSubmit={handleCreate}
+				members={members}
+				isLoading={isPending}
+			/>
 
-      <IssueDetailModal
-        issue={selectedIssue}
-        onClose={() => setSelectedIssue(null)}
-        members={members}
-        workspaceId={workspaceId}
-        projectId={projectId}
-      />
-    </div>
-  );
+			<IssueDetailModal
+				issue={selectedIssue}
+				onClose={() => setSelectedIssue(null)}
+				members={members}
+				workspaceId={workspaceId}
+				projectId={projectId}
+			/>
+		</div>
+	);
 }

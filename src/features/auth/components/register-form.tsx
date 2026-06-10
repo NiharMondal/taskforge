@@ -4,7 +4,7 @@ import { Button, toast } from "@heroui/react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 
-import { FormTextField, FormWrapper } from "@/components/form";
+import { FormTextField, FormWrapper } from "@/components/form-element";
 import { signIn } from "next-auth/react";
 import { register } from "../api/auth-api";
 import { registerSchema, type RegisterInput } from "../schemas/auth-schema";

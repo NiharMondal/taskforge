@@ -42,10 +42,10 @@ export async function updateIssue(
   projectId: string,
   issueId: string,
   dto: UpdateIssueDto,
-): Promise<Issue> {
+): Promise<{ issue: Issue; message: string }> {
   const { data } = await apiClient.patch<ApiResponse<Issue>>(
     `/projects/${projectId}/issues/${issueId}`,
     dto,
   );
-  return data.data;
+  return { issue: data.data, message: data.message };
 }

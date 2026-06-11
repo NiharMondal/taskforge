@@ -45,7 +45,7 @@ export default function ProjectCard({ project }: ProjectCardProps) {
 		<>
 			<Card className="relative h-full transition-shadow hover:shadow-md">
 				<Link
-					href={`/projects/${project.id}/issues`}
+					href={`/projects/${project.id}/board`}
 					aria-label={`Open ${project.name}`}
 					className="absolute inset-0 z-0 rounded-[inherit]"
 				/>

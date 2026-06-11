@@ -86,7 +86,7 @@ export default function BoardView({ projectId }: { projectId: string }) {
 	const workspaceId = activeWorkspaceId ?? "";
 
 	const { data: projects } = useProjects(workspaceId);
-	const project = projects?.data?.find((p) => p.id === projectId);
+	const project = projects?.find((p) => p.id === projectId);
 
 	const { data: members = [] } = useMemberships(workspaceId);
 

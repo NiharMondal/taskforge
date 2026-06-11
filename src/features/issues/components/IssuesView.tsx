@@ -31,7 +31,7 @@ export default function IssuesView({ projectId }: { projectId: string }) {
 	// The project header reuses the cached workspace projects list — no extra
 	// request, and it stays correct after a workspace switch invalidates caches.
 	const { data: projects } = useProjects(workspaceId);
-	const project = projects?.data?.find((p) => p.id === projectId);
+	const project = projects?.find((p) => p.id === projectId);
 
 	const { data: members = [] } = useMemberships(workspaceId);
 	const {

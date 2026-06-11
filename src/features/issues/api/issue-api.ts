@@ -1,4 +1,4 @@
-import { apiClient } from "@/lib/axios";
+import { api } from "@/lib/axios";
 
 import type { ApiResponse } from "@/types/api";
 
@@ -12,6 +12,9 @@ import type {
  * Issue API layer. All issue network calls belong here (AI_GUIDE: never call
  * axios/fetch directly from components).
  *
+ * Every function returns the full `ApiResponse` envelope (via `api` in
+ * `lib/axios`); hooks unwrap `.data` where only the payload matters.
+ *
  * Issues are project-scoped, so the projectId lives in the route. The workspace
  * is still resolved from the `x-workspace-id` header that the axios interceptor
  * attaches automatically — switching workspaces transparently re-scopes the
@@ -19,11 +22,10 @@ import type {
  */
 
 /** List a project's issues (`GET /projects/:projectId/issues`). */
-export async function getIssues(projectId: string): Promise<Issue[]> {
-	const { data } = await apiClient.get<ApiResponse<Issue[]>>(
-		`/projects/${projectId}/issues`,
-	);
-	return data.data;
+export async function getIssues(
+	projectId: string,
+): Promise<ApiResponse<Issue[]>> {
+	return api.get<Issue[]>(`/projects/${projectId}/issues`);
 }
 
 /** Create an issue in a project (`POST /projects/:projectId/issues`). */
@@ -31,8 +33,7 @@ export async function createIssue(
 	projectId: string,
 	dto: CreateIssueDto,
 ): Promise<ApiResponse<Issue>> {
-	const { data } = await apiClient.post(`/projects/${projectId}/issues`, dto);
-	return data.data;
+	return api.post<Issue>(`/projects/${projectId}/issues`, dto);
 }
 
 /**
@@ -43,10 +44,6 @@ export async function updateIssue(
 	projectId: string,
 	issueId: string,
 	dto: UpdateIssueDto,
-): Promise<{ issue: Issue; message: string }> {
-	const { data } = await apiClient.patch<ApiResponse<Issue>>(
-		`/projects/${projectId}/issues/${issueId}`,
-		dto,
-	);
-	return { issue: data.data, message: data.message };
+): Promise<ApiResponse<Issue>> {
+	return api.patch<Issue>(`/projects/${projectId}/issues/${issueId}`, dto);
 }

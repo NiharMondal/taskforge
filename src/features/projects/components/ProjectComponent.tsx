@@ -15,7 +15,7 @@ export default function ProjectComponent() {
 	const [isOpen, { setTrue: openModal, setFalse: closeModal }] = useBoolean();
 	const { activeWorkspaceId } = useWorkspace();
 	const workspaceId = activeWorkspaceId ?? "";
-	const { data: projects = [], isLoading } = useProjects(workspaceId);
+	const { data: projects, isLoading } = useProjects(workspaceId);
 
 	const { mutateAsync: createProject, isPending: isCreating } =
 		useCreateProject(workspaceId);

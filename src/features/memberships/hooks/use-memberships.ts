@@ -14,7 +14,8 @@ export const membershipKeys = {
 export function useMemberships(workspaceId: string) {
   return useQuery({
     queryKey: membershipKeys.list(workspaceId),
-    queryFn: getMemberships,
+    // Unwrap the ApiResponse envelope so the cache holds a plain Member[].
+    queryFn: async () => (await getMemberships()).data,
     enabled: !!workspaceId,
     staleTime: 5 * 60 * 1000,
   });

@@ -1,4 +1,7 @@
 import axios from "axios";
+import type { AxiosRequestConfig } from "axios";
+
+import type { ApiResponse } from "@/types/api";
 
 import { getActiveWorkspaceId } from "./active-workspace";
 import { toApiError } from "./api-error";
@@ -40,3 +43,46 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error) => Promise.reject(toApiError(error)),
 );
+
+/**
+ * Typed request helpers for the backend's `ApiResponse` envelope.
+ *
+ * The backend wraps every success body in `{ success, statusCode, message, data }`
+ * (see `types/api`), so feature API layers should call these instead of
+ * `apiClient` directly — each method returns the envelope already typed, and the
+ * payload type is given once at the call site:
+ *
+ *   const res = await api.get<Project[]>("/projects"); // ApiResponse<Project[]>
+ *   res.data    // Project[]
+ *   res.message // for toasts after mutations
+ *
+ * Callers that only want the payload unwrap `.data` themselves (e.g. React
+ * Query `queryFn`s, so caches hold plain domain data). Errors never reach the
+ * envelope: the interceptor above rejects with a normalized `ApiError`.
+ */
+export const api = {
+  get: async <T>(url: string, config?: AxiosRequestConfig): Promise<ApiResponse<T>> => {
+    const res = await apiClient.get<ApiResponse<T>>(url, config);
+    return res.data;
+  },
+
+  post: async <T>(url: string, body?: unknown, config?: AxiosRequestConfig): Promise<ApiResponse<T>> => {
+    const res = await apiClient.post<ApiResponse<T>>(url, body, config);
+    return res.data;
+  },
+
+  patch: async <T>(url: string, body?: unknown, config?: AxiosRequestConfig): Promise<ApiResponse<T>> => {
+    const res = await apiClient.patch<ApiResponse<T>>(url, body, config);
+    return res.data;
+  },
+
+  put: async <T>(url: string, body?: unknown, config?: AxiosRequestConfig): Promise<ApiResponse<T>> => {
+    const res = await apiClient.put<ApiResponse<T>>(url, body, config);
+    return res.data;
+  },
+
+  delete: async <T>(url: string, config?: AxiosRequestConfig): Promise<ApiResponse<T>> => {
+    const res = await apiClient.delete<ApiResponse<T>>(url, config);
+    return res.data;
+  },
+};

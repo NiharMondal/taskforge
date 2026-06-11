@@ -14,7 +14,8 @@ export const workspaceKeys = {
 export function useWorkspaces() {
   return useQuery({
     queryKey: workspaceKeys.all,
-    queryFn: getWorkspaces,
+    // Unwrap the ApiResponse envelope so the cache holds a plain Workspace[].
+    queryFn: async () => (await getWorkspaces()).data,
     staleTime: 5 * 60 * 1000,
   });
 }

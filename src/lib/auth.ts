@@ -40,7 +40,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (!parsed.success) throw new InvalidCredentials();
 
         try {
-          const { user, accessToken } = await login(parsed.data);
+          const { user, accessToken } = (await login(parsed.data)).data;
 
           return {
             id: user.id,

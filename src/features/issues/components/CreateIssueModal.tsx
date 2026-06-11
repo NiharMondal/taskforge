@@ -1,6 +1,4 @@
 import MyModal from "@/components/ui/my-modal";
-import { useBoolean } from "ahooks";
-import React from "react";
 import IssueForm from "./IssueForm";
 import { Member } from "@/features/memberships/types/membership-types";
 import { TIssueFormValues } from "../schema/issue-schema";

@@ -11,9 +11,3 @@ export interface Project {
     sprints: number;
   };
 }
-
-export interface CreateProjectDto {
-  name: string;
-  key: string;
-  description?: string;
-}

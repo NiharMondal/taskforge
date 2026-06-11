@@ -2,18 +2,19 @@
 ## Forms Guide
 - This is the rules how you implement form where the form need. Follow this pattern
 - Make schema using zod in separate file also export the type.
-- All form must be re-useable. 
+- All form must be re-useable.
+
 ## Example
 
 ```
 import {
-	Form,
+	FormWrapper,
 	FormTextField,
 	FormRadioGroup,
 	FormSelect,
 	FormTextArea,
 	FormComboBox,
-} from "@/components/form";
+} from "@/components/form-element";
 import { useForm } from "react-hook-form";
 
 import { addressSchema, TAddressFormValues } from "./address-form-schema";

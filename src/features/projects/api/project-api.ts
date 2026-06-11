@@ -2,7 +2,8 @@ import { apiClient } from "@/lib/axios";
 
 import type { ApiResponse } from "@/types/api";
 
-import type { Project, CreateProjectDto } from "../types/project-types";
+import type { Project } from "../types/project-types";
+import { TProjectFormValues } from "../schema/project-schema";
 
 /**
  * Project API layer. All project network calls belong here (AI_GUIDE: never
@@ -16,12 +17,31 @@ import type { Project, CreateProjectDto } from "../types/project-types";
 
 /** List the active workspace's projects (`GET /projects`). */
 export async function getProjects(): Promise<Project[]> {
-  const { data } = await apiClient.get<ApiResponse<Project[]>>("/projects");
-  return data.data;
+	const { data } = await apiClient.get<ApiResponse<Project[]>>("/projects");
+	return data.data;
 }
 
 /** Create a project in the active workspace (`POST /projects`). */
-export async function createProject(dto: CreateProjectDto): Promise<Project> {
-  const { data } = await apiClient.post<ApiResponse<Project>>("/projects", dto);
-  return data.data;
+export async function createProject(dto: TProjectFormValues): Promise<Project> {
+	const { data } = await apiClient.post<ApiResponse<Project>>(
+		"/projects",
+		dto,
+	);
+	return data.data;
+}
+
+/**
+ * Update a project (`PATCH /projects/:projectId`). All updates use PATCH per
+ * AI_GUIDE → "Update always implement PATCH Method"; the project id rides in the
+ * route, so only the changed body fields are sent.
+ */
+export async function updateProject(
+	projectId: string,
+	dto: Partial<TProjectFormValues>,
+): Promise<Project> {
+	const { data } = await apiClient.patch<ApiResponse<Project>>(
+		`/projects/${projectId}`,
+		dto,
+	);
+	return data.data;
 }

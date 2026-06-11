@@ -6,8 +6,11 @@ import { signIn } from "next-auth/react";
 import { useForm } from "react-hook-form";
 import { LoginInput, loginSchema } from "../schemas/auth-schema";
 import { FormTextField, FormWrapper } from "@/components/form-element";
+import { getApiErrorMessage } from "@/lib/api-error";
+import { useRouter } from "next/navigation";
 
 export default function LoginForm() {
+	const router = useRouter();
 	const methods = useForm<LoginInput>({
 		resolver: zodResolver(loginSchema),
 	});
@@ -23,10 +26,10 @@ export default function LoginForm() {
 				toast.danger("Invalid Credentials");
 			} else {
 				toast.success("Logged in successfully");
+				router.push("/dashboard");
 			}
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		} catch (error: any) {
-			toast.danger(error?.message || "Something went wrong");
+		} catch (error) {
+			toast.danger(getApiErrorMessage(error || "Something went wrong"));
 		}
 	};
 	return (

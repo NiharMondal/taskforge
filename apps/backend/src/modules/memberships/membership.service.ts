@@ -12,6 +12,16 @@ export class MembershipService {
   async findAllByWorkspaceId(workspaceId: string) {
     return this.prisma.membership.findMany({
       where: { workspaceId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            avatarUrl: true,
+          },
+        },
+      },
     });
   }
 

@@ -1,6 +1,7 @@
 import { IFormSelectOption } from "@/types/common";
 import { FieldError, Label, ListBox, Select } from "@heroui/react";
 import { Controller, useFormContext } from "react-hook-form";
+import Avatar from "../ui/avatar";
 
 type TProps = {
 	name: string;
@@ -8,6 +9,7 @@ type TProps = {
 	placeholder?: string;
 	isRequired?: boolean;
 	options: IFormSelectOption[];
+	showAvatar?: boolean;
 };
 export default function FormSelect({
 	name,
@@ -15,6 +17,7 @@ export default function FormSelect({
 	placeholder,
 	isRequired,
 	options = [],
+	showAvatar,
 }: TProps) {
 	const { control } = useFormContext();
 	return (
@@ -56,7 +59,19 @@ export default function FormSelect({
 										id={option.value}
 										textValue={option.label}
 									>
-										{option.label}
+										<span className="flex items-center gap-2.5">
+											{showAvatar && (
+												<Avatar
+													fallback={option.label?.charAt(
+														0,
+													)}
+													size="sm"
+													src={option.url}
+													customSize
+												/>
+											)}
+											{option.label}
+										</span>
 										<ListBox.ItemIndicator />
 									</ListBox.Item>
 								))

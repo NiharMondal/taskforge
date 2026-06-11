@@ -8,5 +8,6 @@ export interface ICommonUserEntity {
 export interface IFormSelectOption {
 	value: string | undefined;
 	label: string | undefined;
+	url?: string | undefined;
 	description?: string;
 }

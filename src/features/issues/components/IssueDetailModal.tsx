@@ -171,8 +171,8 @@ function IssueDetailForm({
 						<Label>Status</Label>
 						<Select
 							aria-label="Status"
-							selectedKey={status}
-							onSelectionChange={(key) =>
+							value={status}
+							onChange={(key) =>
 								key != null &&
 								setStatus(String(key) as IssueStatus)
 							}
@@ -235,7 +235,7 @@ function IssueDetailForm({
 					<Select
 						aria-label="Assignee"
 						defaultValue={assigneeId}
-						onClickCapture={(key) =>
+						onChange={(key) =>
 							key != null && setAssigneeId(String(key))
 						}
 						fullWidth
@@ -263,17 +263,23 @@ function IssueDetailForm({
 											m.userId
 										}
 									>
-										<Avatar
-											fallback={
-												m.user?.name?.charAt(0) ??
-												m.user?.email?.charAt(0) ??
-												m.userId.charAt(0)
-											}
-											shape="circle"
-										/>
-										{m.user?.name ??
-											m.user?.email ??
-											m.userId}
+										<span className="flex items-center gap-2">
+											<Avatar
+												fallback={
+													m.user?.name?.charAt(
+														0,
+													) ??
+													m.user?.email?.charAt(
+														0,
+													) ??
+													m.userId.charAt(0)
+												}
+												shape="circle"
+											/>
+											{m.user?.name ??
+												m.user?.email ??
+												m.userId}
+										</span>
 									</ListBox.Item>
 								))}
 							</ListBox>

@@ -16,8 +16,8 @@ import { TProjectFormValues } from "../schema/project-schema";
  */
 
 /** List the active workspace's projects (`GET /projects`). */
-export async function getProjects(): Promise<Project[]> {
-	const { data } = await apiClient.get<ApiResponse<Project[]>>("/projects");
+export async function getProjects(): Promise<ApiResponse<Project[]>> {
+	const { data } = await apiClient.get("/projects");
 	return data.data;
 }
 

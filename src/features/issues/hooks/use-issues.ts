@@ -1,7 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { createIssue, getIssues, updateIssue } from "../api/issue-api";
-import type { CreateIssueDto, Issue, UpdateIssueDto } from "../types/issue-types";
+import type {
+	CreateIssueDto,
+	Issue,
+	UpdateIssueDto,
+} from "../types/issue-types";
+import { TIssueFormValues } from "../schema/issue-schema";
 
 /**
  * Centralized query keys for the issues feature. Keyed by workspace AND project:
@@ -10,34 +15,34 @@ import type { CreateIssueDto, Issue, UpdateIssueDto } from "../types/issue-types
  * than show the previous scope's issues.
  */
 export const issueKeys = {
-  list: (workspaceId: string, projectId: string) =>
-    ["issues", workspaceId, projectId] as const,
+	list: (workspaceId: string, projectId: string) =>
+		["issues", workspaceId, projectId] as const,
 };
 
 export function useIssues(workspaceId: string, projectId: string) {
-  return useQuery({
-    queryKey: issueKeys.list(workspaceId, projectId),
-    queryFn: () => getIssues(projectId),
-    enabled: !!workspaceId && !!projectId,
-  });
+	return useQuery({
+		queryKey: issueKeys.list(workspaceId, projectId),
+		queryFn: () => getIssues(projectId),
+		enabled: !!workspaceId && !!projectId,
+	});
 }
 
 export function useCreateIssue(workspaceId: string, projectId: string) {
-  const queryClient = useQueryClient();
+	const queryClient = useQueryClient();
 
-  return useMutation({
-    mutationFn: (dto: CreateIssueDto) => createIssue(projectId, dto),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: issueKeys.list(workspaceId, projectId),
-      });
-    },
-  });
+	return useMutation({
+		mutationFn: (dto: TIssueFormValues) => createIssue(projectId, dto),
+		onSuccess: () => {
+			queryClient.invalidateQueries({
+				queryKey: issueKeys.list(workspaceId, projectId),
+			});
+		},
+	});
 }
 
 interface UpdateIssueVars {
-  issueId: string;
-  dto: UpdateIssueDto;
+	issueId: string;
+	dto: UpdateIssueDto;
 }
 
 /**
@@ -47,35 +52,35 @@ interface UpdateIssueVars {
  * the server (e.g. server-side `updatedAt`).
  */
 export function useUpdateIssue(workspaceId: string, projectId: string) {
-  const queryClient = useQueryClient();
-  const key = issueKeys.list(workspaceId, projectId);
+	const queryClient = useQueryClient();
+	const key = issueKeys.list(workspaceId, projectId);
 
-  return useMutation({
-    mutationFn: ({ issueId, dto }: UpdateIssueVars) =>
-      updateIssue(projectId, issueId, dto),
+	return useMutation({
+		mutationFn: ({ issueId, dto }: UpdateIssueVars) =>
+			updateIssue(projectId, issueId, dto),
 
-    onMutate: async ({ issueId, dto }) => {
-      // Cancel in-flight refetches so they don't clobber the optimistic write.
-      await queryClient.cancelQueries({ queryKey: key });
-      const previous = queryClient.getQueryData<Issue[]>(key);
+		onMutate: async ({ issueId, dto }) => {
+			// Cancel in-flight refetches so they don't clobber the optimistic write.
+			await queryClient.cancelQueries({ queryKey: key });
+			const previous = queryClient.getQueryData<Issue[]>(key);
 
-      queryClient.setQueryData<Issue[]>(key, (old) =>
-        old?.map((issue) =>
-          issue.id === issueId ? { ...issue, ...dto } : issue,
-        ),
-      );
+			queryClient.setQueryData<Issue[]>(key, (old) =>
+				old?.map((issue) =>
+					issue.id === issueId ? { ...issue, ...dto } : issue,
+				),
+			);
 
-      return { previous };
-    },
+			return { previous };
+		},
 
-    onError: (_err, _vars, context) => {
-      if (context?.previous) {
-        queryClient.setQueryData(key, context.previous);
-      }
-    },
+		onError: (_err, _vars, context) => {
+			if (context?.previous) {
+				queryClient.setQueryData(key, context.previous);
+			}
+		},
 
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: key });
-    },
-  });
+		onSettled: () => {
+			queryClient.invalidateQueries({ queryKey: key });
+		},
+	});
 }

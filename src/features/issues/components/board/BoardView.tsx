@@ -26,21 +26,14 @@ import { useProjects } from "@/features/projects/hooks/use-projects";
 import { useWorkspace } from "@/features/workspace/context/workspace-context";
 
 import { ISSUE_STATUSES } from "../../constants";
-import {
-	useCreateIssue,
-	useIssues,
-	useUpdateIssue,
-} from "../../hooks/use-issues";
+import { useIssues, useUpdateIssue } from "../../hooks/use-issues";
 import { compareIssueRank, rankBetween } from "../../lib/rank";
-import type {
-	CreateIssueDto,
-	Issue,
-	IssueStatus,
-} from "../../types/issue-types";
+import type { Issue, IssueStatus } from "../../types/issue-types";
 import CreateIssueModal from "../CreateIssueModal";
 import IssueDetailModal from "../IssueDetailModal";
 import BoardColumn from "./BoardColumn";
 import IssueCardBody from "./IssueCardBody";
+import { useBoolean } from "ahooks";
 
 type Columns = Record<IssueStatus, Issue[]>;
 
@@ -88,22 +81,17 @@ function groupByStatus(issues: Issue[]): Columns {
  * backend rank before promising durable ordering.
  */
 export default function BoardView({ projectId }: { projectId: string }) {
-	const [isModalOpen, setIsModalOpen] = useState(false);
+	const [isOpen, { setTrue: openModal, setFalse: closeModal }] = useBoolean();
 	const { activeWorkspaceId } = useWorkspace();
 	const workspaceId = activeWorkspaceId ?? "";
 
-	const { data: projects = [] } = useProjects(workspaceId);
-	const project = projects.find((p) => p.id === projectId);
+	const { data: projects } = useProjects(workspaceId);
+	const project = projects?.data?.find((p) => p.id === projectId);
 
 	const { data: members = [] } = useMemberships(workspaceId);
 
 	const { data, isLoading, isError } = useIssues(workspaceId, projectId);
 	const issues = data ?? EMPTY_ISSUES;
-
-	const { mutateAsync: createIssue, isPending } = useCreateIssue(
-		workspaceId,
-		projectId,
-	);
 	const { mutate: updateIssue } = useUpdateIssue(workspaceId, projectId);
 
 	// Local mirror of the columns so cards can move live during a drag. Resynced
@@ -265,10 +253,6 @@ export default function BoardView({ projectId }: { projectId: string }) {
 		}
 	};
 
-	const handleCreate = async (dto: CreateIssueDto) => {
-		await createIssue(dto);
-	};
-
 	return (
 		<div className="flex flex-col gap-6">
 			<ProjectHeader
@@ -276,7 +260,7 @@ export default function BoardView({ projectId }: { projectId: string }) {
 				project={project}
 				active="board"
 				actions={
-					<Button onPress={() => setIsModalOpen(true)}>
+					<Button onPress={openModal}>
 						<Plus className="h-4 w-4" />
 						New Issue
 					</Button>
@@ -337,11 +321,10 @@ export default function BoardView({ projectId }: { projectId: string }) {
 			)}
 
 			<CreateIssueModal
-				isOpen={isModalOpen}
-				onOpenChange={setIsModalOpen}
-				onSubmit={handleCreate}
+				isOpen={isOpen}
+				onOpenChange={closeModal}
 				members={members}
-				isLoading={isPending}
+				projectId={projectId}
 			/>
 
 			<IssueDetailModal

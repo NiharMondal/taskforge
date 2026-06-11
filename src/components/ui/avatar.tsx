@@ -5,6 +5,7 @@ type AvatarProps = {
 	alt?: string;
 	size?: "sm" | "lg" | "md";
 	shape?: "circle" | "square";
+	customSize?: boolean;
 };
 export default function Avatar({
 	fallback,
@@ -12,9 +13,13 @@ export default function Avatar({
 	alt,
 	size = "md",
 	shape = "circle",
+	customSize,
 }: AvatarProps) {
 	return (
-		<AV size={size} className="rounded-full">
+		<AV
+			size={size}
+			className={cn("rounded-full", { "size-5": customSize })}
+		>
 			<div
 				className={cn(
 					"object-cover",

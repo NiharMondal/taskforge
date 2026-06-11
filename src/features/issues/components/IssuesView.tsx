@@ -10,11 +10,12 @@ import ProjectHeader from "@/features/projects/components/ProjectHeader";
 import { useProjects } from "@/features/projects/hooks/use-projects";
 import { useWorkspace } from "@/features/workspace/context/workspace-context";
 
-import { useCreateIssue, useIssues, useUpdateIssue } from "../hooks/use-issues";
-import type { CreateIssueDto, Issue, IssueStatus } from "../types/issue-types";
+import { useIssues, useUpdateIssue } from "../hooks/use-issues";
+import type { Issue, IssueStatus } from "../types/issue-types";
 import CreateIssueModal from "./CreateIssueModal";
 import IssueDetailModal from "./IssueDetailModal";
 import IssueList from "./IssueList";
+import { useBoolean } from "ahooks";
 
 /**
  * Orchestrates the project-scoped issues page: resolves project + members,
@@ -22,15 +23,15 @@ import IssueList from "./IssueList";
  * route file so the same view can back a future tab layout without change.
  */
 export default function IssuesView({ projectId }: { projectId: string }) {
-	const [isModalOpen, setIsModalOpen] = useState(false);
+	const [isOpen, { setTrue: openModal, setFalse: closeModal }] = useBoolean();
 	const [selectedIssue, setSelectedIssue] = useState<Issue | null>(null);
 	const { activeWorkspaceId } = useWorkspace();
 	const workspaceId = activeWorkspaceId ?? "";
 
 	// The project header reuses the cached workspace projects list — no extra
 	// request, and it stays correct after a workspace switch invalidates caches.
-	const { data: projects = [] } = useProjects(workspaceId);
-	const project = projects.find((p) => p.id === projectId);
+	const { data: projects } = useProjects(workspaceId);
+	const project = projects?.data?.find((p) => p.id === projectId);
 
 	const { data: members = [] } = useMemberships(workspaceId);
 	const {
@@ -39,10 +40,6 @@ export default function IssuesView({ projectId }: { projectId: string }) {
 		isError,
 	} = useIssues(workspaceId, projectId);
 
-	const { mutateAsync: createIssue, isPending } = useCreateIssue(
-		workspaceId,
-		projectId,
-	);
 	const {
 		mutate: updateIssue,
 		variables: updatingVars,
@@ -58,10 +55,6 @@ export default function IssuesView({ projectId }: { projectId: string }) {
 		return map;
 	}, [members]);
 
-	const handleCreate = async (dto: CreateIssueDto) => {
-		await createIssue(dto);
-	};
-
 	const handleStatusChange = (issueId: string, status: IssueStatus) => {
 		updateIssue({ issueId, dto: { status } });
 	};
@@ -73,7 +66,7 @@ export default function IssuesView({ projectId }: { projectId: string }) {
 				project={project}
 				active="issues"
 				actions={
-					<Button onPress={() => setIsModalOpen(true)}>
+					<Button onPress={openModal}>
 						<Plus className="h-4 w-4" />
 						New Issue
 					</Button>
@@ -101,7 +94,7 @@ export default function IssuesView({ projectId }: { projectId: string }) {
 					assigneeNames={assigneeNames}
 					onStatusChange={handleStatusChange}
 					onOpenIssue={setSelectedIssue}
-					onCreateClick={() => setIsModalOpen(true)}
+					onCreateClick={openModal}
 					updatingIssueId={
 						isUpdatingIssue ? updatingVars?.issueId : undefined
 					}
@@ -109,11 +102,10 @@ export default function IssuesView({ projectId }: { projectId: string }) {
 			)}
 
 			<CreateIssueModal
-				isOpen={isModalOpen}
-				onOpenChange={setIsModalOpen}
-				onSubmit={handleCreate}
+				isOpen={isOpen}
+				onOpenChange={closeModal}
 				members={members}
-				isLoading={isPending}
+				projectId={projectId}
 			/>
 
 			<IssueDetailModal

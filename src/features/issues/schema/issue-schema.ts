@@ -5,7 +5,7 @@ export const issueSchema = z.object({
 	description: z.string().optional(),
 	status: z.enum(["BACKLOG", "TODO", "IN_PROGRESS", "IN_REVIEW", "DONE"]),
 	priority: z.enum(["LOW", "MEDIUM", "HIGH", "URGENT"]),
-	assigneeId: z.string(),
+	assigneeId: z.string().nullable().optional(),
 });
 
 export type TIssueFormValues = z.infer<typeof issueSchema>;

@@ -2,7 +2,11 @@ import { apiClient } from "@/lib/axios";
 
 import type { ApiResponse } from "@/types/api";
 
-import type { CreateIssueDto, Issue, UpdateIssueDto } from "../types/issue-types";
+import type {
+	CreateIssueDto,
+	Issue,
+	UpdateIssueDto,
+} from "../types/issue-types";
 
 /**
  * Issue API layer. All issue network calls belong here (AI_GUIDE: never call
@@ -16,22 +20,19 @@ import type { CreateIssueDto, Issue, UpdateIssueDto } from "../types/issue-types
 
 /** List a project's issues (`GET /projects/:projectId/issues`). */
 export async function getIssues(projectId: string): Promise<Issue[]> {
-  const { data } = await apiClient.get<ApiResponse<Issue[]>>(
-    `/projects/${projectId}/issues`,
-  );
-  return data.data;
+	const { data } = await apiClient.get<ApiResponse<Issue[]>>(
+		`/projects/${projectId}/issues`,
+	);
+	return data.data;
 }
 
 /** Create an issue in a project (`POST /projects/:projectId/issues`). */
 export async function createIssue(
-  projectId: string,
-  dto: CreateIssueDto,
-): Promise<Issue> {
-  const { data } = await apiClient.post<ApiResponse<Issue>>(
-    `/projects/${projectId}/issues`,
-    dto,
-  );
-  return data.data;
+	projectId: string,
+	dto: CreateIssueDto,
+): Promise<ApiResponse<Issue>> {
+	const { data } = await apiClient.post(`/projects/${projectId}/issues`, dto);
+	return data.data;
 }
 
 /**
@@ -39,13 +40,13 @@ export async function createIssue(
  * use PATCH per AI_GUIDE → "Update always implement PATCH Method".
  */
 export async function updateIssue(
-  projectId: string,
-  issueId: string,
-  dto: UpdateIssueDto,
+	projectId: string,
+	issueId: string,
+	dto: UpdateIssueDto,
 ): Promise<{ issue: Issue; message: string }> {
-  const { data } = await apiClient.patch<ApiResponse<Issue>>(
-    `/projects/${projectId}/issues/${issueId}`,
-    dto,
-  );
-  return { issue: data.data, message: data.message };
+	const { data } = await apiClient.patch<ApiResponse<Issue>>(
+		`/projects/${projectId}/issues/${issueId}`,
+		dto,
+	);
+	return { issue: data.data, message: data.message };
 }

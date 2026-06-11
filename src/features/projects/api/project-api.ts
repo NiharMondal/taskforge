@@ -22,11 +22,10 @@ export async function getProjects(): Promise<Project[]> {
 }
 
 /** Create a project in the active workspace (`POST /projects`). */
-export async function createProject(dto: TProjectFormValues): Promise<Project> {
-	const { data } = await apiClient.post<ApiResponse<Project>>(
-		"/projects",
-		dto,
-	);
+export async function createProject(
+	dto: TProjectFormValues,
+): Promise<ApiResponse<Project>> {
+	const data = await apiClient.post("/projects", dto);
 	return data.data;
 }
 
@@ -37,11 +36,8 @@ export async function createProject(dto: TProjectFormValues): Promise<Project> {
  */
 export async function updateProject(
 	projectId: string,
-	dto: Partial<TProjectFormValues>,
-): Promise<Project> {
-	const { data } = await apiClient.patch<ApiResponse<Project>>(
-		`/projects/${projectId}`,
-		dto,
-	);
+	dto: TProjectFormValues,
+): Promise<ApiResponse<Project>> {
+	const { data } = await apiClient.patch(`/projects/${projectId}`, dto);
 	return data.data;
 }

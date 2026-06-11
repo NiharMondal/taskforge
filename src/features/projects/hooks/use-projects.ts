@@ -35,7 +35,7 @@ export function useCreateProject(workspaceId: string) {
 
 interface UpdateProjectVars {
   id: string;
-  data: Partial<TProjectFormValues>;
+  data: TProjectFormValues;
 }
 
 /**

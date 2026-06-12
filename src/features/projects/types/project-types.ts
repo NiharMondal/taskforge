@@ -2,7 +2,7 @@ export interface Project {
   id: string;
   name: string;
   key: string;
-  description?: string;
+  description?: string | null;
   workspaceId: string;
   createdAt: string;
   updatedAt: string;

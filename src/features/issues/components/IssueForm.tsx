@@ -114,7 +114,7 @@ export default function IssueForm({
 							: "Creating…"
 						: isEditing
 							? "Save Changes"
-							: "Create Project"}
+							: "Create Issue"}
 				</Button>
 			</div>
 		</FormWrapper>

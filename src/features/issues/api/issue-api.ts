@@ -27,6 +27,12 @@ export async function getIssues(
 ): Promise<ApiResponse<Issue[]>> {
 	return api.get<Issue[]>(`/projects/${projectId}/issues`);
 }
+export async function getSingleIssue(
+	projectId: string,
+	issueId: string,
+): Promise<ApiResponse<Issue>> {
+	return api.get<Issue>(`/projects/${projectId}/issues/${issueId}`);
+}
 
 /** Create an issue in a project (`POST /projects/:projectId/issues`). */
 export async function createIssue(

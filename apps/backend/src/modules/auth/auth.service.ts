@@ -1,5 +1,3 @@
-import { generateSlug } from "@/common/utils/generate-slug";
-import { generateSuffix } from "@/common/utils/generate-suffix";
 import { passwordUtils } from "@/common/utils/password";
 import { PrismaService } from "@/prisma/prisma.service";
 import {
@@ -35,8 +33,6 @@ export class AuthService {
     // 2. Hash password
     const passwordHash = await passwordUtils.hashPassword(password);
 
-    const suffix = generateSuffix();
-    const slug = `${generateSlug(name)}-${suffix}`;
     // 3. Transaction (VERY IMPORTANT)
     const result = await this.prisma.$transaction(async (tx) => {
       // Create user
@@ -52,7 +48,6 @@ export class AuthService {
       const workspace = await tx.workspace.create({
         data: {
           name: `${name}'s Workspace`,
-          slug,
         },
       });
 
@@ -68,14 +63,7 @@ export class AuthService {
       return { user, workspace };
     });
 
-    // 4. Generate JWT
-    const token = this.jwtService.sign({
-      sub: result.user.id,
-      email: result.user.email,
-    });
-
     return {
-      accessToken: token,
       user: {
         id: result.user.id,
         email: result.user.email,

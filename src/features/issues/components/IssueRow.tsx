@@ -38,9 +38,6 @@ export default function IssueRow({
         className="min-w-0 flex-1 text-left"
       >
         <p className="truncate font-medium hover:underline">{issue.title}</p>
-        {issue.description && (
-          <p className="truncate text-sm text-muted">{issue.description}</p>
-        )}
       </button>
 
       <div className="hidden items-center gap-1.5 text-sm text-muted sm:flex">
@@ -50,9 +47,9 @@ export default function IssueRow({
 
       <Select
         aria-label={`Status for ${issue.title}`}
-        selectedKey={issue.status}
+        value={issue.status}
         isDisabled={isUpdating}
-        onSelectionChange={(key) => {
+        onChange={(key) => {
           if (key != null && key !== issue.status) {
             onStatusChange(issue.id, String(key) as IssueStatus);
           }

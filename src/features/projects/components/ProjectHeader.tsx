@@ -30,12 +30,12 @@ export default function ProjectHeader({
 	actions,
 }: ProjectHeaderProps) {
 	const tabs: { key: ProjectTab; label: string; href: string }[] = [
+		{ key: "board", label: "Board", href: `/projects/${projectId}/board` },
 		{
 			key: "issues",
 			label: "Issues",
 			href: `/projects/${projectId}/issues`,
 		},
-		{ key: "board", label: "Board", href: `/projects/${projectId}/board` },
 	];
 
 	return (

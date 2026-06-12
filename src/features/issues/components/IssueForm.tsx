@@ -26,7 +26,7 @@ type Props = {
 };
 
 /** Sentinel ListBox key for "no assignee" (react-aria keys can't be empty). */
-const UNASSIGNED = "__unassigned__";
+export const UNASSIGNED = "__unassigned__";
 
 export default function IssueForm({
 	defaultValues,

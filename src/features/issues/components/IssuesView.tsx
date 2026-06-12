@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 
-import { Alert, Button, Spinner } from "@heroui/react";
+import { Alert, Button, Spinner, toast } from "@heroui/react";
 import { Plus } from "lucide-react";
 
 import { useMemberships } from "@/features/memberships/hooks/use-memberships";
@@ -57,6 +57,7 @@ export default function IssuesView({ projectId }: { projectId: string }) {
 
 	const handleStatusChange = (issueId: string, status: IssueStatus) => {
 		updateIssue({ issueId, dto: { status } });
+		toast.success("Status updated successfully");
 	};
 
 	return (

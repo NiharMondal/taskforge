@@ -1,5 +1,7 @@
 import { cn } from "@heroui/react";
 
+import CreateWorkspaceButton from "@/features/workspace/components/CreateWorkspaceButton";
+
 import { NAV_ITEMS } from "./nav-items";
 import SidebarItem from "./SidebarItem";
 import WorkspaceSwitcher from "./WorkspaceSwitcher";
@@ -17,8 +19,9 @@ export default function Sidebar({ className }: { className?: string }) {
         className,
       )}
     >
-      <div className="border-b border-border p-4">
+      <div className="space-y-2 border-b border-border p-4">
         <WorkspaceSwitcher />
+        <CreateWorkspaceButton />
       </div>
 
       <nav className="flex-1 space-y-1 overflow-y-auto p-2">

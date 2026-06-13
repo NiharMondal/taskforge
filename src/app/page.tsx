@@ -1,9 +1,9 @@
-import { Button } from "@heroui/react";
+import { redirect } from "next/navigation";
 
+/**
+ * Root entry. Sends users into the app shell; `proxy.ts` redirects to /login
+ * if there's no session.
+ */
 export default function Home() {
-  return (
-    <div>
-      <Button className="font-mono">Click me</Button>
-    </div>
-  );
+  redirect("/dashboard");
 }

@@ -1,6 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { getWorkspaces } from "../api/workspace-api";
+import { createWorkspace, getWorkspaces } from "../api/workspace-api";
 
 /** Centralized query keys for the workspace feature. */
 export const workspaceKeys = {
@@ -17,5 +17,21 @@ export function useWorkspaces() {
     // Unwrap the ApiResponse envelope so the cache holds a plain Workspace[].
     queryFn: async () => (await getWorkspaces()).data,
     staleTime: 5 * 60 * 1000,
+  });
+}
+
+/**
+ * Create a workspace. Callers receive the full `ApiResponse` envelope (for the
+ * toast message and the new workspace's id); the workspace list is refetched so
+ * the switcher and the context's quota check pick it up.
+ */
+export function useCreateWorkspace() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: createWorkspace,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: workspaceKeys.all });
+    },
   });
 }

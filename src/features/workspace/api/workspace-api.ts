@@ -3,6 +3,7 @@ import { api } from "@/lib/axios";
 import type { ApiResponse } from "@/types/api";
 
 import type { Workspace } from "../types/workspace-types";
+import type { TWorkspaceFormValues } from "../schema/workspace-schema";
 
 /**
  * Workspace API layer. All workspace network calls belong here (AI_GUIDE:
@@ -21,6 +22,17 @@ import type { Workspace } from "../types/workspace-types";
  */
 export async function getWorkspaces(): Promise<ApiResponse<Workspace[]>> {
   return api.get<Workspace[]>("/workspaces");
+}
+
+/**
+ * Create a workspace for the current user (`POST /workspaces`). The backend
+ * makes the caller the OWNER via a new membership; no workspace header is
+ * needed since the new tenant doesn't exist yet.
+ */
+export async function createWorkspace(
+  dto: TWorkspaceFormValues,
+): Promise<ApiResponse<Workspace>> {
+  return api.post<Workspace>("/workspaces", dto);
 }
 
 /**

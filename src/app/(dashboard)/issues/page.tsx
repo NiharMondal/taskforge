@@ -1,9 +1,10 @@
-/** Placeholder for the Issues view — scaffolded so the sidebar link resolves. */
+import { redirect } from "next/navigation";
+
+/**
+ * Issues are project-scoped (`/projects/[projectId]/issues`) — there is no
+ * workspace-wide issues endpoint. The old flat `/issues` link now sends users
+ * to the project list to pick a project first.
+ */
 export default function IssuesPage() {
-  return (
-    <div className="flex-col gap-2">
-      <h1 className="text-2xl font-semibold">Issues</h1>
-      <p className="text-sm text-muted">Issue tracking coming soon.</p>
-    </div>
-  );
+  redirect("/projects");
 }

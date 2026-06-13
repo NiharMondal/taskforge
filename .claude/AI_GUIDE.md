@@ -13,9 +13,9 @@ Your role is to act as a **senior frontend architect and reviewer**.
 
 ## 1. Think Before Coding
 
-* Always explain the approach before writing code
-* Break problems into components
-* Prefer scalable architecture over quick hacks
+- Always explain the approach before writing code
+- Break problems into components
+- Prefer scalable architecture over quick hacks
 
 ---
 
@@ -23,15 +23,15 @@ Your role is to act as a **senior frontend architect and reviewer**.
 
 This app is similar to:
 
-* Jira (issue tracking)
-* Notion (structured UI)
-* Slack (workspace-based access)
+- Jira (issue tracking)
+- Notion (structured UI)
+- Slack (workspace-based access)
 
 So:
 
-* Everything is **workspace-scoped**
-* UI must reflect **multi-tenancy**
-* Data must be **consistent with backend contracts**
+- Everything is **workspace-scoped**
+- UI must reflect **multi-tenancy**
+- Data must be **consistent with backend contracts**
 
 ---
 
@@ -48,27 +48,25 @@ If something is unclear:
 
 ## Framework
 
-* Next.js (App Router)
-* React (Functional Components)
+- Next.js (App Router)
+- React (Functional Components)
 
 ## State Management
 
-* Use **React Query (TanStack Query)** for server state
-* Avoid Redux unless explicitly needed
-
-## Forms
-
-* Use **React Hook Form + Zod**
+- Use **React Query (TanStack Query)** for server state
+- Avoid Redux unless explicitly needed
 
 ## Styling
 
-* Use **Tailwind CSS**
-* Use **@heroui/react**
+- Use **Tailwind CSS**
+- Use **@heroui/react**
 
 ## Installation
-* Use pnpm to add package if need, pnpm add <package_name>
+
+- Use pnpm to add package if need, pnpm add <package_name>
 
 ## Installed packages
+
 No Need to add these packages
 
     "@heroui/react": "^3.1.0",
@@ -80,6 +78,7 @@ No Need to add these packages
     "next-themes": "^0.4.6",
     "react": "19.2.4",
     "react-dom": "19.2.4"
+
 ---
 
 # 🧱 Architecture Rules
@@ -116,36 +115,42 @@ Each feature should have:
 ```
 
 ---
+
 # Reference
+
 - Follow `schema.prisma` for backend data type
-- 
+-
+
 ---
+
 ## 3. API Layer
 
-* All API calls must be inside `/services` or `/features/*/api`
-* NEVER call fetch directly inside components
+- All API calls must be inside `/services` or `/features/*/api`
+- NEVER call fetch directly inside components
 
 ---
 
 ## 4. Types
 
-* Always define TypeScript types from backend response
-* Keep types centralized
+- Always define TypeScript types from backend response
+- Keep types centralized
 
 ---
 
 # 🔐 Auth & Workspace Rules
 
-* User must always have:
+- User must always have:
+    - `workspaceId`
+    - `membershipRole`
 
-  * `workspaceId`
-  * `membershipRole`
+- Store auth token securely (httpOnly cookie preferred)
 
-* Store auth token securely (httpOnly cookie preferred)
+- Every request must include:
+    - workspace context (header: x-workspace-id)
 
-* Every request must include:
+# MOST IMPORTANT
 
-  * workspace context (header or route)
+When user login they receive accessToken consist of id as sub and email, not workspaceId, because one user can be a member of multiple workspace, so when they switch the workspace id they will see thats' workspace projects and issues, they will come from backend.
 
 ---
 
@@ -155,9 +160,9 @@ Each feature should have:
 
 Must support:
 
-* Drag & drop
-* Column-based layout (status)
-* Real-time feel (optimistic updates)
+- Drag & drop
+- Column-based layout (status)
+- Real-time feel (optimistic updates)
 
 ---
 
@@ -165,10 +170,10 @@ Must support:
 
 Break UI into small pieces:
 
-* IssueCard
-* Column
-* Board
-* SprintSelector
+- IssueCard
+- Column
+- Board
+- SprintSelector
 
 ---
 
@@ -176,19 +181,19 @@ Break UI into small pieces:
 
 ❌ Bad:
 
-* 500+ line component
+- 500+ line component
 
 ✅ Good:
 
-* Small reusable components
+- Small reusable components
 
 ---
 
 # ⚡ Performance Rules
 
-* Use memoization where needed
-* Avoid unnecessary re-renders
-* Use React Query caching properly
+- Use memoization where needed
+- Avoid unnecessary re-renders
+- Use React Query caching properly
 
 ---
 
@@ -196,9 +201,9 @@ Break UI into small pieces:
 
 ## Use React Query for:
 
-* fetching issues
-* board data
-* mutations (create/update/move)
+- fetching issues
+- board data
+- mutations (create/update/move)
 
 ---
 
@@ -206,23 +211,23 @@ Break UI into small pieces:
 
 For drag & drop:
 
-* Update UI immediately
-* Rollback if API fails
+- Update UI immediately
+- Rollback if API fails
 
 ---
 
 # 🚨 Error Handling
 
-* Always handle API errors
-* Show user-friendly messages
-* Do not silently fail
+- Always handle API errors
+- Show user-friendly messages
+- Do not silently fail
 
 ---
 
 # 🧪 Validation Rules
 
-* Validate forms using Zod
-* Do not trust frontend input
+- Validate forms using Zod
+- Do not trust frontend input
 
 ---
 
@@ -239,19 +244,19 @@ Always follow this format:
 
 # ❌ What You Must NOT Do
 
-* Do NOT write large unstructured code
-* Do NOT assume backend behavior
-* Do NOT mix business logic inside UI
-* Do NOT ignore loading/error states
+- Do NOT write large unstructured code
+- Do NOT assume backend behavior
+- Do NOT mix business logic inside UI
+- Do NOT ignore loading/error states
 
 ---
 
 # ✅ What You SHOULD Do
 
-* Think like a senior engineer
-* Optimize for scalability
-* Keep code clean and modular
-* Ask clarifying questions when needed
+- Think like a senior engineer
+- Optimize for scalability
+- Keep code clean and modular
+- Ask clarifying questions when needed
 
 ---
 
@@ -259,7 +264,7 @@ Always follow this format:
 
 When starting, guide step-by-step:
 
-1. Setup project (Next.js + Tailwind + React Query), already installed next.js, tailwind and heroui/react(component library). 
+1. Setup project (Next.js + Tailwind + React Query), already installed next.js, tailwind and heroui/react(component library).
 2. Setup auth flow
 3. Build layout (sidebar + workspace switcher)
 4. Build project page

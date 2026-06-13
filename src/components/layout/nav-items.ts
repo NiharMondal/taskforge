@@ -1,7 +1,6 @@
 import {
   FolderKanban,
   LayoutDashboard,
-  ListTodo,
   Settings,
   type LucideIcon,
 } from "lucide-react";
@@ -14,13 +13,12 @@ export interface NavItem {
 }
 
 /**
- * Primary dashboard navigation. Flat routes per spec/layout.md. When the app
- * moves to workspace-scoped routes (`/workspace/[id]/...`), build the hrefs
- * from the active workspace here.
+ * Primary dashboard navigation. Issues/boards are project-scoped
+ * (`/projects/[id]/issues`), reached by drilling into a project — so they're
+ * intentionally absent from the top-level rail rather than faked as global.
  */
 export const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/projects", label: "Projects", icon: FolderKanban },
-  { href: "/issues", label: "Issues", icon: ListTodo },
   { href: "/settings", label: "Settings", icon: Settings },
 ];

@@ -1,0 +1,52 @@
+import { apiClient } from "@/lib/axios";
+
+import type { ApiResponse } from "@/types/api";
+
+import type {
+	CreateIssueDto,
+	Issue,
+	UpdateIssueDto,
+} from "../types/issue-types";
+
+/**
+ * Issue API layer. All issue network calls belong here (AI_GUIDE: never call
+ * axios/fetch directly from components).
+ *
+ * Issues are project-scoped, so the projectId lives in the route. The workspace
+ * is still resolved from the `x-workspace-id` header that the axios interceptor
+ * attaches automatically — switching workspaces transparently re-scopes the
+ * tenant without touching these paths.
+ */
+
+/** List a project's issues (`GET /projects/:projectId/issues`). */
+export async function getIssues(projectId: string): Promise<Issue[]> {
+	const { data } = await apiClient.get<ApiResponse<Issue[]>>(
+		`/projects/${projectId}/issues`,
+	);
+	return data.data;
+}
+
+/** Create an issue in a project (`POST /projects/:projectId/issues`). */
+export async function createIssue(
+	projectId: string,
+	dto: CreateIssueDto,
+): Promise<ApiResponse<Issue>> {
+	const { data } = await apiClient.post(`/projects/${projectId}/issues`, dto);
+	return data.data;
+}
+
+/**
+ * Update an issue (`PATCH /projects/:projectId/issues/:issueId`). All updates
+ * use PATCH per AI_GUIDE → "Update always implement PATCH Method".
+ */
+export async function updateIssue(
+	projectId: string,
+	issueId: string,
+	dto: UpdateIssueDto,
+): Promise<{ issue: Issue; message: string }> {
+	const { data } = await apiClient.patch<ApiResponse<Issue>>(
+		`/projects/${projectId}/issues/${issueId}`,
+		dto,
+	);
+	return { issue: data.data, message: data.message };
+}

@@ -42,3 +42,17 @@ function extractMessage(body?: ApiErrorResponse): string | undefined {
   if (!body?.message) return undefined;
   return Array.isArray(body.message) ? body.message.join(", ") : body.message;
 }
+
+/**
+ * Best-effort user-facing message for any thrown value. Everything rejected by
+ * `apiClient` is already an {@link ApiError}, but this normalizes unknown throws
+ * too so UI error handlers can render a string unconditionally.
+ */
+export function getApiErrorMessage(
+  error: unknown,
+  fallback = "Something went wrong. Please try again.",
+): string {
+  if (error instanceof ApiError) return error.message || fallback;
+  if (error instanceof Error) return error.message || fallback;
+  return fallback;
+}

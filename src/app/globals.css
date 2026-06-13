@@ -1,87 +1,221 @@
 @import "tailwindcss";
-@import "@heroui/styles"; 
+@import "@heroui/styles";
 
- :root,
- .light,
- .default,
- [data-theme="light"],
- [data-theme="default"] {
-   /* Theme Colors (Light Mode) */
-   --accent: oklch(57.74% 0.2091 273.85);
-   --accent-foreground: oklch(99.11% 0 0);
-   --background: oklch(97.02% 0.0100 273.85);
-   --border: oklch(90.00% 0.0100 273.85);
-   --danger: oklch(65.32% 0.2375 28.14);
-   --danger-foreground: oklch(99.11% 0 0);
-   --default: oklch(94.00% 0.0100 273.85);
-   --default-foreground: oklch(21.03% 0.0059 273.85);
-   --field-background: oklch(100.00% 0.0050 273.85);
-   --field-border: transparent;
-   --field-foreground: oklch(21.03% 0.0100 273.85);
-   --field-placeholder: oklch(55.17% 0.0200 273.85);
-   --focus: oklch(57.74% 0.2091 273.85);
-   --foreground: oklch(21.03% 0.0100 273.85);
-   --muted: oklch(55.17% 0.0200 273.85);
-   --overlay: oklch(100.00% 0.0030 273.85);
-   --overlay-foreground: oklch(21.03% 0.0100 273.85);
-   --scrollbar: oklch(87.10% 0.0100 273.85);
-   --segment: oklch(100.00% 0.0100 273.85);
-   --segment-foreground: oklch(21.03% 0.0100 273.85);
-   --separator: oklch(92.00% 0.0100 273.85);
-   --success: oklch(73.29% 0.1974 153.21);
-   --success-foreground: oklch(21.03% 0.0059 153.21);
-   --surface: oklch(100.00% 0.0050 273.85);
-   --surface-foreground: oklch(21.03% 0.0100 273.85);
-   --surface-secondary: oklch(95.24% 0.0080 273.85);
-   --surface-secondary-foreground: oklch(21.03% 0.0100 273.85);
-   --surface-tertiary: oklch(93.73% 0.0080 273.85);
-   --surface-tertiary-foreground: oklch(21.03% 0.0100 273.85);
-   --warning: oklch(78.19% 0.1617 74.73);
-   --warning-foreground: oklch(21.03% 0.0059 74.73);
- 
-   /* Border Radius */
-   --radius: 0.125rem;
-   --field-radius: 0.25rem;
- 
-   /* Font Family */
-   /* Make sure to load Inter font in your app */
-   --font-sans: var(--font-inter);
-   --font-mono: var(--font-geist-mono);
- }
- 
- .dark,
- [data-theme="dark"] {
-   color-scheme: dark;
-   /* Theme Colors (Dark Mode) */
-   --accent: oklch(57.74% 0.2091 273.85);
-   --accent-foreground: oklch(99.11% 0 0);
-   --background: oklch(12.00% 0.0100 273.85);
-   --border: oklch(28.00% 0.0100 273.85);
-   --danger: oklch(59.40% 0.2006 27.03);
-   --danger-foreground: oklch(99.11% 0 0);
-   --default: oklch(27.40% 0.0100 273.85);
-   --default-foreground: oklch(99.11% 0 0);
-   --field-background: oklch(21.03% 0.0200 273.85);
-   --field-border: transparent;
-   --field-foreground: oklch(99.11% 0.0100 273.85);
-   --field-placeholder: oklch(70.50% 0.0200 273.85);
-   --focus: oklch(57.74% 0.2091 273.85);
-   --foreground: oklch(99.11% 0.0100 273.85);
-   --muted: oklch(70.50% 0.0200 273.85);
-   --overlay: oklch(21.03% 0.0200 273.85);
-   --overlay-foreground: oklch(99.11% 0.0100 273.85);
-   --scrollbar: oklch(70.50% 0.0100 273.85);
-   --segment: oklch(39.64% 0.0100 273.85);
-   --segment-foreground: oklch(99.11% 0.0100 273.85);
-   --separator: oklch(25.00% 0.0100 273.85);
-   --success: oklch(73.29% 0.1974 153.21);
-   --success-foreground: oklch(21.03% 0.0059 153.21);
-   --surface: oklch(21.03% 0.0200 273.85);
-   --surface-foreground: oklch(99.11% 0.0100 273.85);
-   --surface-secondary: oklch(25.70% 0.0150 273.85);
-   --surface-secondary-foreground: oklch(99.11% 0.0100 273.85);
-   --surface-tertiary: oklch(27.21% 0.0150 273.85);
-   --surface-tertiary-foreground: oklch(99.11% 0.0100 273.85);
-   --warning: oklch(82.03% 0.1416 78.74);
-   --warning-foreground: oklch(21.03% 0.0059 78.74);
- }
+:root,
+.light,
+.default,
+[data-theme="light"],
+[data-theme="default"] {
+	/* Theme Colors (Light Mode) */
+	--accent: oklch(57.74% 0.2091 273.85);
+	--accent-foreground: oklch(99.11% 0 0);
+	--background: oklch(97.02% 0.01 273.85);
+	--border: oklch(90% 0.01 273.85);
+	--danger: oklch(65.32% 0.2375 28.14);
+	--danger-foreground: oklch(99.11% 0 0);
+	--default: oklch(94% 0.01 273.85);
+	--default-foreground: oklch(21.03% 0.0059 273.85);
+	--field-background: oklch(100% 0.005 273.85);
+	--field-border: var(--border);
+	--field-border-width: 1px;
+	--field-foreground: oklch(21.03% 0.01 273.85);
+	--field-placeholder: oklch(55.17% 0.02 273.85);
+	--focus: oklch(57.74% 0.2091 273.85);
+	--foreground: oklch(21.03% 0.01 273.85);
+	--muted: oklch(55.17% 0.02 273.85);
+	--overlay: oklch(100% 0.003 273.85);
+	--overlay-foreground: oklch(21.03% 0.01 273.85);
+	--scrollbar: oklch(87.1% 0.01 273.85);
+	--segment: oklch(100% 0.01 273.85);
+	--segment-foreground: oklch(21.03% 0.01 273.85);
+	--separator: oklch(92% 0.01 273.85);
+	--success: oklch(73.29% 0.1974 153.21);
+	--success-foreground: oklch(21.03% 0.0059 153.21);
+	--surface: oklch(100% 0.005 273.85);
+	--surface-foreground: oklch(21.03% 0.01 273.85);
+	--surface-secondary: oklch(95.24% 0.008 273.85);
+	--surface-secondary-foreground: oklch(21.03% 0.01 273.85);
+	--surface-tertiary: oklch(93.73% 0.008 273.85);
+	--surface-tertiary-foreground: oklch(21.03% 0.01 273.85);
+	--warning: oklch(78.19% 0.1617 74.73);
+	--warning-foreground: oklch(21.03% 0.0059 74.73);
+
+	/* Border Radius */
+	--radius: 0.125rem;
+	--field-radius: 0.25rem;
+
+	/* Font Family */
+	/* Make sure to load Inter font in your app */
+	--font-sans: var(--font-inter);
+	--font-mono: var(--font-geist-mono);
+}
+
+.dark,
+[data-theme="dark"] {
+	color-scheme: dark;
+	/* Theme Colors (Dark Mode) */
+	--accent: oklch(57.74% 0.2091 273.85);
+	--accent-foreground: oklch(99.11% 0 0);
+	--background: oklch(12% 0.01 273.85);
+	--border: oklch(28% 0.01 273.85);
+	--field-border: oklch(40.541% 0.02488 266.971);
+	--danger: oklch(59.4% 0.2006 27.03);
+	--danger-foreground: oklch(99.11% 0 0);
+	--default: oklch(27.4% 0.01 273.85);
+	--default-foreground: oklch(99.11% 0 0);
+	--field-background: oklch(21.03% 0.02 273.85);
+	--field-border: var(--field-border);
+	--field-border-width: 1px;
+	--field-foreground: oklch(99.11% 0.01 273.85);
+	--field-placeholder: oklch(70.5% 0.02 273.85);
+	--focus: oklch(57.74% 0.2091 273.85);
+	--foreground: oklch(99.11% 0.01 273.85);
+	--muted: oklch(70.5% 0.02 273.85);
+	--overlay: oklch(21.03% 0.02 273.85);
+	--overlay-foreground: oklch(99.11% 0.01 273.85);
+	--scrollbar: oklch(70.5% 0.01 273.85);
+	--segment: oklch(39.64% 0.01 273.85);
+	--segment-foreground: oklch(99.11% 0.01 273.85);
+	--separator: oklch(25% 0.01 273.85);
+	--success: oklch(73.29% 0.1974 153.21);
+	--success-foreground: oklch(21.03% 0.0059 153.21);
+	--surface: oklch(21.03% 0.02 273.85);
+	--surface-foreground: oklch(99.11% 0.01 273.85);
+	--surface-secondary: oklch(25.7% 0.015 273.85);
+	--surface-secondary-foreground: oklch(99.11% 0.01 273.85);
+	--surface-tertiary: oklch(27.21% 0.015 273.85);
+	--surface-tertiary-foreground: oklch(99.11% 0.01 273.85);
+	--warning: oklch(82.03% 0.1416 78.74);
+	--warning-foreground: oklch(21.03% 0.0059 78.74);
+}
+
+/* ---------------------------------------------------------------------------
+ * Rich text editor (Tiptap)
+ * ------------------------------------------------------------------------- */
+.rich-text-editor {
+	border: var(--field-border-width) solid var(--field-border);
+	border-radius: var(--field-radius);
+	background: var(--field-background);
+	overflow: hidden;
+}
+
+.rich-text-editor:focus-within {
+	outline: 2px solid var(--focus);
+	outline-offset: -1px;
+}
+
+.rich-text-editor[data-invalid] {
+	border-color: var(--danger);
+}
+
+.rich-text-editor__toolbar {
+	display: flex;
+	align-items: center;
+	gap: 0.125rem;
+	flex-wrap: wrap;
+	padding: 0.25rem;
+	border-bottom: var(--field-border-width) solid var(--field-border);
+	background: var(--surface-secondary);
+}
+
+.rich-text-editor__btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.75rem;
+	height: 1.75rem;
+	border-radius: var(--radius);
+	color: var(--field-foreground);
+	cursor: pointer;
+}
+
+.rich-text-editor__btn:hover:not(:disabled) {
+	background: var(--surface-tertiary);
+}
+
+.rich-text-editor__btn[data-active] {
+	background: var(--accent);
+	color: var(--accent-foreground);
+}
+
+.rich-text-editor__btn:disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
+}
+
+.rich-text-editor__divider {
+	width: 1px;
+	align-self: stretch;
+	margin: 0.125rem 0.25rem;
+	background: var(--separator);
+}
+
+.rich-text-editor__body {
+	position: relative;
+}
+
+.rich-text-editor__placeholder {
+	position: absolute;
+	top: 0.625rem;
+	left: 0.75rem;
+	color: var(--field-placeholder);
+	pointer-events: none;
+	user-select: none;
+}
+
+.tiptap-content {
+	height: 400px;
+	overflow-y: auto;
+	padding: 0.625rem 0.75rem;
+	color: var(--field-foreground);
+	outline: none;
+}
+
+.tiptap-content > * + * {
+	margin-top: 0.5rem;
+}
+
+.tiptap-content h2 {
+	font-size: 1.25rem;
+	font-weight: 600;
+}
+
+.tiptap-content ul,
+.tiptap-content ol {
+	padding-left: 1.25rem;
+}
+
+.tiptap-content ul {
+	list-style: disc;
+}
+
+.tiptap-content ol {
+	list-style: decimal;
+}
+
+.tiptap-content blockquote {
+	border-left: 3px solid var(--border);
+	padding-left: 0.75rem;
+	color: var(--muted);
+}
+
+.tiptap-content code {
+	background: var(--surface-secondary);
+	border-radius: var(--radius);
+	padding: 0.1rem 0.3rem;
+	font-family: var(--font-mono);
+	font-size: 0.875em;
+}
+
+.tiptap-content pre {
+	background: var(--surface-secondary);
+	border-radius: var(--field-radius);
+	padding: 0.75rem;
+	font-family: var(--font-mono);
+	overflow-x: auto;
+}
+
+.tiptap-content pre code {
+	background: none;
+	padding: 0;
+}

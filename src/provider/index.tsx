@@ -8,11 +8,11 @@ import { ThemeProvider } from "./theme-provider";
  * Auth wraps React Query so authenticated requests can resolve the session.
  */
 export function Providers({ children }: { children: React.ReactNode }) {
-  return (
-    <ThemeProvider>
-      <AuthProvider>
-        <QueryProvider>{children}</QueryProvider>
-      </AuthProvider>
-    </ThemeProvider>
-  );
+	return (
+		<ThemeProvider>
+			<AuthProvider>
+				<QueryProvider>{children}</QueryProvider>
+			</AuthProvider>
+		</ThemeProvider>
+	);
 }

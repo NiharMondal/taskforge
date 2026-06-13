@@ -1,4 +1,4 @@
-import { apiClient } from "@/lib/axios";
+import { api } from "@/lib/axios";
 
 import type { ApiResponse } from "@/types/api";
 
@@ -9,6 +9,9 @@ import { TProjectFormValues } from "../schema/project-schema";
  * Project API layer. All project network calls belong here (AI_GUIDE: never
  * call axios/fetch directly from components).
  *
+ * Every function returns the full `ApiResponse` envelope (via `api` in
+ * `lib/axios`); hooks unwrap `.data` where only the payload matters.
+ *
  * These endpoints are workspace-scoped via the `x-workspace-id` header that the
  * axios interceptor attaches automatically (see `lib/active-workspace`), so the
  * routes themselves carry no workspace id — switching workspaces transparently
@@ -17,16 +20,14 @@ import { TProjectFormValues } from "../schema/project-schema";
 
 /** List the active workspace's projects (`GET /projects`). */
 export async function getProjects(): Promise<ApiResponse<Project[]>> {
-	const { data } = await apiClient.get("/projects");
-	return data.data;
+	return api.get<Project[]>("/projects");
 }
 
 /** Create a project in the active workspace (`POST /projects`). */
 export async function createProject(
 	dto: TProjectFormValues,
 ): Promise<ApiResponse<Project>> {
-	const data = await apiClient.post("/projects", dto);
-	return data.data;
+	return api.post<Project>("/projects", dto);
 }
 
 /**
@@ -38,6 +39,5 @@ export async function updateProject(
 	projectId: string,
 	dto: TProjectFormValues,
 ): Promise<ApiResponse<Project>> {
-	const { data } = await apiClient.patch(`/projects/${projectId}`, dto);
-	return data.data;
+	return api.patch<Project>(`/projects/${projectId}`, dto);
 }

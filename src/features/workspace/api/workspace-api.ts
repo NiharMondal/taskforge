@@ -1,4 +1,4 @@
-import { apiClient } from "@/lib/axios";
+import { api } from "@/lib/axios";
 
 import type { ApiResponse } from "@/types/api";
 
@@ -7,6 +7,9 @@ import type { Workspace } from "../types/workspace-types";
 /**
  * Workspace API layer. All workspace network calls belong here (AI_GUIDE:
  * never call axios/fetch directly from components).
+ *
+ * Every function returns the full `ApiResponse` envelope (via `api` in
+ * `lib/axios`); hooks unwrap `.data` where only the payload matters.
  */
 
 /**
@@ -16,9 +19,8 @@ import type { Workspace } from "../types/workspace-types";
  * workspace), so this needs no parameters — it returns every tenant the caller
  * can switch into. See AI_GUIDE → "Backend endpoint": `GET /workspaces`.
  */
-export async function getWorkspaces(): Promise<Workspace[]> {
-  const { data } = await apiClient.get<ApiResponse<Workspace[]>>("/workspaces");
-  return data.data;
+export async function getWorkspaces(): Promise<ApiResponse<Workspace[]>> {
+  return api.get<Workspace[]>("/workspaces");
 }
 
 /**

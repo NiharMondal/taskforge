@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 
-import { Alert, Button, Spinner } from "@heroui/react";
+import { Alert, Button, Spinner, toast } from "@heroui/react";
 import { Plus } from "lucide-react";
 
 import { useMemberships } from "@/features/memberships/hooks/use-memberships";
@@ -31,7 +31,7 @@ export default function IssuesView({ projectId }: { projectId: string }) {
 	// The project header reuses the cached workspace projects list — no extra
 	// request, and it stays correct after a workspace switch invalidates caches.
 	const { data: projects } = useProjects(workspaceId);
-	const project = projects?.data?.find((p) => p.id === projectId);
+	const project = projects?.find((p) => p.id === projectId);
 
 	const { data: members = [] } = useMemberships(workspaceId);
 	const {
@@ -57,6 +57,7 @@ export default function IssuesView({ projectId }: { projectId: string }) {
 
 	const handleStatusChange = (issueId: string, status: IssueStatus) => {
 		updateIssue({ issueId, dto: { status } });
+		toast.success("Status updated successfully");
 	};
 
 	return (

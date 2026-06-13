@@ -26,7 +26,7 @@ export default function FormWrapper({ methods, onSubmit, children }: Props) {
 			<AriaForm
 				onSubmit={methods.handleSubmit(onSubmit)}
 				validationBehavior="aria"
-				className="space-y-2"
+				className="space-y-3"
 			>
 				{children}
 			</AriaForm>

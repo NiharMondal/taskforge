@@ -13,11 +13,14 @@ export const projectKeys = {
  * Projects in a workspace. The request is scoped by the `x-workspace-id` header,
  * but we still key the cache by workspaceId so switching tenants refetches
  * (and never shows the previous workspace's projects from cache).
+ *
+ * The queryFn unwraps the `ApiResponse` envelope so the cache holds a plain
+ * `Project[]` — the optimistic update in `useUpdateProject` depends on that.
  */
 export function useProjects(workspaceId: string) {
   return useQuery({
     queryKey: projectKeys.list(workspaceId),
-    queryFn: getProjects,
+    queryFn: async () => (await getProjects()).data,
     enabled: !!workspaceId,
   });
 }

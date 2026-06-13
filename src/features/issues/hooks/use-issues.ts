@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { createIssue, getIssues, updateIssue } from "../api/issue-api";
-import type {
-	CreateIssueDto,
-	Issue,
-	UpdateIssueDto,
-} from "../types/issue-types";
+import {
+	createIssue,
+	getIssues,
+	getSingleIssue,
+	updateIssue,
+} from "../api/issue-api";
+import type { Issue, UpdateIssueDto } from "../types/issue-types";
 import { TIssueFormValues } from "../schema/issue-schema";
 
 /**
@@ -22,7 +23,22 @@ export const issueKeys = {
 export function useIssues(workspaceId: string, projectId: string) {
 	return useQuery({
 		queryKey: issueKeys.list(workspaceId, projectId),
-		queryFn: () => getIssues(projectId),
+		// Unwrap the ApiResponse envelope so the cache holds a plain Issue[] —
+		// the optimistic update in useUpdateIssue depends on that.
+		queryFn: async () => (await getIssues(projectId)).data,
+		enabled: !!workspaceId && !!projectId,
+	});
+}
+export function useSingleIssue(
+	workspaceId: string,
+	projectId: string,
+	issueId: string,
+) {
+	return useQuery({
+		queryKey: issueKeys.list(workspaceId, projectId),
+		// Unwrap the ApiResponse envelope so the cache holds a plain Issue[] —
+		// the optimistic update in useUpdateIssue depends on that.
+		queryFn: async () => (await getSingleIssue(projectId, issueId)).data,
 		enabled: !!workspaceId && !!projectId,
 	});
 }

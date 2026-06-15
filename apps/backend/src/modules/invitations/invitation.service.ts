@@ -8,14 +8,20 @@ import {
   Logger,
   NotFoundException,
 } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { InvitationStatus, WorkspaceRole } from "generated/prisma/enums";
+import { MailService } from "../mail/mail.service";
 import { SendInvitationDto } from "./dto/send-invitation.dto";
 
 @Injectable()
 export class InvitationService {
   private readonly logger = new Logger(InvitationService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private mail: MailService,
+    private config: ConfigService,
+  ) {}
 
   async sendInvitation(
     workspaceId: string,
@@ -82,11 +88,19 @@ export class InvitationService {
       select: { name: true },
     });
 
-    this.sendInvitationEmail({
+    // Fire-and-forget: a transient email failure must not roll back a
+    // successfully persisted invitation. Failures are logged for retry/audit.
+    void this.sendInvitationEmail({
       to: dto.email,
       inviterName: actor_user?.name ?? "A workspace member",
       workspaceName: workspace?.name ?? "a workspace",
       token,
+    }).catch((error) => {
+      this.logger.error(
+        `Failed to send invitation email to ${dto.email}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
     });
 
     return invitation;
@@ -230,16 +244,46 @@ export class InvitationService {
     });
   }
 
-  private sendInvitationEmail(params: {
+  private async sendInvitationEmail(params: {
     to: string;
     inviterName: string;
     workspaceName: string;
     token: string;
   }) {
-    this.logger.log(
-      `[EMAIL] Invitation to ${params.to} from ${params.inviterName} ` +
-        `for workspace "${params.workspaceName}" — ` +
-        `token: ${params.token} (expires in 7 days)`,
-    );
+    const appUrl =
+      this.config.get<string>("APP_URL") ?? "http://localhost:3000";
+    const acceptUrl = `${appUrl.replace(/\/+$/, "")}/invitations/${
+      params.token
+    }`;
+
+    const subject = `${params.inviterName} invited you to join "${params.workspaceName}" on Taskforge`;
+
+    const text =
+      `${params.inviterName} has invited you to join the "${params.workspaceName}" workspace on Taskforge.\n\n` +
+      `Accept your invitation: ${acceptUrl}\n\n` +
+      `This invitation expires in 7 days. If you weren't expecting this, you can safely ignore this email.`;
+
+    const html = `
+      <div style="font-family: Arial, Helvetica, sans-serif; max-width: 480px; margin: 0 auto; color: #1a1a1a;">
+        <h2 style="margin-bottom: 8px;">You've been invited to Taskforge</h2>
+        <p><strong>${params.inviterName}</strong> has invited you to join the
+          <strong>${params.workspaceName}</strong> workspace.</p>
+        <p style="margin: 24px 0;">
+          <a href="${acceptUrl}"
+             style="background:#4f46e5;color:#fff;padding:12px 20px;border-radius:6px;text-decoration:none;display:inline-block;">
+            Accept invitation
+          </a>
+        </p>
+        <p style="font-size: 13px; color: #666;">
+          Or paste this link into your browser:<br />
+          <a href="${acceptUrl}">${acceptUrl}</a>
+        </p>
+        <p style="font-size: 12px; color: #999; margin-top: 24px;">
+          This invitation expires in 7 days. If you weren't expecting this, you can safely ignore this email.
+        </p>
+      </div>
+    `;
+
+    await this.mail.sendMail({ to: params.to, subject, text, html });
   }
 }

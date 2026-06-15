@@ -35,7 +35,7 @@ export default function BoardColumn({
   const { setNodeRef, isOver } = useDroppable({ id: status });
 
   return (
-    <div className="flex w-68.75 shrink-0 flex-col gap-3">
+    <div className="flex w-77.5 shrink-0 flex-col gap-3">
       <div className="flex items-center gap-2 px-1">
         <h2 className="text-sm font-semibold text-muted">{label}</h2>
         <Chip size="sm" variant="soft">

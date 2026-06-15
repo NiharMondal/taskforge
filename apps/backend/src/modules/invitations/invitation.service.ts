@@ -252,20 +252,20 @@ export class InvitationService {
   }) {
     const appUrl =
       this.config.get<string>("APP_URL") ?? "http://localhost:3000";
-    const acceptUrl = `${appUrl.replace(/\/+$/, "")}/invitations/${
+    const acceptUrl = `${appUrl.replace(/\/+$/, "")}/invitations/accept?token=${
       params.token
     }`;
 
-    const subject = `${params.inviterName} invited you to join "${params.workspaceName}" on Taskforge`;
+    const subject = `${params.inviterName} invited you to join "${params.workspaceName}" on TaskForge`;
 
     const text =
-      `${params.inviterName} has invited you to join the "${params.workspaceName}" workspace on Taskforge.\n\n` +
+      `${params.inviterName} has invited you to join the "${params.workspaceName}" workspace on TaskForge.\n\n` +
       `Accept your invitation: ${acceptUrl}\n\n` +
       `This invitation expires in 7 days. If you weren't expecting this, you can safely ignore this email.`;
 
     const html = `
       <div style="font-family: Arial, Helvetica, sans-serif; max-width: 480px; margin: 0 auto; color: #1a1a1a;">
-        <h2 style="margin-bottom: 8px;">You've been invited to Taskforge</h2>
+        <h2 style="margin-bottom: 8px;">You've been invited to TaskForge</h2>
         <p><strong>${params.inviterName}</strong> has invited you to join the
           <strong>${params.workspaceName}</strong> workspace.</p>
         <p style="margin: 24px 0;">

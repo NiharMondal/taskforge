@@ -81,16 +81,23 @@ export default function IssueDetailComponent({ projectId, issueId }: Props) {
 					defaultValues={defaultValues as TIssueFormValues}
 				/>
 			</div>
-			<div className="flex flex-col gap-5">
-				<div className="border p-3 rounded-md">
-					Lorem ipsum dolor sit amet consectetur adipisicing elit. Cum
-					aut, eius quidem praesentium facere est possimus debitis
-					odio unde vero assumenda hic minima corporis ad pariatur
-					inventore! Commodi a rerum provident assumenda facere,
-					error, ex unde dolores quo earum reiciendis. Cumque ex
-					fugiat neque tempore animi distinctio esse ullam sit.
-				</div>
+			<div className="flex flex-col gap-3.5 border p-3 rounded-md">
+				<Staff designation="Reporter" value={issue?.reporter?.name} />
+				<Staff designation="Assignee" value={issue?.assignee?.name} />
 			</div>
+		</div>
+	);
+}
+
+type StaffProps = {
+	designation: string;
+	value: string | undefined;
+};
+function Staff({ designation, value }: StaffProps) {
+	return (
+		<div className="flex flex-col gap-0.5">
+			<h5 className="font-semibold">{designation}</h5>
+			<p>{value ?? "--"}</p>
 		</div>
 	);
 }

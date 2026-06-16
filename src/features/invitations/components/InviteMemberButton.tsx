@@ -52,7 +52,7 @@ export default function InviteMemberButton({
 			<MyModal
 				isOpen={isOpen}
 				onOpenChange={closeModal}
-				size="md"
+				size="lg"
 				title="Invite Member"
 			>
 				<InviteForm

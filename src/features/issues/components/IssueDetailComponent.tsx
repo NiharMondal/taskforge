@@ -8,6 +8,7 @@ import IssueForm, { UNASSIGNED } from "./IssueForm";
 import { toast } from "@heroui/react";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { useMemo } from "react";
+import { useRouter } from "next/navigation";
 
 type Props = {
 	projectId: string;
@@ -15,10 +16,14 @@ type Props = {
 };
 
 export default function IssueDetailComponent({ projectId, issueId }: Props) {
+	const router  = useRouter();
 	const { activeWorkspaceId } = useWorkspace();
 	const workspaceId = activeWorkspaceId ?? "";
 	const { data: issue } = useSingleIssue(workspaceId, projectId, issueId);
 	const { data: members = [] } = useMemberships(workspaceId);
+	const onCancel = ()=>{
+		router.back()
+	}
 	const { mutateAsync: updateIssue, isPending } = useUpdateIssue(
 		workspaceId,
 		projectId,
@@ -79,6 +84,7 @@ export default function IssueDetailComponent({ projectId, issueId }: Props) {
 					onSubmit={handleUpdateIssue}
 					members={members}
 					defaultValues={defaultValues as TIssueFormValues}
+					onCancel={onCancel}
 				/>
 			</div>
 			<div className="flex flex-col gap-3.5 border p-3 rounded-md">

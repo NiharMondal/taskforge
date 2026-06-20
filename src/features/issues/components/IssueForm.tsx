@@ -15,7 +15,7 @@ import { ISSUE_PRIORITIES, ISSUE_STATUSES } from "../constants";
 import { Member } from "@/features/memberships/types/membership-types";
 
 type Props = {
-	defaultValues?: TIssueFormValues | null;
+	defaultValues?: TIssueFormValues | undefined;
 	onSubmit: (
 		values: TIssueFormValues,
 	) => Promise<boolean | void> | boolean | void;
@@ -40,13 +40,19 @@ export default function IssueForm({
 
 	const methods = useForm<TIssueFormValues>({
 		resolver: zodResolver(issueSchema),
-		defaultValues: defaultValues ?? {
+		defaultValues: {
 			title: "",
 			description: "",
 			assigneeId: null,
 			status: "BACKLOG",
 			priority: "LOW",
 		},
+		// `defaultValues` is only read once on mount. When editing, the issue is
+		// fetched async, so feed it through `values` to keep the form in sync once
+		// the data arrives. `keepDirtyValues` avoids clobbering edits if a slow
+		// fetch resolves after the user has started typing.
+		values: defaultValues,
+		resetOptions: { keepDirtyValues: true },
 	});
 
 	const handleFormSubmit = async (values: TIssueFormValues) => {

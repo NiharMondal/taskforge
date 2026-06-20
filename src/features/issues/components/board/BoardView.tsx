@@ -253,6 +253,10 @@ export default function BoardView({ projectId }: { projectId: string }) {
 		}
 	};
 
+	const handleClose = () => {
+		setSelectedIssue(null);
+		closeModal();
+	};
 	return (
 		<div className="flex flex-col gap-6">
 			<ProjectHeader
@@ -329,7 +333,7 @@ export default function BoardView({ projectId }: { projectId: string }) {
 
 			<IssueDetailModal
 				issue={selectedIssue}
-				onClose={() => setSelectedIssue(null)}
+				onClose={handleClose}
 				members={members}
 				workspaceId={workspaceId}
 				projectId={projectId}

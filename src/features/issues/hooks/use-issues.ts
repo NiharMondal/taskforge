@@ -18,6 +18,8 @@ import { TIssueFormValues } from "../schema/issue-schema";
 export const issueKeys = {
 	list: (workspaceId: string, projectId: string) =>
 		["issues", workspaceId, projectId] as const,
+	detail: (workspaceId: string, projectId: string, issueId: string) =>
+		["issues", workspaceId, projectId, issueId] as const,
 };
 
 export function useIssues(workspaceId: string, projectId: string) {
@@ -35,11 +37,14 @@ export function useSingleIssue(
 	issueId: string,
 ) {
 	return useQuery({
-		queryKey: issueKeys.list(workspaceId, projectId),
-		// Unwrap the ApiResponse envelope so the cache holds a plain Issue[] —
-		// the optimistic update in useUpdateIssue depends on that.
+		// Distinct key from the list query — both used to share
+		// ["issues", workspaceId, projectId], so loading a single issue
+		// overwrote the list cache with one object and the list view then
+		// tried to iterate a non-array. Keep the detail entry separate.
+		queryKey: issueKeys.detail(workspaceId, projectId, issueId),
+		// Unwrap the ApiResponse envelope so the cache holds a plain Issue.
 		queryFn: async () => (await getSingleIssue(projectId, issueId)).data,
-		enabled: !!workspaceId && !!projectId,
+		enabled: !!workspaceId && !!projectId && !!issueId,
 	});
 }
 

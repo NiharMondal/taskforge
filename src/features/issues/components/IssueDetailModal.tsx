@@ -10,7 +10,6 @@ import { useUpdateIssue } from "../hooks/use-issues";
 import { TIssueFormValues } from "../schema/issue-schema";
 import type { Issue, UpdateIssueDto } from "../types/issue-types";
 import IssueForm, { UNASSIGNED } from "./IssueForm";
-import { useMemo } from "react";
 
 type TProps = {
 	/** The issue to edit; null closes the modal. */

@@ -5,6 +5,7 @@ import { useMemberships } from "@/features/memberships/hooks/use-memberships";
 import { UpdateIssueDto } from "../types/issue-types";
 import { TIssueFormValues } from "../schema/issue-schema";
 import IssueForm, { UNASSIGNED } from "./IssueForm";
+import { useSprints } from "@/features/sprint/hooks/use-sprints";
 import { toast } from "@heroui/react";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { useMemo } from "react";
@@ -21,6 +22,7 @@ export default function IssueDetailComponent({ projectId, issueId }: Props) {
 	const workspaceId = activeWorkspaceId ?? "";
 	const { data: issue } = useSingleIssue(workspaceId, projectId, issueId);
 	const { data: members = [] } = useMemberships(workspaceId);
+	const { data: sprints = [] } = useSprints(workspaceId, projectId);
 	const onCancel = ()=>{
 		router.back()
 	}
@@ -35,9 +37,8 @@ export default function IssueDetailComponent({ projectId, issueId }: Props) {
 				description: issue.description,
 				status: issue.status,
 				priority: issue.priority,
-				// Map a null assignee onto the select's sentinel key so it
-				// pre-selects "Unassigned" instead of showing the placeholder.
 				assigneeId: issue.assigneeId ?? UNASSIGNED,
+				sprintId: issue.sprintId ?? undefined,
 			},
 		[issue],
 	);
@@ -48,6 +49,7 @@ export default function IssueDetailComponent({ projectId, issueId }: Props) {
 			values.assigneeId === UNASSIGNED
 				? null
 				: (values.assigneeId ?? null);
+		const nextSprint = values.sprintId ?? null;
 
 		// PATCH only what changed.
 		const dto: UpdateIssueDto = {
@@ -61,6 +63,9 @@ export default function IssueDetailComponent({ projectId, issueId }: Props) {
 			}),
 			...(nextAssignee !== (issue.assigneeId ?? null) && {
 				assigneeId: nextAssignee,
+			}),
+			...(nextSprint !== (issue.sprintId ?? null) && {
+				sprintId: nextSprint,
 			}),
 		};
 
@@ -83,6 +88,7 @@ export default function IssueDetailComponent({ projectId, issueId }: Props) {
 					isSubmitting={isPending}
 					onSubmit={handleUpdateIssue}
 					members={members}
+					sprints={sprints}
 					defaultValues={defaultValues as TIssueFormValues}
 					onCancel={onCancel}
 				/>

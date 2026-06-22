@@ -65,20 +65,6 @@ If something is unclear:
 
 - Use pnpm to add package if need, pnpm add <package_name>
 
-## Installed packages
-
-No Need to add these packages
-
-    "@heroui/react": "^3.1.0",
-    "@heroui/styles": "^3.1.0",
-    "@tanstack/react-query": "^5.100.14",
-    "axios": "^1.16.1",
-    "lucide-react": "^1.17.0",
-    "next": "16.2.6",
-    "next-themes": "^0.4.6",
-    "react": "19.2.4",
-    "react-dom": "19.2.4"
-
 ---
 
 # 🧱 Architecture Rules
@@ -108,10 +94,14 @@ Each feature should have:
 
 ```
 /features/issues
+  /api
   /components
   /hooks
-  /api
+  /lib
+  /schema
   /types
+  constants.ts
+  
 ```
 
 ---

@@ -34,7 +34,7 @@ Stored in Auth.js session
 # 📦 Install Dependencies
 
 ```bash
-npm install next-auth
+pnpm add next-auth
 ```
 
 ---

@@ -64,6 +64,20 @@ export class IssueService {
   async findOne(workspaceId: string, projectId: string, issueId: string) {
     const issue = await this.prisma.issue.findFirst({
       where: { id: issueId, workspaceId, projectId },
+      include: {
+        reporter: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        assignee: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
     });
 
     if (!issue) {

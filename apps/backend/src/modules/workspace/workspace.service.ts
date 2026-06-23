@@ -1,4 +1,3 @@
-import { generateSlug } from "@/common/utils/generate-slug";
 import { PrismaService } from "@/prisma/prisma.service";
 import {
   ForbiddenException,
@@ -14,14 +13,10 @@ export class WorkspaceService {
 
   // create workspace
   async create(userId: string, name: string) {
-    const suffix = Math.random().toString(36).substring(2, 8);
-    const slug = `${generateSlug(name)}-${suffix}`;
-
     const result = await this.prisma.$transaction(async (tx) => {
       const workspace = await tx.workspace.create({
         data: {
           name,
-          slug,
         },
       });
 

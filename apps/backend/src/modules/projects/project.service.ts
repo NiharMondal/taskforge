@@ -21,6 +21,14 @@ export class ProjectService {
     return this.prisma.project.findMany({
       where: { workspaceId },
       orderBy: { createdAt: "desc" },
+      include: {
+        _count: {
+          select: {
+            issues: true,
+            sprints: true,
+          },
+        },
+      },
     });
   }
 

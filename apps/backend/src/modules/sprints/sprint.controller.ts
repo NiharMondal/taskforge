@@ -59,6 +59,30 @@ export class SprintController {
     });
   }
 
+  @Patch(":sprintId")
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(RolesGuard)
+  @Roles(WorkspaceRole.OWNER, WorkspaceRole.ADMIN)
+  async updateSprint(
+    @WorkspaceId() workspaceId: string,
+    @Param("projectId") projectId: string,
+    @Param("sprintId") sprintId: string,
+    @MembershipRole() membershipRole: WorkspaceRole,
+    @Body() dto: CreateSprintDto,
+  ) {
+    const sprint = await this.sprintService.updateSprint(
+      workspaceId,
+      projectId,
+      sprintId,
+      membershipRole,
+      dto,
+    );
+    return sendResponse({
+      statusCode: HttpStatus.OK,
+      message: "Sprint updated successfully",
+      data: sprint,
+    });
+  }
   @Patch(":sprintId/start")
   @HttpCode(HttpStatus.OK)
   @UseGuards(RolesGuard)

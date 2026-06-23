@@ -39,6 +39,26 @@ export class SprintService {
     });
   }
 
+  // Update sprint
+  async updateSprint(
+    workspaceId: string,
+    projectId: string,
+    sprintId: string,
+    role: WorkspaceRole,
+    dto: CreateSprintDto,
+  ) {
+    this.ensureManager(role);
+    await this.validateProject(workspaceId, projectId);
+    await this.getSprint(workspaceId, sprintId);
+
+    return this.prisma.sprint.update({
+      where: { id: sprintId, projectId, workspaceId },
+      data: {
+        ...dto,
+      },
+    });
+  }
+
   // START SPRINT
   async startSprint(
     workspaceId: string,

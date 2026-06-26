@@ -12,19 +12,19 @@ import { auth } from "@/lib/auth";
  *  - `WorkspaceProvider`, so accepting can switch the active workspace.
  * Query/Auth providers come from the root layout.
  */
-export default async function InviteLayout({
-  children,
+export default async function InvitationLayout({
+	children,
 }: {
-  children: React.ReactNode;
+	children: React.ReactNode;
 }) {
-  const session = await auth();
-  if (!session) redirect("/login");
+	const session = await auth();
+	if (!session) redirect("/login");
 
-  return (
-    <WorkspaceProvider>
-      <main className="flex min-h-dvh items-center justify-center p-6">
-        {children}
-      </main>
-    </WorkspaceProvider>
-  );
+	return (
+		<WorkspaceProvider>
+			<main className="flex min-h-dvh items-center justify-center p-6">
+				{children}
+			</main>
+		</WorkspaceProvider>
+	);
 }

@@ -10,7 +10,7 @@ import { useUpdateIssue } from "../hooks/use-issues";
 import { TIssueFormValues } from "../schema/issue-schema";
 import type { Issue, UpdateIssueDto } from "../types/issue-types";
 import IssueForm, { UNASSIGNED } from "./IssueForm";
-import { useMemo } from "react";
+import { useSprints } from "@/features/sprint/hooks/use-sprints";
 
 type TProps = {
 	/** The issue to edit; null closes the modal. */
@@ -37,6 +37,7 @@ export default function IssueDetailModal({
 		workspaceId,
 		projectId,
 	);
+	const { data: sprints = [] } = useSprints(workspaceId, projectId);
 
 	const handleUpdateIssue = async (values: TIssueFormValues) => {
 		if (!issue) return false;
@@ -45,6 +46,7 @@ export default function IssueDetailModal({
 			values.assigneeId === UNASSIGNED
 				? null
 				: (values.assigneeId ?? null);
+		const nextSprint = values.sprintId ?? null;
 
 		// PATCH only what changed.
 		const dto: UpdateIssueDto = {
@@ -58,6 +60,9 @@ export default function IssueDetailModal({
 			}),
 			...(nextAssignee !== (issue.assigneeId ?? null) && {
 				assigneeId: nextAssignee,
+			}),
+			...(nextSprint !== (issue.sprintId ?? null) && {
+				sprintId: nextSprint,
 			}),
 		};
 
@@ -90,10 +95,12 @@ export default function IssueDetailModal({
 						status: issue.status,
 						priority: issue.priority,
 						assigneeId: issue.assigneeId ?? UNASSIGNED,
+						sprintId: issue.sprintId ?? undefined,
 					}}
 					isSubmitting={isPending}
 					onSubmit={handleUpdateIssue}
 					members={members}
+					sprints={sprints}
 					onCancel={onClose}
 					onSuccess={onClose}
 				/>

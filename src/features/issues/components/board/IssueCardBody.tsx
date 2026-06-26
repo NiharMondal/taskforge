@@ -26,6 +26,7 @@ export default function IssueCardBody({
           </span>
         </span>
       </div>
+      {/* <p>{issue}</p> */}
     </div>
   );
 }

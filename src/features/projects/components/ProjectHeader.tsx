@@ -8,7 +8,7 @@ import Link from "next/link";
 
 import type { Project } from "../types/project-types";
 
-type ProjectTab = "issues" | "board";
+type ProjectTab = "issues" | "board" | "sprints";
 
 interface ProjectHeaderProps {
 	projectId: string;
@@ -35,6 +35,11 @@ export default function ProjectHeader({
 			key: "issues",
 			label: "Issues",
 			href: `/projects/${projectId}/issues`,
+		},
+		{
+			key: "sprints",
+			label: "Sprints",
+			href: `/projects/${projectId}/sprints`,
 		},
 	];
 

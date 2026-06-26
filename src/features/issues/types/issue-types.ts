@@ -23,6 +23,10 @@ export interface IssueUser {
   email: string;
 }
 
+export interface Sprint {
+  id:string;
+  name:string;
+}
 export interface Issue {
   id: string;
   title: string;
@@ -34,6 +38,7 @@ export interface Issue {
   workspaceId: string;
   projectId: string;
   sprintId?: string | null;
+  sprint: Sprint
   reporterId: string;
   assigneeId?: string | null;
   reporter?: IssueUser;
@@ -48,6 +53,7 @@ export interface CreateIssueDto {
   status?: IssueStatus;
   priority?: IssuePriority;
   assigneeId?: string | null;
+  sprintId?: string | null;
 }
 
 /**

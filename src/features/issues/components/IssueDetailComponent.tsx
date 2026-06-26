@@ -1,35 +1,115 @@
 "use client";
 import { useWorkspace } from "@/features/workspace/context/workspace-context";
-import { useSingleIssue } from "../hooks/use-issues";
-import IssueForm from "./IssueForm";
+import { useSingleIssue, useUpdateIssue } from "../hooks/use-issues";
+import { useMemberships } from "@/features/memberships/hooks/use-memberships";
+import { UpdateIssueDto } from "../types/issue-types";
+import { TIssueFormValues } from "../schema/issue-schema";
+import IssueForm, { UNASSIGNED } from "./IssueForm";
+import { useSprints } from "@/features/sprint/hooks/use-sprints";
+import { toast } from "@heroui/react";
+import { getApiErrorMessage } from "@/lib/api-error";
+import { useMemo } from "react";
+import { useRouter } from "next/navigation";
+
 type Props = {
 	projectId: string;
 	issueId: string;
 };
+
 export default function IssueDetailComponent({ projectId, issueId }: Props) {
+	const router  = useRouter();
 	const { activeWorkspaceId } = useWorkspace();
 	const workspaceId = activeWorkspaceId ?? "";
 	const { data: issue } = useSingleIssue(workspaceId, projectId, issueId);
-	console.log(issue);
+	const { data: members = [] } = useMemberships(workspaceId);
+	const { data: sprints = [] } = useSprints(workspaceId, projectId);
+	const onCancel = ()=>{
+		router.back()
+	}
+	const { mutateAsync: updateIssue, isPending } = useUpdateIssue(
+		workspaceId,
+		projectId,
+	);
+	const defaultValues = useMemo(
+		() =>
+			issue && {
+				title: issue.title,
+				description: issue.description,
+				status: issue.status,
+				priority: issue.priority,
+				assigneeId: issue.assigneeId ?? UNASSIGNED,
+				sprintId: issue.sprintId ?? undefined,
+			},
+		[issue],
+	);
+	const handleUpdateIssue = async (values: TIssueFormValues) => {
+		if (!issue) return false;
+
+		const nextAssignee =
+			values.assigneeId === UNASSIGNED
+				? null
+				: (values.assigneeId ?? null);
+		const nextSprint = values.sprintId ?? null;
+
+		// PATCH only what changed.
+		const dto: UpdateIssueDto = {
+			...(values.title !== issue.title && { title: values.title }),
+			...((values.description ?? "") !== (issue.description ?? "") && {
+				description: values.description || undefined,
+			}),
+			...(values.status !== issue.status && { status: values.status }),
+			...(values.priority !== issue.priority && {
+				priority: values.priority,
+			}),
+			...(nextAssignee !== (issue.assigneeId ?? null) && {
+				assigneeId: nextAssignee,
+			}),
+			...(nextSprint !== (issue.sprintId ?? null) && {
+				sprintId: nextSprint,
+			}),
+		};
+
+		// Nothing changed — just close.
+		if (Object.keys(dto).length === 0) return true;
+
+		try {
+			const res = await updateIssue({ issueId: issue.id, dto });
+			toast.success(res?.message || "Issue updated successfully");
+			return true;
+		} catch (error) {
+			toast.danger(getApiErrorMessage(error));
+			return false;
+		}
+	};
 	return (
 		<div className="grid grid-cols-1 xl:grid-cols-5 gap-5">
 			<div className="xl:col-span-4">
 				<IssueForm
-					isSubmitting={false}
-					onSubmit={() => {}}
-					members={[]}
+					isSubmitting={isPending}
+					onSubmit={handleUpdateIssue}
+					members={members}
+					sprints={sprints}
+					defaultValues={defaultValues as TIssueFormValues}
+					onCancel={onCancel}
 				/>
 			</div>
-			<div className="flex flex-col gap-5">
-				<div className="border p-3 rounded-md">
-					Lorem ipsum dolor sit amet consectetur adipisicing elit. Cum
-					aut, eius quidem praesentium facere est possimus debitis
-					odio unde vero assumenda hic minima corporis ad pariatur
-					inventore! Commodi a rerum provident assumenda facere,
-					error, ex unde dolores quo earum reiciendis. Cumque ex
-					fugiat neque tempore animi distinctio esse ullam sit.
-				</div>
+			<div className="flex flex-col gap-3.5 border p-3 rounded-md">
+				<Staff designation="Reporter" value={issue?.reporter?.name} />
+				<Staff designation="Assignee" value={issue?.assignee?.name} />
 			</div>
+		</div>
+	);
+}
+
+type StaffProps = {
+	designation: string;
+	value: string | undefined;
+};
+function Staff({ designation, value }: StaffProps) {
+	return (
+		<div className="flex flex-col gap-0.5">
+			<h5 className="font-semibold">{designation}</h5>
+			<p>{value ?? "--"}</p>
 		</div>
 	);
 }

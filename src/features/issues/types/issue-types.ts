@@ -53,6 +53,7 @@ export interface CreateIssueDto {
   status?: IssueStatus;
   priority?: IssuePriority;
   assigneeId?: string | null;
+  sprintId?: string | null;
 }
 
 /**

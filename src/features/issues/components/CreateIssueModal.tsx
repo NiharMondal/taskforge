@@ -6,6 +6,7 @@ import { useCreateIssue } from "../hooks/use-issues";
 import { useWorkspace } from "@/features/workspace/context/workspace-context";
 import { toast } from "@heroui/react";
 import { getApiErrorMessage } from "@/lib/api-error";
+import { useSprints } from "@/features/sprint/hooks/use-sprints";
 type TProps = {
 	isOpen: boolean;
 	onOpenChange: () => void;
@@ -26,6 +27,7 @@ export default function CreateIssueModal({
 		workspaceId,
 		projectId!,
 	);
+	const { data: sprints = [] } = useSprints(workspaceId, projectId);
 
 	const handleCreateIssue = async (values: TIssueFormValues) => {
 		try {
@@ -37,6 +39,7 @@ export default function CreateIssueModal({
 			return false;
 		}
 	};
+	
 	return (
 		<MyModal isOpen={isOpen} onOpenChange={onOpenChange} size="cover">
 			{isOpen && (
@@ -44,6 +47,7 @@ export default function CreateIssueModal({
 					isSubmitting={isPending}
 					onSubmit={handleCreateIssue}
 					members={members}
+					sprints={sprints}
 					onCancel={onOpenChange}
 					onSuccess={onOpenChange}
 				/>

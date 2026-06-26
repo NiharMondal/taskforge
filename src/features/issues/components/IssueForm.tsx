@@ -13,6 +13,7 @@ import {
 import { issueSchema, TIssueFormValues } from "../schema/issue-schema";
 import { ISSUE_PRIORITIES, ISSUE_STATUSES } from "../constants";
 import { Member } from "@/features/memberships/types/membership-types";
+import { Sprint } from "../types/issue-types";
 
 type Props = {
 	defaultValues?: TIssueFormValues | undefined;
@@ -23,10 +24,14 @@ type Props = {
 	onSuccess?: () => void;
 	onCancel?: () => void;
 	members: Member[];
+	sprints: Sprint[];
 };
 
 /** Sentinel ListBox key for "no assignee" (react-aria keys can't be empty). */
 export const UNASSIGNED = "__unassigned__";
+
+/** Sentinel key for "no sprint assigned". */
+export const NO_SPRINT = "__no_sprint__";
 
 export default function IssueForm({
 	defaultValues,
@@ -35,6 +40,7 @@ export default function IssueForm({
 	onSuccess,
 	onCancel,
 	members,
+	sprints,
 }: Props) {
 	const isEditing = !!defaultValues;
 
@@ -46,6 +52,7 @@ export default function IssueForm({
 			assigneeId: null,
 			status: "BACKLOG",
 			priority: "LOW",
+			sprintId: null,
 		},
 		// `defaultValues` is only read once on mount. When editing, the issue is
 		// fetched async, so feed it through `values` to keep the form in sync once
@@ -56,7 +63,13 @@ export default function IssueForm({
 	});
 
 	const handleFormSubmit = async (values: TIssueFormValues) => {
-		const success = await onSubmit(values);
+		const normalized: TIssueFormValues = {
+			...values,
+			assigneeId:
+				values.assigneeId === UNASSIGNED ? null : values.assigneeId,
+			sprintId: values.sprintId === NO_SPRINT ? null : values.sprintId,
+		};
+		const success = await onSubmit(normalized);
 		if (success === false) return;
 		methods.reset();
 		onSuccess?.();
@@ -99,12 +112,24 @@ export default function IssueForm({
 				name="assigneeId"
 				label="Assignee"
 				placeholder="Select assignee"
-                showAvatar
+				showAvatar
 				options={[
 					{ value: UNASSIGNED, label: "Unassigned" },
 					...members.map((member) => ({
 						value: member.userId,
 						label: member?.user?.name,
+					})),
+				]}
+			/>
+			<FormSelect
+				name="sprintId"
+				label="Sprint"
+				placeholder="Select sprint"
+				options={[
+					{ value: NO_SPRINT, label: "No Sprint" },
+					...sprints.map((sprint) => ({
+						value: sprint.id,
+						label: sprint.name,
 					})),
 				]}
 			/>

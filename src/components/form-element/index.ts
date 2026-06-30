@@ -1,4 +1,5 @@
 export { default as FormComboBox } from "./FormComboBox";
+export { default as FormImageUpload } from "./FormImageUpload";
 export { default as FormRadioGroup } from "./FormRadioGroup";
 export { default as FormRichTextEditor } from "./FormRichTextEditor";
 export { default as FormTextArea } from "./FormTextArea";

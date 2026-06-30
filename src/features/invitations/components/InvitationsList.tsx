@@ -48,7 +48,6 @@ export default function InvitationsList({
 		);
 	}
 
-	console.log(invitations);
 	return (
 		<ul className="flex flex-col divide-y divide-border">
 			{invitations.map((invitation) => (

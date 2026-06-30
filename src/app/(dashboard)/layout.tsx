@@ -19,6 +19,7 @@ export default async function DashboardLayout({
   const user = {
     name: session.user?.name,
     email: session.user?.email,
+    image: session.user?.image,
   };
 
   return <AppLayout user={user}>{children}</AppLayout>;

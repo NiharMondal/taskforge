@@ -5,6 +5,7 @@ import {
 } from "@nestjs/common";
 import bcrypt from "bcryptjs";
 import { PrismaService } from "@/prisma/prisma.service";
+import { CloudinaryService } from "@/cloudinary/cloudinary.service";
 import { CreateUserDto } from "@/modules/user/dto/create-user.dto";
 import { UpdateUserDto } from "@/modules/user/dto/update-user.dto";
 import { User } from "generated/prisma/client";
@@ -13,7 +14,10 @@ export type SafeUser = Omit<User, "passwordHash">;
 
 @Injectable()
 export class UserService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cloudinary: CloudinaryService,
+  ) {}
 
   async create(dto: CreateUserDto): Promise<SafeUser> {
     const existing = await this.prisma.user.findUnique({
@@ -53,14 +57,56 @@ export class UserService {
   }
 
   async update(id: string, dto: UpdateUserDto): Promise<SafeUser> {
-    await this.findOne(id);
-    const user = await this.prisma.user.update({ where: { id }, data: dto });
+    const existing = await this.findOne(id);
+
+    const { avatarPublicId, ...rest } = dto;
+
+    // No avatar change — straight update.
+    if (!avatarPublicId) {
+      const user = await this.prisma.user.update({
+        where: { id },
+        data: rest,
+      });
+      return this.omitPassword(user);
+    }
+
+    // The frontend uploaded a new avatar into the temp folder. Promote it to
+    // its permanent home, persist the permanent url/publicId, then remove the
+    // previous avatar. The promoted url replaces whatever avatarUrl the client
+    // sent, since renaming the asset changes its delivery URL.
+    const promoted = await this.cloudinary.promoteToPermanent(avatarPublicId);
+
+    let user: User;
+    try {
+      user = await this.prisma.user.update({
+        where: { id },
+        data: {
+          ...rest,
+          avatarUrl: promoted.url,
+          avatarPublicId: promoted.publicId,
+        },
+      });
+    } catch (error) {
+      // Save failed — the just-promoted asset would be orphaned, so drop it.
+      await this.cloudinary.delete(promoted.publicId);
+      throw error;
+    }
+
+    // New avatar is persisted; clean up the one it replaced.
+    if (
+      existing.avatarPublicId &&
+      existing.avatarPublicId !== promoted.publicId
+    ) {
+      await this.cloudinary.delete(existing?.avatarPublicId);
+    }
+
     return this.omitPassword(user);
   }
 
   async remove(id: string): Promise<void> {
-    await this.findOne(id);
+    const existing = await this.findOne(id);
     await this.prisma.user.delete({ where: { id } });
+    await this.cloudinary.delete(existing.avatarPublicId);
   }
 
   private async hashPassword(password: string): Promise<string> {

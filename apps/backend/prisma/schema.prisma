@@ -47,11 +47,12 @@ enum InvitationStatus {
 
 //// USERS
 model User {
-  id           String  @id @default(uuid())
-  name         String
-  email        String  @unique
-  passwordHash String
-  avatarUrl    String?
+  id             String  @id @default(uuid())
+  name           String
+  email          String  @unique
+  passwordHash   String
+  avatarUrl      String?
+  avatarPublicId String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

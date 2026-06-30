@@ -36,6 +36,17 @@ export async function createWorkspace(
 }
 
 /**
+ * Update a workspace's editable fields (`PATCH /workspaces/:workspaceId`).
+ * Used by the settings → General tab to rename / re-describe the active tenant.
+ */
+export async function updateWorkspace(
+  workspaceId: string,
+  dto: TWorkspaceFormValues,
+): Promise<ApiResponse<Workspace>> {
+  return api.patch<Workspace>(`/workspaces/${workspaceId}`, dto);
+}
+
+/**
  * NOTE: switching workspaces is NOT a backend call. The active tenant is sent
  * on every request via the `x-workspace-id` header (see `lib/active-workspace`
  * and the axios request interceptor), so the switch is purely a client-side

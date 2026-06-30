@@ -92,6 +92,9 @@ Per-field wrappers in `src/components/form-element/` (`FormTextField`, `FormSele
 
 ### UI library
 
-HeroUI v3 (`@heroui/react@^3.1.0`) — compound react-aria components with semantic token styling. It is **not** a raw Tailwind component library. Use semantic color tokens (e.g. `text-foreground`, `bg-content1`) rather than raw Tailwind palette colors. Controlled modals attach `isOpen`/`onOpenChange` to `Modal.Backdrop`, not the `Modal` root.
+HeroUI v3 (`@heroui/react@^3.1.0`) — compound react-aria components with semantic token styling. It is **not** a raw Tailwind component library. Use semantic color tokens (e.g. `text-foreground`, `bg-content1`) from globals.css rather than raw Tailwind palette colors. Controlled modals attach `isOpen`/`onOpenChange` to `Modal.Backdrop`, not the `Modal` root.
+
+- `src/app/globals.css` - full Tailwind palette colors.
+
 
 Drag-and-drop on the board uses `@dnd-kit/core` + `@dnd-kit/sortable`.

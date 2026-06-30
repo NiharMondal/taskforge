@@ -5,7 +5,7 @@ import { Mail } from "lucide-react";
 
 import { useInvitations } from "../hooks/use-invitations";
 import InvitationStatusChip from "./InvitationStatusChip";
-
+import { formatDate } from "@/util/format-date";
 /**
  * Workspace invitations with their status. Rendered only for OWNER/ADMIN —
  * the parent gates it so the admin-only endpoint is never hit by members.
@@ -15,8 +15,11 @@ export default function InvitationsList({
 }: {
 	workspaceId: string;
 }) {
-	const { data: invitations = [], isLoading, isError } =
-		useInvitations(workspaceId);
+	const {
+		data: invitations = [],
+		isLoading,
+		isError,
+	} = useInvitations(workspaceId);
 
 	if (isError) {
 		return (
@@ -45,6 +48,7 @@ export default function InvitationsList({
 		);
 	}
 
+	console.log(invitations);
 	return (
 		<ul className="flex flex-col divide-y divide-border">
 			{invitations.map((invitation) => (
@@ -58,7 +62,7 @@ export default function InvitationsList({
 						</p>
 						<p className="text-xs text-muted">
 							Invited{" "}
-							{new Date(invitation.createdAt).toLocaleDateString()}
+							{formatDate(invitation.createdAt, "dd/MM/yyyy")}
 						</p>
 					</div>
 					<InvitationStatusChip status={invitation.status} />

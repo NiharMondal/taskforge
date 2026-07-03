@@ -11,6 +11,8 @@ export interface AuthUser {
   id: string;
   name: string;
   email: string;
+  /** Persisted avatar URL, mapped to `session.user.image` */
+  avatarUrl?: string | null;
 }
 
 /**

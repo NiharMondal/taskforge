@@ -46,6 +46,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             id: user.id,
             name: user.name,
             email: user.email,
+            // Seed the avatar from the backend on sign-in. Auth.js copies
+            // `image` into `token.picture` -> `session.user.image`, so the
+            // header shows it on fresh login/reload (undefined until the
+            // backend includes `avatarUrl` in the login response).
+            image: user.avatarUrl ?? null,
             accessToken,
           };
         } catch (error) {

@@ -43,6 +43,11 @@ export const authConfig = {
       if (user) {
         token.userId = user.id;
         token.accessToken = user.accessToken;
+        // Explicitly persist the avatar rather than relying on Auth.js's
+        // implicit `user.image` -> `token.picture` default (which is undocumented
+        // and could change on a version bump). `user.image` is seeded from the
+        // backend's `avatarUrl` in auth.ts.
+        token.picture = user.image ?? null;
       }
       if (trigger === "update" && session && typeof session === "object") {
         const next = session as { name?: unknown; image?: unknown };
@@ -64,6 +69,9 @@ export const authConfig = {
       if (typeof token.accessToken === "string") {
         session.accessToken = token.accessToken;
       }
+      // Mirror the avatar onto the client session explicitly (same reason as the
+      // jwt callback) so `session.user.image` is always driven by our token.
+      session.user.image = typeof token.picture === "string" ? token.picture : null;
       return session;
     },
 

@@ -5,7 +5,7 @@ import type { ApiResponse } from "@/types/api";
 
 import { getActiveWorkspaceId } from "./active-workspace";
 import { toApiError } from "./api-error";
-import { getAuthToken } from "./auth-token";
+import { getAuthToken, notifyUnauthorized } from "./auth-token";
 
 /**
  * Central axios instance. Import `apiClient` everywhere — never call axios
@@ -39,9 +39,18 @@ apiClient.interceptors.request.use(async (config) => {
 });
 
 // Response: normalize every failure into an `ApiError` so callers handle one shape.
+// A 401 means the backend token expired/was rejected — the Auth.js cookie may
+// still look valid, so we signal the auth layer to sign the user out instead of
+// leaving them on a protected page with every request failing.
 apiClient.interceptors.response.use(
   (response) => response,
-  (error) => Promise.reject(toApiError(error)),
+  (error) => {
+    const apiError = toApiError(error);
+    if (apiError.status === 401) {
+      notifyUnauthorized();
+    }
+    return Promise.reject(apiError);
+  },
 );
 
 /**

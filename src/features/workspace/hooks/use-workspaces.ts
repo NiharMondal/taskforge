@@ -1,6 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { createWorkspace, getWorkspaces } from "../api/workspace-api";
+import {
+  createWorkspace,
+  getWorkspaces,
+  updateWorkspace,
+} from "../api/workspace-api";
+import type { TWorkspaceFormValues } from "../schema/workspace-schema";
 
 /** Centralized query keys for the workspace feature. */
 export const workspaceKeys = {
@@ -30,6 +35,28 @@ export function useCreateWorkspace() {
 
   return useMutation({
     mutationFn: createWorkspace,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: workspaceKeys.all });
+    },
+  });
+}
+
+interface UpdateWorkspaceVars {
+  workspaceId: string;
+  dto: TWorkspaceFormValues;
+}
+
+/**
+ * Rename / re-describe a workspace. Callers receive the full `ApiResponse`
+ * envelope (for the toast message); the workspace list is refetched so the
+ * switcher and `useWorkspace` context pick up the new name immediately.
+ */
+export function useUpdateWorkspace() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ workspaceId, dto }: UpdateWorkspaceVars) =>
+      updateWorkspace(workspaceId, dto),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: workspaceKeys.all });
     },

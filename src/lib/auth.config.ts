@@ -33,11 +33,27 @@ export const authConfig = {
     /**
      * Persist backend identity + token into the JWT on sign-in.
      * `user` is only present on the initial sign-in call.
+     *
+     * On `trigger === "update"` (from `useSession().update()` after a profile
+     * save) we mirror the new name/image into the token — Auth.js maps
+     * `token.name`/`token.picture` back onto `session.user.name`/`.image`, so
+     * the header reflects the change without a re-login.
      */
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger, session }) {
       if (user) {
         token.userId = user.id;
         token.accessToken = user.accessToken;
+        // Explicitly persist the avatar rather than relying on Auth.js's
+        // implicit `user.image` -> `token.picture` default (which is undocumented
+        // and could change on a version bump). `user.image` is seeded from the
+        // backend's `avatarUrl` in auth.ts.
+        token.picture = user.image ?? null;
+      }
+      if (trigger === "update" && session && typeof session === "object") {
+        const next = session as { name?: unknown; image?: unknown };
+        if (typeof next.name === "string") token.name = next.name;
+        if (typeof next.image === "string") token.picture = next.image;
+        else if (next.image === null) token.picture = null;
       }
       return token;
     },
@@ -53,6 +69,9 @@ export const authConfig = {
       if (typeof token.accessToken === "string") {
         session.accessToken = token.accessToken;
       }
+      // Mirror the avatar onto the client session explicitly (same reason as the
+      // jwt callback) so `session.user.image` is always driven by our token.
+      session.user.image = typeof token.picture === "string" ? token.picture : null;
       return session;
     },
 

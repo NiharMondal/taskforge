@@ -1,10 +1,11 @@
-import SettingsView from "@/features/settings/components/SettingsView";
+import { redirect } from "next/navigation";
+
+import { DEFAULT_SETTINGS_TAB } from "@/features/settings/constants";
 
 /**
- * Workspace settings: `/settings`. The `(dashboard)` layout provides the shell
- * (sidebar, header, auth gate); the client view reads the active workspace
- * from context and its members/invitations from React Query.
+ * `/settings` has no content of its own — it lands on the first tab. Sections
+ * live at `/settings/<page>` so each is deep-linkable (see SETTINGS_TABS).
  */
 export default function SettingsPage() {
-  return <SettingsView />;
+	redirect(DEFAULT_SETTINGS_TAB);
 }

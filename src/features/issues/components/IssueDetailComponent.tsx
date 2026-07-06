@@ -115,7 +115,7 @@ export default function IssueDetailComponent({ projectId, issueId }: Props) {
 					isSubmitting={isSavingContent}
 				/>
 			</div>
-			<div className="xl:col-span-2 border-l border-border">
+			<div className="xl:col-span-2">
 				<IssueDetailsPanel
 					defaultValues={detailsValues}
 					onSubmit={handleSaveDetails}

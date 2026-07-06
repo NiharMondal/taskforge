@@ -107,7 +107,7 @@ export default function IssueDetailModal({
 			{issue && (
 				<div
 					key={issue.id}
-					className="grid grid-cols-1 gap-5 xl:grid-cols-6"
+					className="grid grid-cols-1 gap-5 xl:grid-cols-6 "
 				>
 					<div className="xl:col-span-4">
 						<IssueContentForm
@@ -119,7 +119,7 @@ export default function IssueDetailModal({
 							isSubmitting={isSavingContent}
 						/>
 					</div>
-					<div className="xl:col-span-2 border-l border-border">
+					<div className="xl:col-span-2 border-0 xl:border-l pl-4">
 						<IssueDetailsPanel
 							defaultValues={{
 								status: issue.status,

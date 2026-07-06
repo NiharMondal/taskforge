@@ -54,75 +54,78 @@ export default function IssueDetailsPanel({
 	};
 
 	return (
-		<div className="flex flex-col gap-3.5 rounded-md p-4">
-			<h4 className="text-sm font-semibold ">Details</h4>
+		<div className="flex flex-col gap-3">
+			<div className="border border-border p-4 rounded-md ">
+				<h4 className="text-sm font-semibold mb-4">Details</h4>
+				<FormWrapper methods={methods} onSubmit={handleSubmit}>
+					<FormSelect
+						name="status"
+						label="Status"
+						placeholder="Select status"
+						options={ISSUE_STATUSES.map((s) => ({
+							value: s.value,
+							label: s.label,
+						}))}
+					/>
+					<FormSelect
+						name="priority"
+						label="Priority"
+						placeholder="Select priority"
+						options={ISSUE_PRIORITIES.map((p) => ({
+							value: p.value,
+							label: p.label,
+						}))}
+					/>
+					<FormSelect
+						name="assigneeId"
+						label="Assignee"
+						placeholder="Select assignee"
+						showAvatar
+						options={[
+							{ value: UNASSIGNED, label: "Unassigned" },
+							...members.map((member) => ({
+								value: member.userId,
+								label: member?.user?.name,
+								avatarUrl: member?.user?.avatarUrl || undefined,
+							})),
+						]}
+					/>
+					<FormSelect
+						name="sprintId"
+						label="Sprint"
+						placeholder="Select sprint"
+						options={[
+							{ value: NO_SPRINT, label: "No Sprint" },
+							...sprints.map((sprint) => ({
+								value: sprint.id,
+								label: sprint.name,
+							})),
+						]}
+					/>
 
-			<FormWrapper methods={methods} onSubmit={handleSubmit}>
-				<FormSelect
-					name="status"
-					label="Status"
-					placeholder="Select status"
-					options={ISSUE_STATUSES.map((s) => ({
-						value: s.value,
-						label: s.label,
-					}))}
-				/>
-				<FormSelect
-					name="priority"
-					label="Priority"
-					placeholder="Select priority"
-					options={ISSUE_PRIORITIES.map((p) => ({
-						value: p.value,
-						label: p.label,
-					}))}
-				/>
-				<FormSelect
-					name="assigneeId"
-					label="Assignee"
-					placeholder="Select assignee"
-					showAvatar
-					options={[
-						{ value: UNASSIGNED, label: "Unassigned" },
-						...members.map((member) => ({
-							value: member.userId,
-							label: member?.user?.name,
-							avatarUrl: member?.user?.avatarUrl || undefined,
-						})),
-					]}
-				/>
-				<FormSelect
-					name="sprintId"
-					label="Sprint"
-					placeholder="Select sprint"
-					options={[
-						{ value: NO_SPRINT, label: "No Sprint" },
-						...sprints.map((sprint) => ({
-							value: sprint.id,
-							label: sprint.name,
-						})),
-					]}
-				/>
-
-				<div className="flex flex-col gap-0.5">
-					<span className="text-sm font-semibold">Reporter</span>
-					<div className="flex items-center gap-2">
-						{reporter?.avatarUrl && (
-							<Avatar
-								fallback={reporter.name?.charAt(0)}
-								size="sm"
-								src={reporter?.avatarUrl}
-							/>
-						)}
-						<p className="text-sm">{reporter?.name ?? "--"}</p>
+					<div className="flex justify-end">
+						<Button
+							type="submit"
+							isDisabled={!isDirty || isSubmitting}
+						>
+							{isSubmitting ? "Saving…" : "Save"}
+						</Button>
 					</div>
+				</FormWrapper>
+			</div>
+			<div className="flex flex-col gap-0.5 border border-border p-4 rounded-md">
+				<span className="text-sm font-semibold">Reporter</span>
+				<div className="flex items-center gap-2">
+					{reporter?.avatarUrl && (
+						<Avatar
+							fallback={reporter.name?.charAt(0)}
+							size="sm"
+							src={reporter?.avatarUrl}
+						/>
+					)}
+					<p className="text-sm">{reporter?.name ?? "--"}</p>
 				</div>
-
-				<div className="flex justify-end">
-					<Button type="submit" isDisabled={!isDirty || isSubmitting}>
-						{isSubmitting ? "Saving…" : "Save"}
-					</Button>
-				</div>
-			</FormWrapper>
+			</div>
 		</div>
 	);
 }

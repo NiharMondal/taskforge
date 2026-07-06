@@ -9,15 +9,47 @@ import {
 	FieldError,
 } from "@heroui/react";
 import type { DateValue } from "@internationalized/date";
-
+import { toCalendarDate } from "@/util/format-date";
+type minMaxDate = DateValue | Date | string | number | null | undefined;
 type Props = {
 	name: string;
 	label?: string;
 	isRequired?: boolean;
+	/** Prevent selecting any date before today. */
+	disablePastDate?: boolean;
+	/** Prevent selecting any date after today. */
+	disableFutureDate?: boolean;
+	/** Custom lower bound (ignored when `disablePastDate` is set). */
+	minDate?: minMaxDate;
+	/** Custom upper bound (ignored when `disableFutureDate` is set). */
+	maxDate?: minMaxDate;
 };
 
-export default function FormDatePicker({ name, label, isRequired }: Props) {
+/** A form-held `DateValue` is passed through; JS dates/strings are converted. */
+const resolveBound = (value?: minMaxDate): DateValue | undefined => {
+	if (value == null) return undefined;
+	if (typeof value === "object" && "calendar" in value) return value;
+	return toCalendarDate(value);
+};
+
+export default function FormDatePicker({
+	name,
+	label,
+	isRequired,
+	disablePastDate,
+	disableFutureDate,
+	minDate,
+	maxDate,
+}: Props) {
 	const { control } = useFormContext();
+
+	const minValue = disablePastDate
+		? toCalendarDate(new Date())
+		: resolveBound(minDate);
+
+	const maxValue = disableFutureDate
+		? toCalendarDate(new Date())
+		: resolveBound(maxDate);
 
 	return (
 		<Controller
@@ -27,6 +59,8 @@ export default function FormDatePicker({ name, label, isRequired }: Props) {
 				<DatePicker
 					value={(field.value as DateValue) || null}
 					onChange={field.onChange}
+					minValue={minValue}
+					maxValue={maxValue}
 					isInvalid={!!fieldState.error}
 					isRequired={isRequired}
 					aria-label={!label ? name : undefined}
@@ -51,7 +85,11 @@ export default function FormDatePicker({ name, label, isRequired }: Props) {
 
 					{/* Calendar Popover */}
 					<DatePicker.Popover>
-						<Calendar aria-label="Select date">
+						<Calendar
+							aria-label="Select date"
+							minValue={minValue}
+							maxValue={maxValue}
+						>
 							<Calendar.Header>
 								<Calendar.YearPickerTrigger>
 									<Calendar.YearPickerTriggerHeading />

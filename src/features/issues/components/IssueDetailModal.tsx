@@ -7,9 +7,14 @@ import type { Member } from "@/features/memberships/types/membership-types";
 import { getApiErrorMessage } from "@/lib/api-error";
 
 import { useUpdateIssue } from "../hooks/use-issues";
-import { TIssueFormValues } from "../schema/issue-schema";
+import {
+	TIssueContentValues,
+	TIssueDetailsValues,
+} from "../schema/issue-schema";
 import type { Issue, UpdateIssueDto } from "../types/issue-types";
-import IssueForm, { UNASSIGNED } from "./IssueForm";
+import IssueContentForm from "./IssueContentForm";
+import IssueDetailsPanel from "./IssueDetailsPanel";
+import { NO_SPRINT, UNASSIGNED } from "./IssueForm";
 import { useSprints } from "@/features/sprint/hooks/use-sprints";
 
 type TProps = {
@@ -22,9 +27,10 @@ type TProps = {
 };
 
 /**
- * Issue detail + edit modal. Reuses IssueForm seeded from the issue and
- * re-mounted per issue (via `key`), so opening a different issue resets the
- * fields without a sync effect.
+ * Issue detail + edit modal. Same two-section layout as the detail page: the
+ * content (title + description) on the left and the "Details" metadata panel on
+ * the right, each saved independently. Keyed per issue so opening a different
+ * one resets the fields without a sync effect.
  */
 export default function IssueDetailModal({
 	issue,
@@ -33,27 +39,50 @@ export default function IssueDetailModal({
 	workspaceId,
 	projectId,
 }: TProps) {
-	const { mutateAsync: updateIssue, isPending } = useUpdateIssue(
-		workspaceId,
-		projectId,
-	);
+	// Two independent mutation instances so each section has its own loading
+	// state — saving the content doesn't spin the details Save button, and vice
+	// versa. Both funnel through the same optimistic cache logic.
+	const { mutateAsync: saveContent, isPending: isSavingContent } =
+		useUpdateIssue(workspaceId, projectId);
+	const { mutateAsync: saveDetails, isPending: isSavingDetails } =
+		useUpdateIssue(workspaceId, projectId);
 	const { data: sprints = [] } = useSprints(workspaceId, projectId);
 
-	const handleUpdateIssue = async (values: TIssueFormValues) => {
+	const patch = async (dto: UpdateIssueDto, save: typeof saveContent) => {
 		if (!issue) return false;
+		// Nothing changed — treat as a no-op success.
+		if (Object.keys(dto).length === 0) return true;
+		try {
+			const res = await save({ issueId: issue.id, dto });
+			toast.success(res?.message || "Issue updated successfully");
+			return true;
+		} catch (error) {
+			toast.danger(getApiErrorMessage(error));
+			return false;
+		}
+	};
 
-		const nextAssignee =
-			values.assigneeId === UNASSIGNED
-				? null
-				: (values.assigneeId ?? null);
-		const nextSprint = values.sprintId ?? null;
-
-		// PATCH only what changed.
+	const handleSaveContent = async (values: TIssueContentValues) => {
+		if (!issue) return false;
 		const dto: UpdateIssueDto = {
 			...(values.title !== issue.title && { title: values.title }),
 			...((values.description ?? "") !== (issue.description ?? "") && {
 				description: values.description || undefined,
 			}),
+		};
+		return patch(dto, saveContent);
+	};
+
+	const handleSaveDetails = async (values: TIssueDetailsValues) => {
+		if (!issue) return false;
+		const nextAssignee =
+			values.assigneeId === UNASSIGNED
+				? null
+				: (values.assigneeId ?? null);
+		const nextSprint =
+			values.sprintId === NO_SPRINT ? null : (values.sprintId ?? null);
+
+		const dto: UpdateIssueDto = {
 			...(values.status !== issue.status && { status: values.status }),
 			...(values.priority !== issue.priority && {
 				priority: values.priority,
@@ -65,18 +94,7 @@ export default function IssueDetailModal({
 				sprintId: nextSprint,
 			}),
 		};
-
-		// Nothing changed — just close.
-		if (Object.keys(dto).length === 0) return true;
-
-		try {
-			const res = await updateIssue({ issueId: issue.id, dto });
-			toast.success(res?.message || "Issue updated successfully");
-			return true;
-		} catch (error) {
-			toast.danger(getApiErrorMessage(error));
-			return false;
-		}
+		return patch(dto, saveDetails);
 	};
 
 	return (
@@ -87,23 +105,36 @@ export default function IssueDetailModal({
 			title="Issue details"
 		>
 			{issue && (
-				<IssueForm
+				<div
 					key={issue.id}
-					defaultValues={{
-						title: issue.title,
-						description: issue.description ?? "",
-						status: issue.status,
-						priority: issue.priority,
-						assigneeId: issue.assigneeId ?? UNASSIGNED,
-						sprintId: issue.sprintId ?? undefined,
-					}}
-					isSubmitting={isPending}
-					onSubmit={handleUpdateIssue}
-					members={members}
-					sprints={sprints}
-					onCancel={onClose}
-					onSuccess={onClose}
-				/>
+					className="grid grid-cols-1 gap-5 xl:grid-cols-6"
+				>
+					<div className="xl:col-span-4">
+						<IssueContentForm
+							defaultValues={{
+								title: issue.title,
+								description: issue.description ?? "",
+							}}
+							onSubmit={handleSaveContent}
+							isSubmitting={isSavingContent}
+						/>
+					</div>
+					<div className="xl:col-span-2 border-l border-border">
+						<IssueDetailsPanel
+							defaultValues={{
+								status: issue.status,
+								priority: issue.priority,
+								assigneeId: issue.assigneeId ?? UNASSIGNED,
+								sprintId: issue.sprintId ?? NO_SPRINT,
+							}}
+							onSubmit={handleSaveDetails}
+							isSubmitting={isSavingDetails}
+							members={members}
+							sprints={sprints}
+							reporter={issue.reporter}
+						/>
+					</div>
+				</div>
 			)}
 		</MyModal>
 	);

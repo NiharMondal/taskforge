@@ -66,7 +66,7 @@ export default function FormSelect({
 														0,
 													)}
 													size="sm"
-													src={option.url}
+													src={option?.avatarUrl}
 													customSize
 												/>
 											)}

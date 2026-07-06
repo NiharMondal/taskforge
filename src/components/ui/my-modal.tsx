@@ -21,6 +21,7 @@ export default function MyModal({
 	return (
 		<Modal.Backdrop isOpen={isOpen} onOpenChange={onOpenChange}>
 			<Modal.Container
+				className="overflow-y-auto"
 				size={width ? undefined : size} // disable size if custom width exists
 			>
 				<Modal.Dialog className={cn(width, className)}>

@@ -10,6 +10,9 @@ enum IssueStatus {
   TODO
   IN_PROGRESS
   IN_REVIEW
+  QA_REQUESTED
+  QA_FAILED
+  DEPLOYED
   DONE
 }
 

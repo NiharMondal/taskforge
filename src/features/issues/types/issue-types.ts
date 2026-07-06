@@ -13,6 +13,9 @@ export type IssueStatus =
   | "TODO"
   | "IN_PROGRESS"
   | "IN_REVIEW"
+  | "QA_REQUESTED"
+  | "QA_FAILED"
+  | "DEPLOYED"
   | "DONE";
 
 export type IssuePriority = "LOW" | "MEDIUM" | "HIGH" | "URGENT";

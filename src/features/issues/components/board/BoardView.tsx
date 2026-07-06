@@ -25,7 +25,7 @@ import ProjectHeader from "@/features/projects/components/ProjectHeader";
 import { useProjects } from "@/features/projects/hooks/use-projects";
 import { useWorkspace } from "@/features/workspace/context/workspace-context";
 
-import { ISSUE_STATUSES } from "../../constants";
+import { BOARD_STATUSES } from "../../constants";
 import { useIssues, useUpdateIssue } from "../../hooks/use-issues";
 import { compareIssueRank, rankBetween } from "../../lib/rank";
 import type { Issue, IssueStatus } from "../../types/issue-types";
@@ -37,9 +37,9 @@ import { useBoolean } from "ahooks";
 
 type Columns = Record<IssueStatus, Issue[]>;
 
-/** Position of a status in the canonical backlog→done flow. */
+/** Position of a status in the board's todo→done lane flow. */
 const statusOrder = (status: IssueStatus): number =>
-	ISSUE_STATUSES.findIndex((s) => s.value === status);
+	BOARD_STATUSES.findIndex((s) => s.value === status);
 
 /**
  * A card may only move one lane at a time — to the immediately preceding or
@@ -61,8 +61,10 @@ const EMPTY_ISSUES: Issue[] = [];
  */
 function groupByStatus(issues: Issue[]): Columns {
 	const columns = Object.fromEntries(
-		ISSUE_STATUSES.map((s) => [s.value, [] as Issue[]]),
+		BOARD_STATUSES.map((s) => [s.value, [] as Issue[]]),
 	) as Columns;
+	// Backlog issues have no board lane (the board starts at To Do), so the
+	// optional chaining below quietly skips them — they surface on the list view.
 	for (const issue of issues) {
 		columns[issue.status]?.push(issue);
 	}
@@ -130,7 +132,7 @@ export default function BoardView({ projectId }: { projectId: string }) {
 
 	const activeIssue = useMemo(() => {
 		if (!activeId) return null;
-		for (const { value } of ISSUE_STATUSES) {
+		for (const { value } of BOARD_STATUSES) {
 			const found = columns[value].find((i) => i.id === activeId);
 			if (found) return found;
 		}
@@ -295,7 +297,7 @@ export default function BoardView({ projectId }: { projectId: string }) {
 					onDragEnd={handleDragEnd}
 				>
 					<div className="flex gap-4 overflow-x-auto pb-4">
-						{ISSUE_STATUSES.map(({ value, label }) => (
+						{BOARD_STATUSES.map(({ value, label }) => (
 							<BoardColumn
 								key={value}
 								status={value}

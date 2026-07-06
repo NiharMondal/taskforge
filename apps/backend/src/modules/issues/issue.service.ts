@@ -69,12 +69,14 @@ export class IssueService {
           select: {
             id: true,
             name: true,
+            avatarUrl: true,
           },
         },
         assignee: {
           select: {
             id: true,
             name: true,
+            avatarUrl: true,
           },
         },
       },

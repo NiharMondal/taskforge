@@ -62,6 +62,7 @@ export default function IssueDetailsPanel({
 						name="status"
 						label="Status"
 						placeholder="Select status"
+						className="bg-accent text-accent-foreground"
 						options={ISSUE_STATUSES.map((s) => ({
 							value: s.value,
 							label: s.label,

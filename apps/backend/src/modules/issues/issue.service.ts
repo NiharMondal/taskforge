@@ -53,6 +53,9 @@ export class IssueService {
       .sort()
       .include({
         assignee: { select: { id: true, name: true, email: true } },
+        reporter: {
+          select: { id: true, name: true, avatarUrl: true },
+        },
         sprint: { select: { id: true, name: true } },
       });
 
@@ -69,12 +72,14 @@ export class IssueService {
           select: {
             id: true,
             name: true,
+            avatarUrl: true,
           },
         },
         assignee: {
           select: {
             id: true,
             name: true,
+            avatarUrl: true,
           },
         },
       },

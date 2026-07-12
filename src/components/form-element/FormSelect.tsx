@@ -1,5 +1,5 @@
 import { IFormSelectOption } from "@/types/common";
-import { FieldError, Label, ListBox, Select } from "@heroui/react";
+import { cn, FieldError, Label, ListBox, Select } from "@heroui/react";
 import { Controller, useFormContext } from "react-hook-form";
 import Avatar from "../ui/avatar";
 
@@ -10,6 +10,7 @@ type TProps = {
 	isRequired?: boolean;
 	options: IFormSelectOption[];
 	showAvatar?: boolean;
+	className?: string;
 };
 export default function FormSelect({
 	name,
@@ -18,6 +19,7 @@ export default function FormSelect({
 	isRequired,
 	options = [],
 	showAvatar,
+	className,
 }: TProps) {
 	const { control } = useFormContext();
 	return (
@@ -37,9 +39,13 @@ export default function FormSelect({
 					fullWidth
 				>
 					{label && <Label>{label}</Label>}
-					<Select.Trigger>
+					<Select.Trigger className={cn(className)}>
 						<Select.Value />
-						<Select.Indicator />
+						<Select.Indicator
+							className={cn({
+								"text-accent-foreground": className,
+							})}
+						/>
 					</Select.Trigger>
 					<Select.Popover>
 						<ListBox>
@@ -66,7 +72,7 @@ export default function FormSelect({
 														0,
 													)}
 													size="sm"
-													src={option.url}
+													src={option?.avatarUrl}
 													customSize
 												/>
 											)}

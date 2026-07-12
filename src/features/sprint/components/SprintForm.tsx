@@ -2,7 +2,7 @@
 
 import { Button } from "@heroui/react";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 
 import {
 	FormTextArea,
@@ -31,7 +31,7 @@ export default function SprintForm({
 }: Props) {
 	const isEditing = !!defaultValues;
 
-	const methods = useForm<TSprintFormValues>({
+	const hookform = useForm<TSprintFormValues>({
 		resolver: zodResolver(sprintSchema),
 		defaultValues: defaultValues ?? {
 			name: "",
@@ -39,6 +39,11 @@ export default function SprintForm({
 			startDate: null,
 			endDate: null,
 		},
+	});
+
+	const startDateValue = useWatch({
+		control: hookform.control,
+		name: "startDate",
 	});
 
 	const handleFormSubmit = async (values: TSprintFormValues) => {
@@ -50,12 +55,12 @@ export default function SprintForm({
 		};
 		const success = await onSubmit(normalized);
 		if (success === false) return;
-		methods.reset();
+		hookform.reset();
 		onSuccess?.();
 	};
 
 	return (
-		<FormWrapper methods={methods} onSubmit={handleFormSubmit}>
+		<FormWrapper methods={hookform} onSubmit={handleFormSubmit}>
 			<FormTextField
 				name="name"
 				label="Sprint Name"
@@ -68,8 +73,16 @@ export default function SprintForm({
 				placeholder="What should this sprint achieve?"
 			/>
 			<div className="flex items-center gap-4 w-full">
-				<FormDatePicker name="startDate" label="Start Date" />
-				<FormDatePicker name="endDate" label="End Date" />
+				<FormDatePicker
+					name="startDate"
+					label="Start Date"
+					disablePastDate
+				/>
+				<FormDatePicker
+					name="endDate"
+					label="End Date"
+					minDate={startDateValue}
+				/>
 			</div>
 			<div className="mt-2 flex justify-end gap-2">
 				{onCancel && (

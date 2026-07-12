@@ -8,16 +8,12 @@ import {
 
 import { Chip } from "@heroui/react";
 
+import { BOARD_STATUSES } from "../../constants";
 import type { Issue, IssueStatus } from "../../types/issue-types";
 import BoardIssueCard from "./BoardIssueCard";
 
-const STATUS_ORDER: IssueStatus[] = [
-	"BACKLOG",
-	"TODO",
-	"IN_PROGRESS",
-	"IN_REVIEW",
-	"DONE",
-];
+// Derived from the board lanes so it never drifts from the status set.
+const STATUS_ORDER: IssueStatus[] = BOARD_STATUSES.map((s) => s.value);
 
 interface BoardColumnProps {
 	status: IssueStatus;

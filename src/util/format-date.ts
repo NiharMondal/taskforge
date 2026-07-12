@@ -1,4 +1,5 @@
 import { format, isValid, parse, parseISO } from "date-fns";
+import { parseDate, type CalendarDate } from "@internationalized/date";
 
 type DateInput = Date | string | number;
 
@@ -51,4 +52,16 @@ export function formatDate(
 	}
 
 	return format(parsedDate, outputFormat);
+}
+
+/**
+ * Convert a JS `Date` into an `@internationalized/date` `CalendarDate`,
+ * the value type HeroUI's DatePicker / Calendar expects for `minValue`/`maxValue`.
+ * Uses date-fns to normalize the date to a local `yyyy-MM-dd` string first,
+ * so timezone offsets never shift the calendar day.
+ */
+export function toCalendarDate(date: DateInput): CalendarDate | undefined {
+	const parsedDate = date instanceof Date ? date : new Date(date);
+	if (!isValid(parsedDate)) return undefined;
+	return parseDate(format(parsedDate, "yyyy-MM-dd"));
 }

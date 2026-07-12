@@ -5,15 +5,21 @@ import {
 	FormProvider as HookFormProvider,
 	UseFormReturn,
 } from "react-hook-form";
-import { Form as AriaForm } from "@heroui/react";
+import { Form as AriaForm, cn } from "@heroui/react";
 
 type Props = {
 	methods: UseFormReturn<any>;
 	onSubmit: (data: any) => void;
 	children: React.ReactNode;
+	className?: string;
 };
 
-export default function FormWrapper({ methods, onSubmit, children }: Props) {
+export default function FormWrapper({
+	methods,
+	onSubmit,
+	children,
+	className,
+}: Props) {
 	return (
 		<HookFormProvider {...methods}>
 			{/*
@@ -26,7 +32,7 @@ export default function FormWrapper({ methods, onSubmit, children }: Props) {
 			<AriaForm
 				onSubmit={methods.handleSubmit(onSubmit)}
 				validationBehavior="aria"
-				className="space-y-3"
+				className={cn("space-y-3", className)}
 			>
 				{children}
 			</AriaForm>

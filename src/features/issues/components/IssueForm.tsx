@@ -118,6 +118,7 @@ export default function IssueForm({
 					...members.map((member) => ({
 						value: member.userId,
 						label: member?.user?.name,
+						avatarUrl: member?.user?.avatarUrl || undefined,
 					})),
 				]}
 			/>

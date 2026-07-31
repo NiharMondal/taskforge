@@ -1,5 +1,14 @@
 # Migration: add `Issue.rank` for board ordering
 
+> **APPLIED — nothing left to do here.** All four steps below landed in the
+> backend repo: the column and index ship in migration
+> `20260608151325_added_rand_to_issue_model`, `IssueService` reads and writes
+> `rank` on create/update, and the backfill lives at
+> `backend/scripts/backfill-issue-rank.ts` (`pnpm run backfill:issue-rank` —
+> idempotent, so it can be re-run per environment). Step 4 (tighten to non-null)
+> is still deliberately **not** done: the column stays nullable until every
+> environment has been backfilled. Kept as a record; do not re-apply.
+
 Adds a fractional-index `rank` to `Issue` so Kanban card order persists. Run
 against the **backend** repo (this is just the reference copy of the schema).
 

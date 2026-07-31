@@ -20,6 +20,9 @@ Update always implement PATCH Method
     - :sprintId/end(UPDATE)
 - Issues: /projects/:projectId/issues(GET, POST)
     - :issueId(GET, UPDATE, DELETE)
+    - board order: POST assigns `rank` itself (end of the lane, client value ignored);
+      PATCH accepts `rank` (base-62 fractional index) with `status` and stores it as sent —
+      a status change with no `rank` is appended to the target lane. `?sort=rank` is allowed.
 
 **Upcoming**
 

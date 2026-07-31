@@ -75,12 +75,13 @@ function groupByStatus(issues: Issue[]): Columns {
 }
 
 /**
- * Kanban board. Columns are status lanes; dragging a card to another lane
- * persists the new status via an optimistic PATCH ({@link useUpdateIssue}).
+ * Kanban board. Columns are status lanes; dragging a card persists its new
+ * status *and* position via an optimistic PATCH ({@link useUpdateIssue}).
  *
- * Within-lane ordering is local-only and resets on refetch: the `Issue` model
- * has no `rank`/order field, so there's nothing to persist position to. Add a
- * backend rank before promising durable ordering.
+ * Position is durable: the drop computes a fractional `rank` from the card's
+ * neighbors (see `lib/rank.ts`) and the backend stores it verbatim. When a rank
+ * can't be computed the PATCH carries status only, and the backend appends the
+ * card to the end of the target lane.
  */
 export default function BoardView({ projectId }: { projectId: string }) {
 	const [isOpen, { setTrue: openModal, setFalse: closeModal }] = useBoolean();

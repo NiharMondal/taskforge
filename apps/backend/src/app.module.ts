@@ -7,6 +7,7 @@ import { PrismaModule } from "@/prisma/prisma.module";
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { APP_GUARD } from "@nestjs/core";
+import { CloudinaryModule } from "@/cloudinary/cloudinary.module";
 import { InvitationModule } from "./modules/invitations/invitation.module";
 import { IssueModule } from "./modules/issues/issue.module";
 import { MembershipModule } from "./modules/memberships/membership.module";
@@ -18,6 +19,7 @@ import { WorkspaceModule } from "./modules/workspace/workspace.module";
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
+    CloudinaryModule,
     AuthModule,
     UserModule,
     WorkspaceModule,

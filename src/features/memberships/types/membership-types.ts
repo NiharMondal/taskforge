@@ -16,3 +16,8 @@ export interface Member {
 	createdAt: string;
 	user: ICommonUserEntity | null;
 }
+
+/** Payload for `PATCH /memberships/:userId` — the only mutable field is the role. */
+export interface UpdateMembershipDto {
+	role: WorkspaceRole;
+}

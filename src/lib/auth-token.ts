@@ -28,3 +28,28 @@ export function registerAuthTokenGetter(getter: AuthTokenGetter): void {
 export async function getAuthToken(): Promise<string | null> {
   return tokenGetter();
 }
+
+/**
+ * Pluggable "session no longer valid" callback.
+ *
+ * The backend `accessToken` lives *inside* the Auth.js session and can expire
+ * independently of the session cookie. When the backend rejects a request with
+ * 401, the cookie may still look valid — so the proxy keeps the user on
+ * protected pages while every API call fails. The HTTP layer signals that here
+ * and the auth layer (auth-provider) registers a handler that signs the user
+ * out. Kept decoupled for the same reason as the token getter: axios.ts must
+ * never import next-auth.
+ */
+type UnauthorizedHandler = () => void;
+
+let unauthorizedHandler: UnauthorizedHandler = () => {};
+
+/** Register the function invoked when the backend reports an expired session. */
+export function registerUnauthorizedHandler(handler: UnauthorizedHandler): void {
+  unauthorizedHandler = handler;
+}
+
+/** Signal that the backend rejected the current session (HTTP 401). */
+export function notifyUnauthorized(): void {
+  unauthorizedHandler();
+}

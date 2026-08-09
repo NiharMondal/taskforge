@@ -39,9 +39,15 @@ export default function CreateIssueModal({
 			return false;
 		}
 	};
-	
+
 	return (
-		<MyModal isOpen={isOpen} onOpenChange={onOpenChange} size="cover">
+		<MyModal
+			isOpen={isOpen}
+			onOpenChange={onOpenChange}
+			// size="lg"
+			width="md:min-w-[600px] max-h-[90vh]"
+			title="Create Issue"
+		>
 			{isOpen && (
 				<IssueForm
 					isSubmitting={isPending}

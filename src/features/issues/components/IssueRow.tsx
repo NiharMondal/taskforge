@@ -7,6 +7,7 @@ import { ISSUE_STATUSES, STATUS_META } from "../constants";
 import type { Issue, IssueStatus } from "../types/issue-types";
 import PriorityChip from "./PriorityChip";
 import { useRouter } from "next/navigation";
+import { TFSelect } from "@/components/ui/TFSelect";
 
 interface IssueRowProps {
 	issue: Issue;
@@ -26,7 +27,6 @@ export default function IssueRow({
 	issue,
 	assigneeName,
 	onStatusChange,
-	onOpen,
 	isUpdating,
 }: IssueRowProps) {
 	const router = useRouter();
@@ -53,37 +53,20 @@ export default function IssueRow({
 				</span>
 			</div>
 
-			<Select
-				aria-label={`Status for ${issue.title}`}
+			<TFSelect
 				value={issue.status}
 				isDisabled={isUpdating}
+				className="w-36 shrink-0"
 				onChange={(key) => {
 					if (key != null && key !== issue.status) {
 						onStatusChange(issue.id, String(key) as IssueStatus);
 					}
 				}}
-				className="w-36 shrink-0"
-			>
-				<Select.Trigger>
-					<Select.Value>
-						{STATUS_META[issue.status].label}
-					</Select.Value>
-					<Select.Indicator />
-				</Select.Trigger>
-				<Select.Popover>
-					<ListBox>
-						{ISSUE_STATUSES.map((s) => (
-							<ListBox.Item
-								key={s.value}
-								id={s.value}
-								textValue={s.label}
-							>
-								{s.label}
-							</ListBox.Item>
-						))}
-					</ListBox>
-				</Select.Popover>
-			</Select>
+				options={ISSUE_STATUSES.map((s) => ({
+					value: s.value,
+					label: s.label,
+				}))}
+			/>
 		</div>
 	);
 }

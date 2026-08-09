@@ -9,17 +9,18 @@ import { auth } from "@/lib/auth";
  * per spec/auth.md) and hands a minimal, serializable user to the client shell.
  */
 export default async function DashboardLayout({
-  children,
+	children,
 }: {
-  children: React.ReactNode;
+	children: React.ReactNode;
 }) {
-  const session = await auth();
-  if (!session) redirect("/login");
+	const session = await auth();
+	if (!session) redirect("/login");
 
-  const user = {
-    name: session.user?.name,
-    email: session.user?.email,
-  };
+	const user = {
+		name: session.user?.name,
+		email: session.user?.email,
+		image: session.user?.image,
+	};
 
-  return <AppLayout user={user}>{children}</AppLayout>;
+	return <AppLayout user={user}>{children}</AppLayout>;
 }

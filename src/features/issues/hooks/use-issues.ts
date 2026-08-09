@@ -29,6 +29,11 @@ export function useIssues(workspaceId: string, projectId: string) {
 		// the optimistic update in useUpdateIssue depends on that.
 		queryFn: async () => (await getIssues(projectId)).data,
 		enabled: !!workspaceId && !!projectId,
+		// The board and list views share this exact query key, so hopping between
+		// them (or remounting) serves the cached list instead of refetching. A
+		// workspace switch still invalidates everything, and mutations invalidate
+		// on settle, so the data can't go stale in a way the user would notice.
+		staleTime: 60_000,
 	});
 }
 export function useSingleIssue(
@@ -100,8 +105,14 @@ export function useUpdateIssue(workspaceId: string, projectId: string) {
 			}
 		},
 
-		onSettled: () => {
+		onSettled: (_data, _err, { issueId }) => {
 			queryClient.invalidateQueries({ queryKey: key });
+			// The detail page reads its own cache entry (useSingleIssue), which the
+			// list-only optimistic write above never touches — refetch it so an edit
+			// made from the detail view reconciles with the server.
+			queryClient.invalidateQueries({
+				queryKey: issueKeys.detail(workspaceId, projectId, issueId),
+			});
 		},
 	});
 }

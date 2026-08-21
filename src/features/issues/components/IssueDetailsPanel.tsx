@@ -7,7 +7,7 @@ import { useForm } from "react-hook-form";
 import { FormSelect, FormWrapper } from "@/components/form-element";
 import { Member } from "@/features/memberships/types/membership-types";
 
-import { ISSUE_PRIORITIES, ISSUE_STATUSES } from "../constants";
+import { ISSUE_PRIORITIES, statusOptionsFor } from "../constants";
 import {
 	issueDetailsSchema,
 	TIssueDetailsValues,
@@ -47,6 +47,10 @@ export default function IssueDetailsPanel({
 	});
 	const { isDirty } = methods.formState;
 
+	// Derived from the *saved* status, not the form's live value: recomputing on
+	// selection would let one save walk the issue several stages down the flow.
+	const statusOptions = statusOptionsFor(defaultValues.status);
+
 	const handleSubmit = async (values: TIssueDetailsValues) => {
 		const success = await onSubmit(values);
 		if (success === false) return;
@@ -63,7 +67,8 @@ export default function IssueDetailsPanel({
 						label="Status"
 						placeholder="Select status"
 						className="bg-accent text-accent-foreground"
-						options={ISSUE_STATUSES.map((s) => ({
+						isDisabled={statusOptions.length === 1}
+						options={statusOptions.map((s) => ({
 							value: s.value,
 							label: s.label,
 						}))}

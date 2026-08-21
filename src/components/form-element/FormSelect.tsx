@@ -8,6 +8,7 @@ type TProps = {
 	label?: string;
 	placeholder?: string;
 	isRequired?: boolean;
+	isDisabled?: boolean;
 	options: IFormSelectOption[];
 	showAvatar?: boolean;
 	className?: string;
@@ -17,6 +18,7 @@ export default function FormSelect({
 	label,
 	placeholder,
 	isRequired,
+	isDisabled,
 	options = [],
 	showAvatar,
 	className,
@@ -30,6 +32,7 @@ export default function FormSelect({
 				<Select
 					placeholder={placeholder}
 					isRequired={isRequired}
+					isDisabled={isDisabled}
 					name={field.name}
 					value={field.value || null}
 					onChange={(key) => field.onChange(key ?? "")}

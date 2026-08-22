@@ -82,6 +82,7 @@ export default function SprintForm({
 					name="endDate"
 					label="End Date"
 					minDate={startDateValue}
+					disablePastDate
 				/>
 			</div>
 			<div className="mt-2 flex justify-end gap-2">

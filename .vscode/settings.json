@@ -1,8 +1,8 @@
 {
     "editor.codeActionsOnSave": {
-        "source.removeUnused.ts": "always",
-        "source.organizeImports": "always",
-        "source.sortImports": "always"
+        "source.removeUnused.ts": "explicit",
+        "source.organizeImports": "explicit",
+        "source.sortImports": "explicit"
     },
     "editor.tabSize": 4,
     "prettier.tabWidth": 4

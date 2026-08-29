@@ -18,11 +18,11 @@ export default function Avatar({
 	return (
 		<AV
 			size={size}
-			className={cn("rounded-full", { "size-5": customSize })}
+			className={cn("ring-1 ring-accent ", { "size-5": customSize })}
 		>
 			<div
 				className={cn(
-					"object-cover",
+					"object-cover overflow-hidden",
 					shape === "circle" && "rounded-full",
 				)}
 			>

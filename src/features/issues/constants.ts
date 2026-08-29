@@ -28,7 +28,8 @@ interface PriorityMeta {
 /**
  * Every issue status, ordered left-to-right as work flows (backlog → done).
  * This is the full set — the issue list groups by it so *all* data is visible,
- * and it drives the inline status Select and the create form.
+ * and it drives the create form. Status *changes* go through
+ * {@link STATUS_TRANSITIONS} instead, which only allows the next step.
  */
 export const ISSUE_STATUSES: StatusMeta[] = [
 	{ value: "BACKLOG", label: "Backlog", color: "default" },
@@ -66,3 +67,40 @@ export const PRIORITY_META: Record<IssuePriority, PriorityMeta> =
 		IssuePriority,
 		PriorityMeta
 	>;
+
+/**
+ * Legal forward transitions out of each status. The workflow is a single line —
+ * backlog → todo → in progress → in review → qa requested → deployed → done —
+ * so each status offers exactly one next step, with two deliberate exceptions:
+ *
+ * - `QA_REQUESTED` is the only fork: QA either passes it (`DEPLOYED`) or fails
+ *   it (`QA_FAILED`).
+ * - `QA_FAILED` goes *back* to `IN_PROGRESS`. A failed issue belongs to its
+ *   assignee again, so picking the work back up is the only move available.
+ *
+ * `DONE` is terminal. Status Selects read this instead of {@link ISSUE_STATUSES}
+ * so an issue can't skip stages; the full list is still what the issue list
+ * groups by, since every status has to be *displayable* even when unreachable
+ * from the issue in hand.
+ */
+export const STATUS_TRANSITIONS: Record<IssueStatus, IssueStatus[]> = {
+	BACKLOG: ["TODO"],
+	TODO: ["IN_PROGRESS"],
+	IN_PROGRESS: ["IN_REVIEW"],
+	IN_REVIEW: ["QA_REQUESTED"],
+	QA_REQUESTED: ["QA_FAILED", "DEPLOYED"],
+	QA_FAILED: ["IN_PROGRESS"],
+	DEPLOYED: ["DONE"],
+	DONE: [],
+};
+
+/**
+ * Options for a status Select on an issue currently in `status`: that status
+ * first — a Select can only render a value that is one of its options — then
+ * each legal next status. A single-entry result means the issue is terminal and
+ * the caller should disable the control.
+ */
+export const statusOptionsFor = (status: IssueStatus): StatusMeta[] => [
+	STATUS_META[status],
+	...STATUS_TRANSITIONS[status].map((next) => STATUS_META[next]),
+];

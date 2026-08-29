@@ -1,9 +1,8 @@
 "use client";
 
-import { ListBox, Select } from "@heroui/react";
 import { CircleUserRound } from "lucide-react";
 
-import { ISSUE_STATUSES, STATUS_META } from "../constants";
+import { statusOptionsFor } from "../constants";
 import type { Issue, IssueStatus } from "../types/issue-types";
 import PriorityChip from "./PriorityChip";
 import { useRouter } from "next/navigation";
@@ -22,6 +21,9 @@ interface IssueRowProps {
  * A single issue line: priority, title/description, assignee, and an inline
  * status Select that triggers an optimistic PATCH. Dumb component — the parent
  * owns the mutation; this only reports the intent via {@link onStatusChange}.
+ *
+ * The Select offers the issue's current status plus its legal next steps only
+ * (see `STATUS_TRANSITIONS`), so work can't skip a stage from the list view.
  */
 export default function IssueRow({
 	issue,
@@ -30,6 +32,9 @@ export default function IssueRow({
 	isUpdating,
 }: IssueRowProps) {
 	const router = useRouter();
+	// Current status + its legal next steps. A lone entry means the issue is
+	// terminal (DONE), so there is nothing to pick and the Select is disabled.
+	const statusOptions = statusOptionsFor(issue.status);
 	const handleClick = () => {
 		router.push(`/projects/${issue.projectId}/issues/${issue.id}`);
 	};
@@ -55,14 +60,14 @@ export default function IssueRow({
 
 			<TFSelect
 				value={issue.status}
-				isDisabled={isUpdating}
+				isDisabled={isUpdating || statusOptions.length === 1}
 				className="w-36 shrink-0"
 				onChange={(key) => {
 					if (key != null && key !== issue.status) {
 						onStatusChange(issue.id, String(key) as IssueStatus);
 					}
 				}}
-				options={ISSUE_STATUSES.map((s) => ({
+				options={statusOptions.map((s) => ({
 					value: s.value,
 					label: s.label,
 				}))}

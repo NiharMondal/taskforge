@@ -8,6 +8,7 @@ import Avatar from "@/components/ui/avatar";
 import { SignOutButton } from "@/features/auth/components/sign-out-button";
 
 import { useSidebar } from "./sidebar-context";
+import { ThemeSwitcher } from "../theme-switch/theme-switch";
 
 /** Minimal, serializable view of the session user passed from the server layout. */
 export interface HeaderUser {
@@ -58,15 +59,19 @@ export default function Header({ user }: { user: HeaderUser }) {
       </Button>
 
       <div className="ml-auto flex items-center gap-3">
+         <ThemeSwitcher/>
         <Avatar
           src={image ?? undefined}
           fallback={initialsOf(name ?? email)}
           alt={name ?? "Profile photo"}
           size="sm"
+          shape="square"
+          
         />
         <span className="hidden text-sm text-muted sm:inline">
           {name ?? email}
         </span>
+       
         <SignOutButton />
       </div>
     </header>

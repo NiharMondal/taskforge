@@ -36,7 +36,7 @@ export default function ProjectComponent() {
 	};
 	return (
 		<div className="flex flex-col gap-6">
-			<div className="flex items-center justify-between gap-4">
+			<div className="flex items-center justify-between gap-4 pb-5 border-b border-border">
 				<h1 className="text-2xl font-semibold">Projects</h1>
 				<Button onClick={openModal}>
 					<Plus className="h-4 w-4" />

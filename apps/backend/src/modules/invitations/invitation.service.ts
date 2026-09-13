@@ -41,7 +41,7 @@ export class InvitationService {
       throw new ForbiddenException("Insufficient permissions");
     }
 
-    const existingUser = await this.prisma.user.findUnique({
+    const existingUser = await this.prisma.auth.findUnique({
       where: { email: dto.email },
     });
 
@@ -169,12 +169,15 @@ export class InvitationService {
       throw new BadRequestException("Invitation has expired");
     }
 
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) {
+    const auth = await this.prisma.auth.findUnique({
+      where: { id: userId },
+      include: { user: true },
+    });
+    if (!auth) {
       throw new NotFoundException("User not found");
     }
 
-    if (user.email !== invitation.email) {
+    if (auth.email !== invitation.email) {
       throw new ForbiddenException(
         "This invitation was sent to a different email address",
       );

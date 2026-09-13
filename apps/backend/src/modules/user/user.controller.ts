@@ -8,26 +8,13 @@ import {
   HttpStatus,
   Param,
   Patch,
-  Post,
 } from "@nestjs/common";
-import { CreateUserDto } from "./dto/create-user.dto";
 import { UpdateUserDto } from "./dto/update-user.dto";
 import { UserService } from "./user.service";
 
 @Controller("users")
 export class UserController {
   constructor(private readonly userService: UserService) {}
-
-  @Post()
-  @HttpCode(HttpStatus.CREATED)
-  async create(@Body() dto: CreateUserDto) {
-    const user = await this.userService.create(dto);
-    return sendResponse({
-      statusCode: HttpStatus.CREATED,
-      message: "User created successfully",
-      data: user,
-    });
-  }
 
   @Get()
   @HttpCode(HttpStatus.OK)

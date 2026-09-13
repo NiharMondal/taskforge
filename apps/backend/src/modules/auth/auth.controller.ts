@@ -3,6 +3,7 @@ import { sendResponse } from "@/common/utils/send-response";
 import { AuthService } from "@/modules/auth/auth.service";
 import { RegisterDto } from "@/modules/auth/dto/register.dto";
 import { Body, Controller, HttpCode, HttpStatus, Post } from "@nestjs/common";
+import { GoogleAuthDto } from "./dto/google-auth.dto";
 import { LoginDto } from "./dto/login.dto";
 
 @Controller("auth")
@@ -29,6 +30,18 @@ export class AuthController {
     return sendResponse({
       statusCode: HttpStatus.OK,
       message: "Login successfully",
+      data: result,
+    });
+  }
+
+  @Post("google")
+  @HttpCode(HttpStatus.OK)
+  @Public()
+  async google(@Body() dto: GoogleAuthDto) {
+    const result = await this.authService.googleSignIn(dto);
+    return sendResponse({
+      statusCode: HttpStatus.OK,
+      message: "Google login successfully",
       data: result,
     });
   }

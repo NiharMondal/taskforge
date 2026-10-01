@@ -15,7 +15,7 @@ export interface SelectOption {
 }
 
 interface TFSelectProps extends Omit<
-	SelectProps,
+	SelectProps<SelectOption, "single">,
 	"children" | "value" | "onChange"
 > {
 	label?: string;

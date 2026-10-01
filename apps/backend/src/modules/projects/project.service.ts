@@ -1,0 +1,66 @@
+import { PrismaService } from "@/prisma/prisma.service";
+import { Injectable, NotFoundException } from "@nestjs/common";
+import { CreateProjectDto } from "./dto/create-project.dto";
+import { UpdateProjectDto } from "./dto/update-project.dto";
+
+@Injectable()
+export class ProjectService {
+  constructor(private prisma: PrismaService) {}
+
+  async create(workspaceId: string, dto: CreateProjectDto) {
+    return this.prisma.project.create({
+      data: {
+        name: dto.name,
+        description: dto.description,
+        workspaceId,
+      },
+    });
+  }
+
+  async findAll(workspaceId: string) {
+    return this.prisma.project.findMany({
+      where: { workspaceId },
+      orderBy: { createdAt: "desc" },
+      include: {
+        _count: {
+          select: {
+            issues: true,
+            sprints: true,
+          },
+        },
+      },
+    });
+  }
+
+  async findOne(workspaceId: string, projectId: string) {
+    const project = await this.prisma.project.findFirst({
+      where: { id: projectId, workspaceId },
+    });
+
+    if (!project) {
+      throw new NotFoundException("Project not found");
+    }
+
+    return project;
+  }
+
+  async update(workspaceId: string, projectId: string, dto: UpdateProjectDto) {
+    await this.findOne(workspaceId, projectId);
+
+    return this.prisma.project.update({
+      where: { id: projectId },
+      data: {
+        name: dto.name,
+        description: dto.description,
+      },
+    });
+  }
+
+  async delete(workspaceId: string, projectId: string) {
+    await this.findOne(workspaceId, projectId);
+
+    return this.prisma.project.delete({
+      where: { id: projectId },
+    });
+  }
+}

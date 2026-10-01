@@ -1,6 +1,14 @@
+packages:
+  - apps/*
+  - packages/*
+
+# Which dependencies may run install scripts. Merged from the two former
+# per-app pnpm-workspace.yaml files; pnpm only reads this at the root.
 allowBuilds:
+  '@nestjs/core': true
+  '@prisma/engines': true
+  esbuild: true
+  prisma: true
   sharp: true
   unrs-resolver: true
-ignoredBuiltDependencies:
-  - sharp
-  - unrs-resolver
+  '@parcel/watcher': false

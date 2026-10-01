@@ -46,7 +46,7 @@ Consequences:
   - enums: `import { WorkspaceRole, IssueStatus } from "generated/prisma/enums"`
   - types: `import { User } from "generated/prisma/client"`
   - Note these are bare `generated/...` specifiers (resolved via `baseUrl: "."`), not `@/`-prefixed.
-- `prisma/migrations/` is also gitignored, so migration history is local-only.
+- `prisma/migrations/` is committed. History starts at the `*_init` baseline (generated from the schema on 2026-10-01); earlier migrations were never tracked. Add schema changes with `npx prisma migrate dev --name <change>` and commit the new folder.
 - The datasource block in `schema.prisma` has no `url`; the URL is supplied by `prisma.config.ts`
   (`DATABASE_URL`) for the CLI, and by `PrismaService` for runtime.
 - `@/*` maps to `src/*` (tsconfig paths).
@@ -71,7 +71,7 @@ Parameter decorators (in `src/common/decorators/`): `@CurrentUser(): JwtPayload`
 
 Token secret is `JWT_ACCESS_SECRET`, read via `ConfigService.getOrThrow` — never `process.env`
 directly and never hardcoded. Access token expiry is `1d` (`auth.module.ts`). There is currently
-**no refresh token implementation** despite leftover refresh-token migrations.
+**no refresh token implementation**.
 
 ### RolesGuard gotcha
 

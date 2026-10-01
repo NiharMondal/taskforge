@@ -5,11 +5,15 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 
 import { FormTextField, FormWrapper } from "@/components/form-element";
+import { Eye, EyeOff } from "lucide-react";
 import { signIn } from "next-auth/react";
+import { useState } from "react";
 import { register } from "../api/auth-api";
 import { registerSchema, type RegisterInput } from "../schemas/auth-schema";
 
 export function RegisterForm() {
+	const [showPassword, setShowPassword] = useState(false);
+
 	const methods = useForm<RegisterInput>({
 		resolver: zodResolver(registerSchema),
 		defaultValues: {
@@ -55,15 +59,33 @@ export function RegisterForm() {
 			<FormTextField
 				name="password"
 				label="Password"
-				type="password"
+				type={showPassword ? "text" : "password"}
 				placeholder="At least 8 characters"
+				ornament={
+					<div onClick={() => setShowPassword((prev) => !prev)}>
+						{showPassword ? (
+							<Eye size={20} />
+						) : (
+							<EyeOff size={20} />
+						)}
+					</div>
+				}
 			/>
 
 			<FormTextField
 				name="confirmPassword"
 				label="Confirm password"
-				type="password"
+				type={showPassword ? "text" : "password"}
 				placeholder="Re-enter your password"
+				ornament={
+					<div onClick={() => setShowPassword((prev) => !prev)}>
+						{showPassword ? (
+							<Eye size={20} />
+						) : (
+							<EyeOff size={20} />
+						)}
+					</div>
+				}
 			/>
 
 			<Button type="submit" variant="primary" fullWidth className="mt-2">

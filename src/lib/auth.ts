@@ -1,11 +1,15 @@
 import NextAuth, { CredentialsSignin } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
+import GoogleProvider from "next-auth/providers/google";
 
 import { login } from "@/features/auth/api/auth-api";
 import { loginSchema } from "@/features/auth/schemas/auth-schema";
 import { ApiError } from "@/lib/api-error";
 
 import { authConfig } from "./auth.config";
+
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5001/api/v1";
 
 /**
  * Auth.js v5 entrypoint (Node runtime).
@@ -24,9 +28,45 @@ class InvalidCredentials extends CredentialsSignin {
   code = "invalid_credentials";
 }
 
+async function googleProfile(profile: Record<string, unknown>) {
+  const res = await fetch(`${API_URL}/auth/google`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      email: profile.email as string,
+      name: profile.name as string,
+      image: (profile.picture as string) ?? undefined,
+      googleId: profile.sub as string,
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Google auth failed: ${res.status} ${text}`);
+  }
+
+  const { data } = (await res.json()) as { data: { user: { id: string; name: string; email: string; avatarUrl?: string | null }; accessToken: string } };
+
+  return {
+    id: data.user.id,
+    name: data.user.name,
+    email: data.user.email,
+    image: data.user.avatarUrl ?? null,
+    accessToken: data.accessToken,
+  };
+}
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
   providers: [
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+
+      async profile(profile) {
+        return googleProfile(profile);
+      },
+    }),
     Credentials({
       name: "Credentials",
       credentials: {
@@ -40,7 +80,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (!parsed.success) throw new InvalidCredentials();
 
         try {
-          const { user, accessToken } = (await login(parsed.data)).data;
+          const { user, accessToken } = (await login(parsed.data))
+            .data;
 
           return {
             id: user.id,

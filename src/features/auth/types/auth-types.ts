@@ -44,3 +44,15 @@ export interface RegisterRequest {
 export interface RegisterResponse {
   user: AuthUser
 }
+
+export interface GoogleAuthRequest {
+  email: string;
+  name: string;
+  image?: string;
+  googleId: string;
+}
+
+export interface GoogleAuthResponse {
+  user: AuthUser;
+  accessToken: string;
+}

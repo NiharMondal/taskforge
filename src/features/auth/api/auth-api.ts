@@ -1,8 +1,10 @@
 import { api } from "@/lib/axios";
 
-import type { ApiResponse } from "@/types/api";
+import { ApiResponse } from "@/types/api";
 
 import type {
+  GoogleAuthRequest,
+  GoogleAuthResponse,
   LoginRequest,
   LoginResponse,
   RegisterRequest,
@@ -19,6 +21,16 @@ import type {
  * Validation, password hashing, and JWT issuance are the backend's job
  * (spec/auth.md). The frontend only forwards credentials and reads the result.
  */
+
+/**
+ * Exchange Google OAuth profile for a backend-issued session.
+ * Called from the Auth.js Google provider `profile` callback (server side).
+ */
+export async function googleLogin(
+  payload: GoogleAuthRequest,
+): Promise<ApiResponse<GoogleAuthResponse>> {
+  return api.post<GoogleAuthResponse>("/auth/google", payload);
+}
 
 /**
  * Exchange credentials for a backend-issued session.

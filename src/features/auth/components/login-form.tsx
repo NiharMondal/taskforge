@@ -1,13 +1,16 @@
 "use client";
 
-import { Button, toast } from "@heroui/react";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { signIn } from "next-auth/react";
-import { useForm } from "react-hook-form";
-import { LoginInput, loginSchema } from "../schemas/auth-schema";
 import { FormTextField, FormWrapper } from "@/components/form-element";
 import { getApiErrorMessage } from "@/lib/api-error";
+import GoogleIcon from "@/shared/icons/google-icon";
+import { Button, toast } from "@heroui/react";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { Eye, EyeOff } from "lucide-react";
+import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { LoginInput, loginSchema } from "../schemas/auth-schema";
 
 /**
  * Where to land after a successful sign-in. The proxy puts the originally
@@ -28,6 +31,7 @@ function resolvePostLoginTarget(callbackUrl: string | null): string {
 }
 
 export default function LoginForm() {
+	const [showPassword, setShowPassword] = useState(false);
 	const router = useRouter();
 	const searchParams = useSearchParams();
 	const methods = useForm<LoginInput>({
@@ -66,8 +70,31 @@ export default function LoginForm() {
 				isRequired
 				name="password"
 				label="Password"
-				type="password"
+				type={showPassword ? "text" : "password"}
+				ornament={
+					<div onClick={() => setShowPassword((prev) => !prev)}>
+						{showPassword ? (
+							<Eye size={20} />
+						) : (
+							<EyeOff size={20} />
+						)}
+					</div>
+				}
 			/>
+			<div className="flex items-center gap-3 my-4">
+				<div className="h-px flex-1 bg-muted/20" />
+				<span className="text-xs text-default-400">OR</span>
+				<div className="h-px flex-1 bg-muted/20" />
+			</div>
+			<Button
+				type="button"
+				className="w-full"
+				variant="outline"
+				onPress={() => signIn("google")}
+			>
+				<GoogleIcon />
+				Continue with Google
+			</Button>
 			<Button type="submit" className={"w-full"}>
 				Login
 			</Button>

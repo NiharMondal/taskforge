@@ -36,7 +36,7 @@ pnpm --filter @taskforge/backend <script>   # any app script from the root
 
 `pnpm` only, never npm/yarn. Add a dependency to one app with `pnpm --filter @taskforge/web add <pkg>` (or `pnpm add` from inside the app dir) — never at the root unless it is workspace tooling. pnpm settings (`allowBuilds`, etc.) live **only** in the root `pnpm-workspace.yaml`; pnpm ignores per-app copies.
 
-Backend needs a reachable `DATABASE_URL` (`apps/backend/.env`); the web app reads `apps/web/.env.local`. `generated/` (Prisma client) is gitignored and rebuilt by `pnpm install` / `pnpm db:generate`. `prisma/migrations/` is **still gitignored** (inherited from the backend repo) — so a fresh clone cannot rebuild the database from git yet. Backend CORS is hardcoded in `apps/backend/src/main.ts` to `localhost:3000` / `:3001`.
+Backend needs a reachable `DATABASE_URL` (`apps/backend/.env`); the web app reads `apps/web/.env.local`. `generated/` (Prisma client) is gitignored and rebuilt by `pnpm install` / `pnpm db:generate`. `prisma/migrations/` **is** committed: `pnpm db:migrate` builds a fresh database from it, and schema changes ship as a new migration folder in the same commit. Backend CORS is hardcoded in `apps/backend/src/main.ts` to `localhost:3000` / `:3001`.
 
 Env-file traps in both `.env.example` files — the examples do not match what the code reads:
 
@@ -73,5 +73,5 @@ These hold on both sides of the wire — breaking one on either side breaks the 
 
 - **`RolesGuard` is not usable for MEMBER/VIEWER gating.** It hardcodes an OWNER-or-ADMIN check before consulting `@Roles(...)`. Enforce finer-grained rules in the service layer instead.
 - **`GET /users` is ungated** and returns every user across all tenants. Unfinished admin surface — don't build on it, don't copy its shape.
-- **No refresh tokens** despite leftover refresh-token migrations. Access tokens last `1d`; on a backend 401 the frontend force-signs-out, because the Auth.js cookie can outlive the backend token.
+- **No refresh tokens.** Access tokens last `1d`; on a backend 401 the frontend force-signs-out, because the Auth.js cookie can outlive the backend token.
 - **Neither app has a real test suite.** Backend has Jest wired up with one placeholder spec; the frontend has no test runner at all (type-check with `npx tsc --noEmit`).

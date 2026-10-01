@@ -14,7 +14,7 @@ Multi-tenant issue tracker — pnpm workspace monorepo.
 cp apps/backend/.env.example apps/backend/.env   # set DATABASE_URL, PORT=5001
 cp apps/web/.env.example apps/web/.env.local     # note: Cloudinary keys need NEXT_PUBLIC_ prefix
 pnpm install                                     # also runs prisma generate
-pnpm db:migrate                                  # needs migrations: prisma/migrations is not in git yet
+pnpm db:migrate                                  # create/upgrade the database from prisma/migrations
 pnpm dev                                         # starts backend + web
 ```
 

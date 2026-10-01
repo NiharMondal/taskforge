@@ -1,0 +1,16 @@
+{
+  "name": "taskforge",
+  "private": true,
+  "packageManager": "pnpm@10.26.0",
+  "scripts": {
+    "dev": "pnpm --parallel --filter \"./apps/*\" run dev",
+    "dev:web": "pnpm --filter @taskforge/web run dev",
+    "dev:backend": "pnpm --filter @taskforge/backend run dev",
+    "build": "pnpm --filter \"./apps/*\" run build",
+    "lint": "pnpm --filter \"./apps/*\" run lint",
+    "db:generate": "pnpm --filter @taskforge/backend exec prisma generate",
+    "db:migrate": "pnpm --filter @taskforge/backend exec prisma migrate dev",
+    "db:studio": "pnpm --filter @taskforge/backend run studio",
+    "postinstall": "pnpm run db:generate"
+  }
+}

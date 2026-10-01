@@ -21,13 +21,13 @@ Path alias: `@/*` → `./src/*`.
 
 ## Reference docs (read before designing anything)
 
-The backend lives in a separate repo; this repo carries its contracts:
+The backend lives alongside this app at `../backend/` (see the root `CLAUDE.md`). Its `prisma/schema.prisma` and `src/modules/*/` controllers are the source of truth; the copies below predate the monorepo and drift:
 
-- `.claude/schema.prisma` — the backend data model. Types in `features/*/types/` mirror it.
+- `.claude/schema.prisma` — copy of the backend data model. Types in `features/*/types/` mirror it.
 - `.claude/BACK_END_API.md` — endpoint map. **Every update is PATCH**, never PUT.
 - `.claude/AI_GUIDE.md` — project-level architectural rules (workspace scoping, optimistic updates, no monolithic components).
 - `.claude/FORM_GUIDE.md` — the canonical form pattern with a worked example.
-- `.claude/migrations/` — schema changes that must be applied in the backend repo.
+- `.claude/migrations/` — historical schema-change notes from the two-repo era (all applied).
 - `spec/` — feature specs written before implementation (`auth.md`, `layout.md`, `projects.md`, `cloudinary.md`, `sprint-on-create-issue.md`). These document backend contracts and intended UX; consult the relevant one before changing a feature.
 
 Never invent an API shape. If a contract is unclear, ask rather than guess.

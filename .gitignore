@@ -1,0 +1,6 @@
+# Each app keeps its own .gitignore; this covers the workspace root.
+node_modules/
+.DS_Store
+.env*
+!.env.example
+*.log

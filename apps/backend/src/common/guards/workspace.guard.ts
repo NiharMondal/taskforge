@@ -21,9 +21,19 @@ export class WorkspaceGuard implements CanActivate {
     }
 
     const rawHeader = request.headers["x-workspace-id"];
-    const workspaceId =
-      (Array.isArray(rawHeader) ? rawHeader[0] : rawHeader) ??
-      request.params["workspaceId"];
+    const headerId = Array.isArray(rawHeader) ? rawHeader[0] : rawHeader;
+    const paramId = request.params["workspaceId"];
+
+    // Membership is checked against exactly one id, and the route acts on the
+    // path param. If the two disagree the check would authorize workspace A
+    // while the handler operates on workspace B, so reject instead of guessing.
+    if (headerId && paramId && headerId !== paramId) {
+      throw new ForbiddenException(
+        "x-workspace-id header does not match the workspace in the path",
+      );
+    }
+
+    const workspaceId = headerId ?? paramId;
 
     if (!workspaceId) {
       throw new ForbiddenException("Workspace ID missing");

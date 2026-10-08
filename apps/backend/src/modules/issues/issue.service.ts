@@ -107,6 +107,12 @@ export class IssueService {
     membershipRole: WorkspaceRole,
     dto: UpdateIssueDto,
   ) {
+    // `@Roles` can't gate below OWNER/ADMIN (see RolesGuard), so read-only
+    // access for VIEWER is enforced here, like the MEMBER field rules below.
+    if (membershipRole === WorkspaceRole.VIEWER) {
+      throw new ForbiddenException("Viewers cannot update issues");
+    }
+
     if (membershipRole === WorkspaceRole.MEMBER) {
       // `rank` is deliberately absent: moving a card on the board is a status
       // change plus a position, so members who may re-status an issue may also

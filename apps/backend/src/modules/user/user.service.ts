@@ -1,7 +1,11 @@
 import { CloudinaryService } from "@/cloudinary/cloudinary.service";
 import { UpdateUserDto } from "@/modules/user/dto/update-user.dto";
 import { PrismaService } from "@/prisma/prisma.service";
-import { Injectable, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import { User } from "generated/prisma/client";
 
 @Injectable()
@@ -10,21 +14,6 @@ export class UserService {
     private readonly prisma: PrismaService,
     private readonly cloudinary: CloudinaryService,
   ) {}
-
-  async findAll() {
-    return this.prisma.user.findMany({
-      include: {
-        auth: {
-          select: {
-            email: true,
-          },
-        },
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-    });
-  }
 
   async findOne(id: string) {
     const user = await this.prisma.user.findUnique({
@@ -59,7 +48,23 @@ export class UserService {
 
     const { avatarPublicId, ...rest } = dto;
 
-    if (!avatarPublicId) {
+    // promoteToPermanent() happily adopts any existing Cloudinary asset, and a
+    // later avatar change destroys the previous one — so accepting an arbitrary
+    // publicId would let a user adopt (and then delete) someone else's avatar.
+    // The only ids a client may legitimately send are a fresh temp upload, or
+    // its own current avatar echoed back unchanged.
+    const isUnchanged = avatarPublicId === existing.avatarPublicId;
+    if (
+      avatarPublicId &&
+      !isUnchanged &&
+      !this.cloudinary.isTemp(avatarPublicId)
+    ) {
+      throw new BadRequestException(
+        "avatarPublicId must reference a newly uploaded image",
+      );
+    }
+
+    if (!avatarPublicId || isUnchanged) {
       return this.prisma.user.update({
         where: { id },
         data: rest,
@@ -108,17 +113,5 @@ export class UserService {
         },
       },
     });
-  }
-
-  async remove(id: string): Promise<void> {
-    const existing = await this.findOne(id);
-
-    await this.prisma.user.delete({
-      where: { id },
-    });
-
-    if (existing.avatarPublicId) {
-      await this.cloudinary.delete(existing.avatarPublicId);
-    }
   }
 }

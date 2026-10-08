@@ -28,16 +28,21 @@ class InvalidCredentials extends CredentialsSignin {
   code = "invalid_credentials";
 }
 
-async function googleProfile(profile: Record<string, unknown>) {
+/**
+ * Exchange Google's signed ID token for a backend session.
+ *
+ * Only the `id_token` is forwarded — never the profile fields. `POST /auth/google`
+ * is public, so the backend verifies the token's signature and audience with
+ * Google and reads email/sub/picture from it; anything we asserted ourselves
+ * would let a caller sign in as whoever they claimed to be.
+ */
+async function googleProfile(idToken: string | undefined) {
+  if (!idToken) throw new Error("Google did not return an ID token");
+
   const res = await fetch(`${API_URL}/auth/google`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      email: profile.email as string,
-      name: profile.name as string,
-      image: (profile.picture as string) ?? undefined,
-      googleId: profile.sub as string,
-    }),
+    body: JSON.stringify({ idToken }),
   });
 
   if (!res.ok) {
@@ -63,8 +68,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       clientId: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
 
-      async profile(profile) {
-        return googleProfile(profile);
+      // Auth.js passes the token set as the second argument.
+      async profile(_profile, tokens) {
+        return googleProfile(tokens.id_token);
       },
     }),
     Credentials({

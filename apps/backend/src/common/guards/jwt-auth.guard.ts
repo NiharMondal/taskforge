@@ -1,8 +1,8 @@
 import { IS_PUBLIC_KEY } from "@/common/decorators/public.decorator";
 import {
   ExecutionContext,
-  ForbiddenException,
   Injectable,
+  UnauthorizedException,
 } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import { AuthGuard } from "@nestjs/passport";
@@ -24,7 +24,7 @@ export class JwtAuthGuard extends AuthGuard("jwt") {
     const request = context.switchToHttp().getRequest<Request>();
 
     const authHeader = request?.headers?.["authorization"];
-    if (!authHeader) throw new ForbiddenException("Token not provided!");
+    if (!authHeader) throw new UnauthorizedException("Token not provided!");
 
     return super.canActivate(context);
   }

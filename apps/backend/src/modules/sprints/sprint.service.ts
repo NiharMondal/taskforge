@@ -108,6 +108,7 @@ export class SprintService {
       await tx.issue.updateMany({
         where: {
           sprintId,
+          workspaceId,
           status: { not: "DONE" },
         },
         data: {

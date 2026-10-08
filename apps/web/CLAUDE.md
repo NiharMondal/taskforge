@@ -15,7 +15,7 @@ pnpm add <pkg>  # install packages (always use pnpm, not npm/yarn)
 
 No test runner is configured — there are no tests to run. Type-check with `npx tsc --noEmit`.
 
-Requires `.env.local` (copy `.env.example`): `NEXT_PUBLIC_API_URL` (backend base, defaults to `http://localhost:5001/api/v1`), `AUTH_SECRET`, plus `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME` / `NEXT_PUBLIC_CLOUDINARY_PRESET_NAME` for avatar upload. Note `.env.example` lists the Cloudinary keys **without** the `NEXT_PUBLIC_` prefix the code actually reads.
+Requires `.env.local` (copy `.env.example`): `NEXT_PUBLIC_API_URL` (backend base, defaults to `http://localhost:5001/api/v1`), `AUTH_SECRET`, `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` (Google sign-in; without them the OAuth redirect carries `client_id=undefined`), plus `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME` / `NEXT_PUBLIC_CLOUDINARY_PRESET_NAME` for avatar upload. Note `.env.example` lists the Cloudinary keys **without** the `NEXT_PUBLIC_` prefix the code actually reads.
 
 Path alias: `@/*` → `./src/*`.
 

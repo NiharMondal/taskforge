@@ -10,10 +10,10 @@ import {
 	toast,
 } from "@heroui/react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useSession } from "next-auth/react";
 
 import ErrorAlert from "@/components/ui/error-alert";
 import { useMemberships } from "@/features/memberships/hooks/use-memberships";
+import { useWorkspacePermissions } from "@/features/memberships/hooks/use-workspace-permissions";
 import WorkspaceForm from "@/features/workspace/components/WorkspaceForm";
 import { useWorkspace } from "@/features/workspace/context/workspace-context";
 import {
@@ -34,12 +34,10 @@ export default function GeneralSettings() {
 		activeWorkspaceId,
 		isError: isWorkspaceError,
 	} = useWorkspace();
-	const { data: session } = useSession();
 	const queryClient = useQueryClient();
 
 	const workspaceId = activeWorkspaceId ?? "";
 	const {
-		data: members = [],
 		isLoading,
 		isError: isMembersError,
 		refetch: refetchMembers,
@@ -48,10 +46,7 @@ export default function GeneralSettings() {
 	// roster would wrongly read as "you are not an admin".
 	const isError = isWorkspaceError || isMembersError;
 
-	const currentRole = members.find(
-		(m) => m.userId === session?.user?.id,
-	)?.role;
-	const canManage = currentRole === "OWNER" || currentRole === "ADMIN";
+	const { isManager: canManage } = useWorkspacePermissions();
 
 	const { mutateAsync: updateWorkspace, isPending } = useUpdateWorkspace();
 

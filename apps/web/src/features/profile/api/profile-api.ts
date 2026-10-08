@@ -8,19 +8,19 @@ import type { UpdateProfileDto, User } from "../types/profile-types";
  * Profile API layer. All network access for the current user lives here
  * (AGENTS.md: never call axios directly from components).
  *
- * The backend exposes the user under `/users/:id` (there is no `/me`); the
- * caller supplies the id from the session.
+ * Both calls use `/users/me`: the backend resolves "me" from the access token.
+ * `/users/<id>` is self-only too, but would need us to know the id, and the one
+ * cached in the Auth.js session can disagree with the token's (then it is a 403).
  */
 
-/** Fetch a user by id (`GET /users/:id`). */
-export async function getUser(userId: string): Promise<ApiResponse<User>> {
-	return api.get<User>(`/users/${userId}`);
+/** Fetch the signed-in user (`GET /users/me`). */
+export async function getUser(): Promise<ApiResponse<User>> {
+	return api.get<User>("/users/me");
 }
 
-/** Update the current user's editable profile fields (`PATCH /users/:id`). */
+/** Update the signed-in user's editable profile fields (`PATCH /users/me`). */
 export async function updateProfile(
-	userId: string,
 	dto: UpdateProfileDto,
 ): Promise<ApiResponse<User>> {
-	return api.patch<User>(`/users/${userId}`, dto);
+	return api.patch<User>("/users/me", dto);
 }

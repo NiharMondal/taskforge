@@ -60,7 +60,9 @@ export class IssueService {
       .paginate()
       .sort()
       .include({
-        assignee: { select: { id: true, name: true, email: true } },
+        // `email` lives on `Auth`, not `User` — selecting it here makes Prisma
+        // reject the whole query. Mirrors `findOne`.
+        assignee: { select: { id: true, name: true, avatarUrl: true } },
         reporter: {
           select: { id: true, name: true, avatarUrl: true },
         },

@@ -45,7 +45,7 @@ Consequences:
 - Import models/enums from the generated path, NOT from `@prisma/client`:
   - enums: `import { WorkspaceRole, IssueStatus } from "generated/prisma/enums"`
   - types: `import { User } from "generated/prisma/client"`
-  - Note these are bare `generated/...` specifiers (resolved via `baseUrl: "."`), not `@/`-prefixed.
+  - Note these are bare `generated/...` specifiers (resolved via the tsconfig `paths` entry `generated/*` → `./generated/*`; there is no `baseUrl`), not `@/`-prefixed.
 - `prisma/migrations/` is committed. History starts at the `*_init` baseline (generated from the schema on 2026-10-01); earlier migrations were never tracked. Add schema changes with `npx prisma migrate dev --name <change>` and commit the new folder.
 - The datasource block in `schema.prisma` has no `url`; the URL is supplied by `prisma.config.ts`
   (`DATABASE_URL`) for the CLI, and by `PrismaService` for runtime.

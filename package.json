@@ -5,7 +5,7 @@
   "scripts": {
     "free-ports": "lsof -ti tcp:3000,5001,5002 -sTCP:LISTEN | xargs kill 2>/dev/null || true",
     "predev": "pnpm run free-ports",
-    "dev":"pnpm --parallel --filter \"./apps/*\" run dev",
+    "dev": "pnpm --parallel --filter \"./apps/*\" run dev",
     "dev:web": "pnpm --filter @taskforge/web run dev",
     "dev:backend": "pnpm --filter @taskforge/backend run dev",
     "build": "pnpm --filter \"./apps/*\" run build",

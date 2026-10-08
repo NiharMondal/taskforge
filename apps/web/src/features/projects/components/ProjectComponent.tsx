@@ -2,6 +2,8 @@
 import { Button } from "@heroui/react/button";
 import { Plus } from "lucide-react";
 import { useCreateProject, useProjects } from "../hooks/use-projects";
+import ErrorAlert from "@/components/ui/error-alert";
+import { useWorkspacePermissions } from "@/features/memberships/hooks/use-workspace-permissions";
 import { useWorkspace } from "@/features/workspace/context/workspace-context";
 import ProjectList from "./ProjectList";
 import { useBoolean } from "ahooks";
@@ -15,7 +17,13 @@ export default function ProjectComponent() {
 	const [isOpen, { setTrue: openModal, setFalse: closeModal }] = useBoolean();
 	const { activeWorkspaceId } = useWorkspace();
 	const workspaceId = activeWorkspaceId ?? "";
-	const { data: projects, isLoading } = useProjects(workspaceId);
+	const { canManageProjects } = useWorkspacePermissions();
+	const {
+		data: projects,
+		isLoading,
+		isError,
+		refetch,
+	} = useProjects(workspaceId);
 
 	const { mutateAsync: createProject, isPending: isCreating } =
 		useCreateProject(workspaceId);
@@ -28,9 +36,7 @@ export default function ProjectComponent() {
 			}
 			return true;
 		} catch (error) {
-			toast.danger(
-				getApiErrorMessage(error || "Failed to create project"),
-			);
+			toast.danger(getApiErrorMessage(error, "Failed to create project"));
 			return false;
 		}
 	};
@@ -38,16 +44,28 @@ export default function ProjectComponent() {
 		<div className="flex flex-col gap-6">
 			<div className="flex items-center justify-between gap-4 pb-5 border-b border-border">
 				<h1 className="text-2xl font-semibold">Projects</h1>
-				<Button onClick={openModal}>
-					<Plus className="h-4 w-4" />
-					New Project
-				</Button>
+				{canManageProjects && (
+					<Button onClick={openModal}>
+						<Plus className="h-4 w-4" />
+						New Project
+					</Button>
+				)}
 			</div>
 
-			{isLoading ? (
+			{isError ? (
+				<ErrorAlert
+					title="Couldn’t load projects"
+					description="Check your connection and try again."
+					onRetry={() => refetch()}
+				/>
+			) : isLoading ? (
 				<p className="text-muted">Loading projects…</p>
 			) : (
-				<ProjectList projects={projects} openModal={openModal} />
+				<ProjectList
+					projects={projects}
+					openModal={openModal}
+					canManage={canManageProjects}
+				/>
 			)}
 			<MyModal
 				isOpen={isOpen}

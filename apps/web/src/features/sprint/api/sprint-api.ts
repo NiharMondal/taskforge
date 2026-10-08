@@ -25,3 +25,28 @@ export async function updateSprint(
 ): Promise<ApiResponse<Sprint>> {
 	return api.patch<Sprint>(`/projects/${projectId}/sprints/${sprintId}`, dto);
 }
+
+/**
+ * Start a sprint (`PATCH /projects/:projectId/sprints/:sprintId/start`). The
+ * backend allows one active sprint per project and stamps `startDate` with now.
+ */
+export async function startSprint(
+	projectId: string,
+	sprintId: string,
+): Promise<ApiResponse<Sprint>> {
+	return api.patch<Sprint>(
+		`/projects/${projectId}/sprints/${sprintId}/start`,
+	);
+}
+
+/**
+ * End the active sprint (`PATCH /projects/:projectId/sprints/:sprintId/end`).
+ * The backend stamps `endDate` with now and takes the sprint's unfinished
+ * issues out of it.
+ */
+export async function endSprint(
+	projectId: string,
+	sprintId: string,
+): Promise<ApiResponse<Sprint>> {
+	return api.patch<Sprint>(`/projects/${projectId}/sprints/${sprintId}/end`);
+}

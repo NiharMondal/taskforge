@@ -18,6 +18,8 @@ export class MembershipService {
             id: true,
             name: true,
             avatarUrl: true,
+            // `email` lives on `Auth`, not `User` (same shape as `/users/:id`).
+            auth: { select: { email: true } },
           },
         },
       },

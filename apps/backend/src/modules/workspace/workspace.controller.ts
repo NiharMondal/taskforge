@@ -34,7 +34,7 @@ export class WorkspaceController {
     @CurrentUser() user: JwtPayload,
     @Body() dto: CreateWorkspaceDto,
   ) {
-    const res = await this.workspaceService.create(user.sub, dto.name);
+    const res = await this.workspaceService.create(user.sub, dto);
     return sendResponse({
       statusCode: HttpStatus.CREATED,
       message: "Workspace created successfully",

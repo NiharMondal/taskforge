@@ -45,16 +45,24 @@ export default function LoginForm() {
 				password: data.password,
 				redirect: false,
 			});
-			if (res.code === "invalid_credentials") {
-				toast.danger("Invalid Credentials");
-			} else {
-				toast.success("Logged in successfully");
-				router.push(
-					resolvePostLoginTarget(searchParams.get("callbackUrl")),
+			// With `redirect: false`, a failed sign-in still resolves — `error` is
+			// the signal, and `ok` can be true regardless. `code` is only set for
+			// the credentials rejection we raise ourselves; anything else (backend
+			// down, misconfiguration) is a generic failure, not a success.
+			if (res.error) {
+				toast.danger(
+					res.code === "invalid_credentials"
+						? "Invalid Credentials"
+						: "Something went wrong. Please try again.",
 				);
+				return;
 			}
+			toast.success("Logged in successfully");
+			router.push(
+				resolvePostLoginTarget(searchParams.get("callbackUrl")),
+			);
 		} catch (error) {
-			toast.danger(getApiErrorMessage(error || "Something went wrong"));
+			toast.danger(getApiErrorMessage(error, "Something went wrong"));
 		}
 	};
 	return (
@@ -83,7 +91,7 @@ export default function LoginForm() {
 			/>
 			<div className="flex items-center gap-3 my-4">
 				<div className="h-px flex-1 bg-muted/20" />
-				<span className="text-xs text-default-400">OR</span>
+				<span className="text-xs text-muted">OR</span>
 				<div className="h-px flex-1 bg-muted/20" />
 			</div>
 			<Button

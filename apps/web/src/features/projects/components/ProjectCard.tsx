@@ -21,9 +21,11 @@ import { getApiErrorMessage } from "@/lib/api-error";
 
 interface ProjectCardProps {
 	project: Project;
+	/** OWNER/ADMIN only: shows the edit control. */
+	canManage: boolean;
 }
 
-export default function ProjectCard({ project }: ProjectCardProps) {
+export default function ProjectCard({ project, canManage }: ProjectCardProps) {
 	const [isOpen, { setTrue: openModal, setFalse: closeModal }] = useBoolean();
 
 	const { mutateAsync: updateProject, isPending: isUpdating } =
@@ -35,9 +37,7 @@ export default function ProjectCard({ project }: ProjectCardProps) {
 			toast.success("Project updated successfully");
 			return true;
 		} catch (error) {
-			toast.danger(
-				getApiErrorMessage(error || "Failed to update project"),
-			);
+			toast.danger(getApiErrorMessage(error, "Failed to update project"));
 			return false;
 		}
 	};
@@ -53,16 +53,18 @@ export default function ProjectCard({ project }: ProjectCardProps) {
 				<CardHeader className="flex-row items-start justify-between gap-2 pb-2">
 					<CardTitle className="text-base">{project.name}</CardTitle>
 
-					<Button
-						isIconOnly
-						size="sm"
-						variant="ghost"
-						aria-label={`Edit ${project.name}`}
-						className="relative z-10 -mr-1 -mt-1"
-						onClick={openModal}
-					>
-						<Pencil className="size-4" aria-hidden />
-					</Button>
+					{canManage && (
+						<Button
+							isIconOnly
+							size="sm"
+							variant="ghost"
+							aria-label={`Edit ${project.name}`}
+							className="relative z-10 -mr-1 -mt-1"
+							onClick={openModal}
+						>
+							<Pencil className="size-4" aria-hidden />
+						</Button>
+					)}
 				</CardHeader>
 
 				<CardContent className="flex flex-col gap-3">
@@ -86,7 +88,7 @@ export default function ProjectCard({ project }: ProjectCardProps) {
 			<MyModal
 				isOpen={isOpen}
 				onOpenChange={closeModal}
-				title="Create New Project"
+				title="Edit Project"
 				size="lg"
 			>
 				<ProjectForm

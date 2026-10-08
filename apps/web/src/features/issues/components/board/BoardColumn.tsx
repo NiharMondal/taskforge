@@ -21,6 +21,8 @@ interface BoardColumnProps {
 	issues: Issue[];
 	assigneeNames: Map<string, string>;
 	onOpenIssue: (issue: Issue) => void;
+	/** Whether the viewer may drag cards in this lane. */
+	canDrag: boolean;
 }
 
 /**
@@ -35,6 +37,7 @@ export default function BoardColumn({
 	issues,
 	assigneeNames,
 	onOpenIssue,
+	canDrag,
 }: BoardColumnProps) {
 	const { setNodeRef } = useDroppable({ id: status });
 	const { active, over } = useDndContext();
@@ -81,6 +84,7 @@ export default function BoardColumn({
 									: undefined
 							}
 							onOpen={onOpenIssue}
+							canDrag={canDrag}
 						/>
 					))}
 				</SortableContext>

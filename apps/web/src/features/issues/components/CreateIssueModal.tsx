@@ -7,6 +7,7 @@ import { useWorkspace } from "@/features/workspace/context/workspace-context";
 import { toast } from "@heroui/react";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { useSprints } from "@/features/sprint/hooks/use-sprints";
+import type { IssueStatus } from "../types/issue-types";
 type TProps = {
 	isOpen: boolean;
 	onOpenChange: () => void;
@@ -14,12 +15,15 @@ type TProps = {
 	projectId: string;
 	onSubmit?: (dto: TIssueFormValues) => Promise<void>;
 	isLoading?: boolean;
+	/** Status the form starts on (the board has no BACKLOG lane, so it passes TODO). */
+	defaultStatus?: IssueStatus;
 };
 export default function CreateIssueModal({
 	isOpen,
 	onOpenChange,
 	members,
 	projectId,
+	defaultStatus,
 }: TProps) {
 	const { activeWorkspaceId } = useWorkspace();
 	const workspaceId = activeWorkspaceId ?? "";
@@ -56,6 +60,7 @@ export default function CreateIssueModal({
 					sprints={sprints}
 					onCancel={onOpenChange}
 					onSuccess={onOpenChange}
+					initialStatus={defaultStatus}
 				/>
 			)}
 		</MyModal>

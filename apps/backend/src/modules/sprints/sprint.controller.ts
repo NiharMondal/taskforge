@@ -18,6 +18,7 @@ import {
 } from "@nestjs/common";
 import { WorkspaceRole } from "generated/prisma/enums";
 import { CreateSprintDto } from "./dto/create-sprint.dto";
+import { UpdateSprintDto } from "./dto/update-sprint.dto";
 import { SprintService } from "./sprint.service";
 
 @Controller("projects/:projectId/sprints")
@@ -68,7 +69,7 @@ export class SprintController {
     @Param("projectId") projectId: string,
     @Param("sprintId") sprintId: string,
     @MembershipRole() membershipRole: WorkspaceRole,
-    @Body() dto: CreateSprintDto,
+    @Body() dto: UpdateSprintDto,
   ) {
     const sprint = await this.sprintService.updateSprint(
       workspaceId,

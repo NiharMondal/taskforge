@@ -2,13 +2,17 @@
 
 import { useMemo, useState } from "react";
 
-import { Alert, Button, Spinner, toast } from "@heroui/react";
+import { Button, Spinner, toast } from "@heroui/react";
 import { Plus } from "lucide-react";
 
+import ErrorAlert from "@/components/ui/error-alert";
 import { useMemberships } from "@/features/memberships/hooks/use-memberships";
+import { useWorkspacePermissions } from "@/features/memberships/hooks/use-workspace-permissions";
+import { getMemberName } from "@/features/memberships/lib/member";
 import ProjectHeader from "@/features/projects/components/ProjectHeader";
 import { useProjects } from "@/features/projects/hooks/use-projects";
 import { useWorkspace } from "@/features/workspace/context/workspace-context";
+import { getApiErrorMessage } from "@/lib/api-error";
 
 import { useIssues, useUpdateIssue } from "../hooks/use-issues";
 import type { Issue, IssueStatus } from "../types/issue-types";
@@ -34,10 +38,12 @@ export default function IssuesView({ projectId }: { projectId: string }) {
 	const project = projects?.find((p) => p.id === projectId);
 
 	const { data: members = [] } = useMemberships(workspaceId);
+	const permissions = useWorkspacePermissions();
 	const {
 		data: issues = [],
 		isLoading,
 		isError,
+		refetch,
 	} = useIssues(workspaceId, projectId);
 
 	const {
@@ -50,14 +56,25 @@ export default function IssuesView({ projectId }: { projectId: string }) {
 	const assigneeNames = useMemo(() => {
 		const map = new Map<string, string>();
 		for (const m of members) {
-			if (m.user) map.set(m.userId, m.user.name || m.user.email);
+			if (m.user) map.set(m.userId, getMemberName(m));
 		}
 		return map;
 	}, [members]);
 
 	const handleStatusChange = (issueId: string, status: IssueStatus) => {
-		updateIssue({ issueId, dto: { status } });
-		toast.success("Status updated successfully");
+		// Toast on the outcome, not on the click: the PATCH can still be
+		// rejected (and the optimistic write rolled back).
+		updateIssue(
+			{ issueId, dto: { status } },
+			{
+				onSuccess: ({ message }) =>
+					toast.success(message || "Status updated successfully"),
+				onError: (error) =>
+					toast.danger(
+						getApiErrorMessage(error, "Failed to update status"),
+					),
+			},
+		);
 	};
 
 	return (
@@ -67,23 +84,21 @@ export default function IssuesView({ projectId }: { projectId: string }) {
 				project={project}
 				active="issues"
 				actions={
-					<Button onPress={openModal}>
-						<Plus className="h-4 w-4" />
-						New Issue
-					</Button>
+					permissions.canCreateIssue && (
+						<Button onPress={openModal}>
+							<Plus className="h-4 w-4" />
+							New Issue
+						</Button>
+					)
 				}
 			/>
 
 			{isError ? (
-				<Alert status="danger">
-					<Alert.Indicator />
-					<Alert.Content>
-						<Alert.Title>Couldn’t load issues</Alert.Title>
-						<Alert.Description>
-							Check your connection and try again.
-						</Alert.Description>
-					</Alert.Content>
-				</Alert>
+				<ErrorAlert
+					title="Couldn’t load issues"
+					description="Check your connection and try again."
+					onRetry={() => refetch()}
+				/>
 			) : isLoading ? (
 				<div className="flex items-center gap-2 py-12 text-muted">
 					<Spinner size="sm" />
@@ -93,6 +108,7 @@ export default function IssuesView({ projectId }: { projectId: string }) {
 				<IssueList
 					issues={issues}
 					assigneeNames={assigneeNames}
+					permissions={permissions}
 					onStatusChange={handleStatusChange}
 					onOpenIssue={setSelectedIssue}
 					onCreateClick={openModal}
@@ -115,6 +131,7 @@ export default function IssuesView({ projectId }: { projectId: string }) {
 				members={members}
 				workspaceId={workspaceId}
 				projectId={projectId}
+				permissions={permissions}
 			/>
 		</div>
 	);

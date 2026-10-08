@@ -6,6 +6,10 @@ import { useForm } from "react-hook-form";
 
 import { FormSelect, FormWrapper } from "@/components/form-element";
 import { Member } from "@/features/memberships/types/membership-types";
+import {
+	canSetIssueStatus,
+	type Permissions,
+} from "@/features/memberships/lib/permissions";
 
 import { ISSUE_PRIORITIES, statusOptionsFor } from "../constants";
 import {
@@ -25,6 +29,8 @@ type Props = {
 	sprints: Sprint[];
 	/** Read-only — the reporter is set at creation and never edited here. */
 	reporter?: ICommonUserEntity;
+	/** Which of the controls below the viewer's role may actually change. */
+	permissions: Permissions;
 };
 
 /**
@@ -39,6 +45,7 @@ export default function IssueDetailsPanel({
 	members,
 	sprints,
 	reporter,
+	permissions,
 }: Props) {
 	const methods = useForm<TIssueDetailsValues>({
 		resolver: zodResolver(issueDetailsSchema),
@@ -49,7 +56,15 @@ export default function IssueDetailsPanel({
 
 	// Derived from the *saved* status, not the form's live value: recomputing on
 	// selection would let one save walk the issue several stages down the flow.
-	const statusOptions = statusOptionsFor(defaultValues.status);
+	// Options the viewer's role may not move the issue to (e.g. DONE for a
+	// MEMBER) are dropped; a lone entry disables the control.
+	const statusOptions = statusOptionsFor(defaultValues.status).filter(
+		(s) =>
+			s.value === defaultValues.status ||
+			canSetIssueStatus(permissions, s.value),
+	);
+	const canEditFields = permissions.canEditIssueFields;
+	const canSave = canEditFields || permissions.canChangeIssueStatus;
 
 	const handleSubmit = async (values: TIssueDetailsValues) => {
 		const success = await onSubmit(values);
@@ -77,6 +92,7 @@ export default function IssueDetailsPanel({
 						name="priority"
 						label="Priority"
 						placeholder="Select priority"
+						isDisabled={!canEditFields}
 						options={ISSUE_PRIORITIES.map((p) => ({
 							value: p.value,
 							label: p.label,
@@ -87,6 +103,7 @@ export default function IssueDetailsPanel({
 						label="Assignee"
 						placeholder="Select assignee"
 						showAvatar
+						isDisabled={!canEditFields}
 						options={[
 							{ value: UNASSIGNED, label: "Unassigned" },
 							...members.map((member) => ({
@@ -100,6 +117,7 @@ export default function IssueDetailsPanel({
 						name="sprintId"
 						label="Sprint"
 						placeholder="Select sprint"
+						isDisabled={!canEditFields}
 						options={[
 							{ value: NO_SPRINT, label: "No Sprint" },
 							...sprints.map((sprint) => ({
@@ -109,14 +127,16 @@ export default function IssueDetailsPanel({
 						]}
 					/>
 
-					<div className="flex justify-end">
-						<Button
-							type="submit"
-							isDisabled={!isDirty || isSubmitting}
-						>
-							{isSubmitting ? "Saving…" : "Save"}
-						</Button>
-					</div>
+					{canSave && (
+						<div className="flex justify-end">
+							<Button
+								type="submit"
+								isDisabled={!isDirty || isSubmitting}
+							>
+								{isSubmitting ? "Saving…" : "Save"}
+							</Button>
+						</div>
+					)}
 				</FormWrapper>
 			</div>
 			<div className="flex flex-col gap-0.5 border border-border p-4 rounded-md">

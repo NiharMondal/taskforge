@@ -11,6 +11,7 @@ import {
 } from "@heroui/react";
 import { useSession } from "next-auth/react";
 
+import ErrorAlert from "@/components/ui/error-alert";
 import ProfileForm from "@/features/profile/components/ProfileForm";
 import { useCurrentUser, useUpdateProfile } from "@/features/profile/hooks/use-profile";
 import type { TProfileFormValues } from "@/features/profile/schema/profile-schema";
@@ -28,7 +29,13 @@ export default function ProfileSettings() {
 	const { data: session, update } = useSession();
 	const userId = session?.user?.id;
 
-	const { data: user, isLoading } = useCurrentUser(userId);
+	const {
+		data: user,
+		isLoading,
+		isError,
+		error,
+		refetch,
+	} = useCurrentUser(userId);
 	const { mutateAsync: updateProfile, isPending } = useUpdateProfile();
 
 	const handleSubmit = async (values: TProfileFormValues) => {
@@ -66,6 +73,19 @@ export default function ProfileSettings() {
 		}
 	};
 
+	if (isError) {
+		return (
+			<ErrorAlert
+				title="Couldn’t load your profile"
+				description={getApiErrorMessage(
+					error,
+					"Check your connection and try again.",
+				)}
+				onRetry={() => refetch()}
+			/>
+		);
+	}
+
 	return (
 		<Card>
 			<CardHeader>
@@ -87,7 +107,7 @@ export default function ProfileSettings() {
 							avatarUrl: user.avatarUrl ?? "",
 							avatarPublicId: user.avatarPublicId ?? "",
 						}}
-						email={user.email}
+						email={user.auth?.email ?? ""}
 						onSubmit={handleSubmit}
 						isSubmitting={isPending}
 					/>

@@ -9,12 +9,17 @@ import {
 	Spinner,
 	toast,
 } from "@heroui/react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useSession } from "next-auth/react";
 
+import ErrorAlert from "@/components/ui/error-alert";
 import { useMemberships } from "@/features/memberships/hooks/use-memberships";
 import WorkspaceForm from "@/features/workspace/components/WorkspaceForm";
 import { useWorkspace } from "@/features/workspace/context/workspace-context";
-import { useUpdateWorkspace } from "@/features/workspace/hooks/use-workspaces";
+import {
+	useUpdateWorkspace,
+	workspaceKeys,
+} from "@/features/workspace/hooks/use-workspaces";
 import type { TWorkspaceFormValues } from "@/features/workspace/schema/workspace-schema";
 import { getApiErrorMessage } from "@/lib/api-error";
 
@@ -24,11 +29,24 @@ import { getApiErrorMessage } from "@/lib/api-error";
  * derived from the roster; the backend enforces the real boundary.
  */
 export default function GeneralSettings() {
-	const { activeWorkspace, activeWorkspaceId } = useWorkspace();
+	const {
+		activeWorkspace,
+		activeWorkspaceId,
+		isError: isWorkspaceError,
+	} = useWorkspace();
 	const { data: session } = useSession();
+	const queryClient = useQueryClient();
 
 	const workspaceId = activeWorkspaceId ?? "";
-	const { data: members = [], isLoading } = useMemberships(workspaceId);
+	const {
+		data: members = [],
+		isLoading,
+		isError: isMembersError,
+		refetch: refetchMembers,
+	} = useMemberships(workspaceId);
+	// Either failure leaves this page unable to tell what to show — and a failed
+	// roster would wrongly read as "you are not an admin".
+	const isError = isWorkspaceError || isMembersError;
 
 	const currentRole = members.find(
 		(m) => m.userId === session?.user?.id,
@@ -53,6 +71,21 @@ export default function GeneralSettings() {
 			return false;
 		}
 	};
+
+	if (isError) {
+		return (
+			<ErrorAlert
+				title="Couldn’t load workspace settings"
+				description="Check your connection and try again."
+				onRetry={() => {
+					refetchMembers();
+					queryClient.invalidateQueries({
+						queryKey: workspaceKeys.all,
+					});
+				}}
+			/>
+		);
+	}
 
 	return (
 		<Card>

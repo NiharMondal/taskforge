@@ -37,7 +37,7 @@ export default function InviteMemberButton({
 		} catch (error) {
 			// Covers duplicate invites and already-a-member rejections — the
 			// backend message is surfaced and the modal stays open.
-			toast.danger(getApiErrorMessage(error || "Failed to send invitation"));
+			toast.danger(getApiErrorMessage(error, "Failed to send invitation"));
 			return false;
 		}
 	};

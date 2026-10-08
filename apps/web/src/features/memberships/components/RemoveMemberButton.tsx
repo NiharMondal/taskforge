@@ -8,6 +8,7 @@ import MyModal from "@/components/ui/my-modal";
 import { getApiErrorMessage } from "@/lib/api-error";
 
 import { useRemoveMembership } from "../hooks/use-memberships";
+import { getMemberEmail } from "../lib/member";
 import type { Member } from "../types/membership-types";
 
 type Props = {
@@ -25,7 +26,8 @@ export default function RemoveMemberButton({ workspaceId, member }: Props) {
 	const { mutateAsync: removeMember, isPending } =
 		useRemoveMembership(workspaceId);
 
-	const memberName = member.user?.name ?? member.user?.email ?? "this member";
+	const memberName =
+		member.user?.name ?? getMemberEmail(member) ?? "this member";
 
 	const handleRemove = async () => {
 		try {

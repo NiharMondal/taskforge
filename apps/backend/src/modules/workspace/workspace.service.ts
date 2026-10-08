@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { WorkspaceRole } from "generated/prisma/enums";
+import { CreateWorkspaceDto } from "./dto/create-workspace.dto";
 import { UpdateWorkspaceDto } from "./dto/update-workspace.dto";
 
 @Injectable()
@@ -12,11 +13,12 @@ export class WorkspaceService {
   constructor(private prisma: PrismaService) {}
 
   // create workspace
-  async create(userId: string, name: string) {
+  async create(userId: string, dto: CreateWorkspaceDto) {
     const result = await this.prisma.$transaction(async (tx) => {
       const workspace = await tx.workspace.create({
         data: {
-          name,
+          name: dto.name,
+          description: dto.description,
         },
       });
 
@@ -80,6 +82,7 @@ export class WorkspaceService {
       where: { id: workspaceId },
       data: {
         name: data.name,
+        description: data.description,
       },
     });
   }

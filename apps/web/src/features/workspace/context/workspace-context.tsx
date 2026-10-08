@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
 
 import { useQueryClient } from "@tanstack/react-query";
+import { usePathname, useRouter } from "next/navigation";
 
 import { setActiveWorkspaceId as setWorkspaceHeader } from "@/lib/active-workspace";
 
@@ -33,6 +34,8 @@ const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
 
 export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
+  const router = useRouter();
+  const pathname = usePathname();
   const { data: workspaces = [], isLoading, isError } = useWorkspaces();
 
   // The user's explicit choice, lazy-initialized from localStorage
@@ -41,22 +44,6 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     if (typeof window === "undefined") return null;
     return window.localStorage.getItem(STORAGE_KEY);
   });
-
-  const setActiveWorkspaceId = useCallback(
-    (id: string) => {
-      setSelectedId(id);
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(STORAGE_KEY, id);
-      }
-      // Tell the HTTP layer to scope subsequent requests to the new tenant...
-      setWorkspaceHeader(id);
-      // ...and drop cached server data, which all belonged to the previous
-      // workspace, so every scoped query refetches under the new
-      // `x-workspace-id` header (projects, issues, members, ...).
-      queryClient.invalidateQueries();
-    },
-    [queryClient],
-  );
 
   // Derive the active id during render rather than syncing it in an effect:
   // honor the stored choice if it's still valid, otherwise fall back to the
@@ -67,6 +54,31 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     }
     return workspaces[0]?.id ?? null;
   }, [selectedId, workspaces]);
+
+  const setActiveWorkspaceId = useCallback(
+    (id: string) => {
+      const isSwitch = id !== activeWorkspaceId;
+
+      setSelectedId(id);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(STORAGE_KEY, id);
+      }
+      // Tell the HTTP layer to scope subsequent requests to the new tenant...
+      setWorkspaceHeader(id);
+      // ...and drop cached server data, which all belonged to the previous
+      // workspace, so every scoped query refetches under the new
+      // `x-workspace-id` header (projects, issues, members, ...).
+      queryClient.invalidateQueries();
+
+      // A project belongs to exactly one workspace, so /projects/<id>/... would
+      // just 404 under the new tenant. Leave it for the project list; replace
+      // (not push) so Back can't return to the dead page.
+      if (isSwitch && pathname && /^\/projects\/[^/]+/.test(pathname)) {
+        router.replace("/projects");
+      }
+    },
+    [activeWorkspaceId, pathname, queryClient, router],
+  );
 
   // Keep the API client's `x-workspace-id` header in sync with the derived
   // selection. Done synchronously during render (not in an effect) so the very

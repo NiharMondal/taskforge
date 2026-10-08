@@ -13,7 +13,7 @@ import {
 import { issueSchema, TIssueFormValues } from "../schema/issue-schema";
 import { ISSUE_PRIORITIES, ISSUE_STATUSES } from "../constants";
 import { Member } from "@/features/memberships/types/membership-types";
-import { Sprint } from "../types/issue-types";
+import { IssueStatus, Sprint } from "../types/issue-types";
 
 type Props = {
 	defaultValues?: TIssueFormValues | undefined;
@@ -25,6 +25,8 @@ type Props = {
 	onCancel?: () => void;
 	members: Member[];
 	sprints: Sprint[];
+	/** Status a new issue starts in. Defaults to BACKLOG. */
+	initialStatus?: IssueStatus;
 };
 
 /** Sentinel ListBox key for "no assignee" (react-aria keys can't be empty). */
@@ -41,6 +43,7 @@ export default function IssueForm({
 	onCancel,
 	members,
 	sprints,
+	initialStatus = "BACKLOG",
 }: Props) {
 	const isEditing = !!defaultValues;
 
@@ -50,7 +53,7 @@ export default function IssueForm({
 			title: "",
 			description: "",
 			assigneeId: null,
-			status: "BACKLOG",
+			status: initialStatus,
 			priority: "LOW",
 			sprintId: null,
 		},

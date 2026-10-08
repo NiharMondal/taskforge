@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { Button, Label } from "@heroui/react";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { Pencil } from "lucide-react";
 import { useForm, useWatch } from "react-hook-form";
 
 import {
@@ -11,6 +12,7 @@ import {
 	FormTextField,
 	FormWrapper,
 } from "@/components/form-element";
+import { sanitizeHtml } from "@/lib/sanitize-html";
 
 import {
 	issueContentSchema,
@@ -21,19 +23,24 @@ type Props = {
 	defaultValues: TIssueContentValues;
 	onSubmit: (values: TIssueContentValues) => Promise<boolean | void>;
 	isSubmitting: boolean;
+	/** False renders the content read-only (no inputs, no Save). */
+	canEdit: boolean;
 };
 
 /**
  * Left column of the issue detail page: the issue's content (title +
  * description). Saved on its own, independent of the details panel.
  *
- * The description reads as rendered content by default; clicking it swaps in the
- * rich-text editor (with Save / Cancel), matching the inline-edit pattern.
+ * The description reads as rendered content by default; the Edit button (or a
+ * click on the text) swaps in the rich-text editor with Save / Cancel. The
+ * stored HTML is sanitized before it is rendered — it is user-authored and the
+ * backend stores it as-is.
  */
 export default function IssueContentForm({
 	defaultValues,
 	onSubmit,
 	isSubmitting,
+	canEdit,
 }: Props) {
 	const methods = useForm<TIssueContentValues>({
 		resolver: zodResolver(issueContentSchema),
@@ -50,6 +57,10 @@ export default function IssueContentForm({
 		control: methods.control,
 		name: "description",
 	});
+	const safeDescription = useMemo(
+		() => sanitizeHtml(description ?? ""),
+		[description],
+	);
 
 	const handleSubmit = async (values: TIssueContentValues) => {
 		const success = await onSubmit(values);
@@ -65,6 +76,8 @@ export default function IssueContentForm({
 		setIsEditingDescription(false);
 	};
 
+	const isEditing = canEdit && isEditingDescription;
+
 	return (
 		<FormWrapper methods={methods} onSubmit={handleSubmit}>
 			<FormTextField
@@ -72,12 +85,26 @@ export default function IssueContentForm({
 				label="Title"
 				placeholder="e.g. Login button is misaligned"
 				isRequired
+				isReadOnly={!canEdit}
 			/>
 
 			<div className="flex flex-col gap-1">
-				<Label>Description</Label>
+				<div className="flex items-center justify-between">
+					<Label>Description</Label>
+					{canEdit && !isEditing && (
+						<Button
+							type="button"
+							size="sm"
+							variant="ghost"
+							onPress={() => setIsEditingDescription(true)}
+						>
+							<Pencil className="h-3.5 w-3.5" />
+							Edit
+						</Button>
+					)}
+				</div>
 
-				{isEditingDescription ? (
+				{isEditing ? (
 					<div className="flex flex-col gap-2">
 						<FormRichTextEditor
 							name="description"
@@ -98,30 +125,37 @@ export default function IssueContentForm({
 					</div>
 				) : (
 					<div
-						role="button"
-						tabIndex={0}
-						onClick={() => setIsEditingDescription(true)}
-						onKeyDown={(e) => {
-							if (e.key === "Enter" || e.key === " ") {
-								e.preventDefault();
-								setIsEditingDescription(true);
-							}
-						}}
+						// Click-to-edit is a mouse convenience only; the Edit button
+						// above is the accessible path, so this is not a "button".
+						onClick={
+							canEdit
+								? (e) => {
+										// Following a link in the description must
+										// not also open the editor.
+										if (
+											(e.target as HTMLElement).closest("a")
+										) {
+											return;
+										}
+										setIsEditingDescription(true);
+									}
+								: undefined
+						}
 						// Reuse tiptap prose styling but drop the editor's fixed
 						// height so the read view hugs its content.
 						style={{ height: "auto", overflow: "visible" }}
-						className={`tiptap-content min-h-12 cursor-text rounded-2xl border border-transparent transition-colors hover:border-border ${
-							description ? "" : "text-muted"
-						}`}
+						className={`tiptap-content min-h-12 rounded-2xl border border-transparent transition-colors ${
+							canEdit ? "cursor-text hover:border-border" : ""
+						} ${safeDescription ? "" : "text-muted"}`}
 						dangerouslySetInnerHTML={{
-							__html: description || "No description added",
+							__html: safeDescription || "No description added",
 						}}
 					/>
 				)}
 			</div>
 
 			{/* Title-only save; the description carries its own Save when open. */}
-			{!isEditingDescription && (
+			{canEdit && !isEditing && (
 				<div className="flex justify-end">
 					<Button type="submit" isDisabled={!isDirty || isSubmitting}>
 						{isSubmitting ? "Saving…" : "Save"}

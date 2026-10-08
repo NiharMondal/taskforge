@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 import { WorkspaceRole } from "generated/prisma/enums";
 import { CreateSprintDto } from "./dto/create-sprint.dto";
+import { UpdateSprintDto } from "./dto/update-sprint.dto";
 
 @Injectable()
 export class SprintService {
@@ -45,7 +46,7 @@ export class SprintService {
     projectId: string,
     sprintId: string,
     role: WorkspaceRole,
-    dto: CreateSprintDto,
+    dto: UpdateSprintDto,
   ) {
     this.ensureManager(role);
     await this.validateProject(workspaceId, projectId);

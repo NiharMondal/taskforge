@@ -12,7 +12,19 @@ export interface ApiResponse<T> {
   success: true;
   statusCode: number;
   message: string;
+  /** Present on paginated list endpoints (backend `IPaginationMeta`). */
+  metaData?: PaginationMeta;
   data: T;
+}
+
+/** Paging info the backend's `PrismaQueryBuilder` attaches to list responses. */
+export interface PaginationMeta {
+  currentPage: number;
+  totalPages: number;
+  totalData: number;
+  pageSize: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
 }
 
 export interface ApiErrorResponse {

@@ -15,12 +15,16 @@ import {
 	type DragStartEvent,
 } from "@dnd-kit/core";
 import { arrayMove, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
-import { Alert, Button, Spinner, toast } from "@heroui/react";
+import { Button, Spinner, toast } from "@heroui/react";
 import { Plus } from "lucide-react";
 
+import ErrorAlert from "@/components/ui/error-alert";
 import { getApiErrorMessage } from "@/lib/api-error";
 
 import { useMemberships } from "@/features/memberships/hooks/use-memberships";
+import { useWorkspacePermissions } from "@/features/memberships/hooks/use-workspace-permissions";
+import { getMemberName } from "@/features/memberships/lib/member";
+import { canSetIssueStatus } from "@/features/memberships/lib/permissions";
 import ProjectHeader from "@/features/projects/components/ProjectHeader";
 import { useProjects } from "@/features/projects/hooks/use-projects";
 import { useWorkspace } from "@/features/workspace/context/workspace-context";
@@ -92,8 +96,12 @@ export default function BoardView({ projectId }: { projectId: string }) {
 	const project = projects?.find((p) => p.id === projectId);
 
 	const { data: members = [] } = useMemberships(workspaceId);
+	const permissions = useWorkspacePermissions();
 
-	const { data, isLoading, isError } = useIssues(workspaceId, projectId);
+	const { data, isLoading, isError, refetch } = useIssues(
+		workspaceId,
+		projectId,
+	);
 	const issues = data ?? EMPTY_ISSUES;
 	const { mutate: updateIssue } = useUpdateIssue(workspaceId, projectId);
 
@@ -118,7 +126,7 @@ export default function BoardView({ projectId }: { projectId: string }) {
 	const assigneeNames = useMemo(() => {
 		const map = new Map<string, string>();
 		for (const m of members) {
-			if (m.user) map.set(m.userId, m.user.name || m.user.email);
+			if (m.user) map.set(m.userId, getMemberName(m));
 		}
 		return map;
 	}, [members]);
@@ -164,6 +172,10 @@ export default function BoardView({ projectId }: { projectId: string }) {
 		const from = findContainer(activeId);
 		const to = findContainer(overId);
 		if (!from || !to || from === to) return;
+
+		// Refuse lanes the viewer's role can't move a card into (MEMBER → DONE),
+		// so the card never visibly lands somewhere the PATCH would 403.
+		if (!canSetIssueStatus(permissions, to)) return;
 
 		// Allow the origin lane itself (so a card can be dropped back where it
 		// started) plus the immediately adjacent lanes — block any jump two or
@@ -267,23 +279,21 @@ export default function BoardView({ projectId }: { projectId: string }) {
 				project={project}
 				active="board"
 				actions={
-					<Button onPress={openModal}>
-						<Plus className="h-4 w-4" />
-						New Issue
-					</Button>
+					permissions.canCreateIssue && (
+						<Button onPress={openModal}>
+							<Plus className="h-4 w-4" />
+							New Issue
+						</Button>
+					)
 				}
 			/>
 
 			{isError ? (
-				<Alert status="danger">
-					<Alert.Indicator />
-					<Alert.Content>
-						<Alert.Title>Couldn’t load the board</Alert.Title>
-						<Alert.Description>
-							Check your connection and try again.
-						</Alert.Description>
-					</Alert.Content>
-				</Alert>
+				<ErrorAlert
+					title="Couldn’t load the board"
+					description="Check your connection and try again."
+					onRetry={() => refetch()}
+				/>
 			) : isLoading ? (
 				<div className="flex items-center gap-2 py-12 text-muted">
 					<Spinner size="sm" />
@@ -306,6 +316,7 @@ export default function BoardView({ projectId }: { projectId: string }) {
 								issues={columns[value]}
 								assigneeNames={assigneeNames}
 								onOpenIssue={setSelectedIssue}
+								canDrag={permissions.canChangeIssueStatus}
 							/>
 						))}
 					</div>
@@ -332,6 +343,8 @@ export default function BoardView({ projectId }: { projectId: string }) {
 				onOpenChange={closeModal}
 				members={members}
 				projectId={projectId}
+				// The board has no BACKLOG lane, so a new issue would vanish from it.
+				defaultStatus="TODO"
 			/>
 
 			<IssueDetailModal
@@ -340,6 +353,7 @@ export default function BoardView({ projectId }: { projectId: string }) {
 				members={members}
 				workspaceId={workspaceId}
 				projectId={projectId}
+				permissions={permissions}
 			/>
 		</div>
 	);

@@ -94,6 +94,10 @@ export const getIssues = (projectId: string) =>
 queryFn: async () => (await getIssues(projectId)).data
 ```
 
+`getIssues` is the exception to that one-liner: the issues endpoint is paginated (default 20, max 100), so it walks every page (using `metaData.hasNextPage`) and returns the full list — the board and list render the whole project. That is a stop-gap (one serial request per 100 issues); the real fix is per-lane pagination.
+
+User emails live on `Auth`, not `User`, so the API nests them as `user.auth.email` (members, `/users/:id`). `ICommonUserEntity` has no `email`; use `getMemberEmail` / `getMemberName` (`features/memberships/lib/member.ts`) instead of reading it directly.
+
 Mutations use `.message` from the envelope for toast feedback. Every rejection is normalized to `ApiError` (`src/lib/api-error.ts`) by the response interceptor — render error text with `getApiErrorMessage(error, fallback)` rather than branching on Axios internals.
 
 **The HTTP layer must not know how auth or workspace selection works.** `lib/auth-token.ts` and `lib/active-workspace.ts` are registration seams: the auth/workspace layers register getters, and the interceptor calls them. `axios.ts` never imports `next-auth`. A backend 401 calls `notifyUnauthorized()`, whose handler (registered in `src/provider/auth-provider.tsx`) signs the user out — the Auth.js cookie can still look valid after the backend token expires.
@@ -114,6 +118,18 @@ Mutations use `.message` from the envelope for toast feedback. Every rejection i
 - Card position persists as `Issue.rank`, a fractional index (`fractional-indexing`) computed by `features/issues/lib/rank.ts`. `rankBetween(prev, next)` returns `undefined` on invalid bounds so the caller can fall back to a status-only PATCH; `compareIssueRank` sorts un-ranked rows last. Moving a card is a single-row PATCH — no renumbering.
 - A drag may only cross to an **adjacent** lane, measured from the lane the drag started in.
 - `BoardView` mirrors server data into local column state and resyncs by reference comparison during render (not an effect), so an in-progress drag is never clobbered. The stable `EMPTY_ISSUES` constant exists to keep that comparison from looping.
+
+### Roles and permissions
+
+The JWT has no role — it comes from the membership roster. `useWorkspacePermissions()` (`features/memberships/hooks/`) returns the viewer's flags (`canCreateIssue`, `canEditIssueFields`, `canChangeIssueStatus`, `canMarkIssueDone`, `canManageProjects`, `canManageSprints`), computed by `getPermissions` in `features/memberships/lib/permissions.ts`. That file mirrors the backend rules (create/delete and project/sprint writes are OWNER/ADMIN; a MEMBER may change `status` — never to `DONE` — and board `rank`; a VIEWER is read-only), so **change both together**. Which roster row is "me" comes from the access token's `sub` (what the backend authorizes as), not the cached session id. Flags are all `false` *while loading*; if the role still can't be determined afterwards (roster failed, user not on it) the hook **fails open** (`UNRESTRICTED_PERMISSIONS`, `isRoleKnown: false`, plus a dev-only `[permissions]` console warning) so a lookup problem never locks an owner out. Hide or disable controls with these flags rather than letting users hit a 403 toast — but they are UX only; the backend is the authority.
+
+### Rendering user HTML
+
+Issue descriptions are stored as HTML and the backend does not sanitize them. Pass anything bound for `dangerouslySetInnerHTML` through `sanitizeHtml` (`src/lib/sanitize-html.ts`, DOMPurify with an allowlist matching what the TipTap editor can emit). It returns `""` when there is no DOM (server render) rather than passing input through.
+
+### Error and loading UI
+
+`src/app/error.tsx` and `src/app/(dashboard)/error.tsx` are the route error boundaries (the dashboard one sits below the layout, so the sidebar and header survive a page crash), with `loading.tsx` and `not-found.tsx` alongside. In Next 16 an error boundary receives `unstable_retry`, **not** `reset`. For a failed query use `ErrorAlert` (`components/ui/error-alert.tsx`) with `refetch` as `onRetry`, so an `isError` never renders as a blank page or an endless spinner.
 
 ### Auth (Auth.js v5)
 

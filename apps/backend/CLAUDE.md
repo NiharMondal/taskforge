@@ -17,9 +17,10 @@ pnpm run dev # NestJS dev server, watch mode (there is NO `start:dev` script)
 pnpm run start # run once, no watch
 pnpm run build # nest build
 pnpm run lint # eslint --fix over src, apps, libs, test
+pnpm run lint:check # same, without --fix (what CI runs)
 pnpm run format # prettier over src and test
 pnpm run test # Jest unit tests (rootDir=src, matches *.spec.ts)
-pnpm run test:e2e # Supertest e2e (test/jest-e2e.json)
+pnpm run test:e2e # Supertest e2e against a real Postgres (test/jest-e2e.json) — see Tests
 pnpm run test:cov # coverage
 pnpm run studio # Prisma Studio
 
@@ -34,7 +35,9 @@ npx prisma generate # REQUIRED after clone/schema change — see "Generated clie
 npx prisma migrate dev --name "<migration-name>"
 
 Server listens on `PORT` (default 5001) with global prefix `api/v1`, so routes are `/api/v1/...`.
-CORS is hardcoded in `src/main.ts` to `http://localhost:3000` and `:3001` with credentials.
+CORS allows the comma-separated `CORS_ORIGINS` (default `http://localhost:3000,http://localhost:3001`)
+with credentials. The HTTP setup (helmet, CORS, filter, pipe, prefix) lives in `configureApp()`
+(`src/app.setup.ts`), shared by `main.ts` and the e2e tests — add global app config there, not in `main.ts`.
 
 ## Generated Prisma client — read this first
 
@@ -201,18 +204,33 @@ only touches `rank IS NULL`. Keep the column nullable until it's been run everyw
 
 `pnpm run test` runs Jest specs colocated with the code (`*.spec.ts`). They use a hand-rolled fake
 `PrismaService` (and `supertest` against a Nest app with mocked services for HTTP-level checks), so
-they need no database. Current coverage: `WorkspaceGuard`, `JwtAuthGuard`, `IssueService.update` role
-rules, `UserController`/`UserService`, `InvitationService`/controller, Google sign-in
-(`GoogleTokenVerifier`, `AuthService.googleSignIn`, throttling) and `SprintService.endSprint`.
+they need no database. Current coverage: `WorkspaceGuard`, `JwtAuthGuard`, `RolesGuard`, `IssueService`
+role rules and tenant isolation, `MembershipService` role changes/removal, `UserController`/`UserService`,
+`InvitationService`/controller, register/login/Google sign-in (`AuthService`, `GoogleTokenVerifier`,
+throttling), `WorkspaceService` and `SprintService.endSprint`.
 `jest` maps `@/` and `generated/` in `package.json` and transforms the ESM-only `fractional-indexing`.
-`test:e2e` is still the stale Nest placeholder and is not usable yet.
+
+`pnpm run test:e2e` (`test/*.e2e-spec.ts`) boots the real `AppModule` through `configureApp()` and
+drives it with supertest against Postgres: sign-up, cross-workspace isolation, the header/path-param
+check, invite → accept, and MEMBER limits. `MailService` is overridden; other boot-time secrets get
+placeholders in `test/setup-e2e.ts`. Rules:
+
+- `DATABASE_URL` must point at a **migrated** database whose name contains `e2e` or `test`
+  (`setup-e2e.ts` refuses anything else, so it can't touch a dev DB). Locally:
+  `docker compose up -d` (repo root) then
+  `DATABASE_URL=postgresql://taskforge:taskforge@localhost:5433/taskforge_e2e npx prisma migrate deploy`
+  and the same `DATABASE_URL` for `pnpm run test:e2e`.
+- Tests create uniquely-named users and delete their own rows in `afterAll`; never truncate.
+- e2e compiles with `test/tsconfig.e2e.json` (`module: commonjs`): under `nodenext` the Prisma 7
+  client's dynamic `import()` needs `--experimental-vm-modules`, which in turn breaks
+  `fractional-indexing`.
 
 Written feature specs live in `spec/*.md` (gitignored, e.g. `issue-spec.md`, `invitation-spec.md`)
 and are the best statement of intended behavior for issues and invitations.
 
 ## Environment
 
-See `.env.example`. Required: `DATABASE_URL`, `JWT_ACCESS_SECRET`, `NODE_ENV`, `PORT`,
+See `.env.example`. Required: `DATABASE_URL`, `JWT_ACCESS_SECRET`, `NODE_ENV`, `PORT` (optional `CORS_ORIGINS`),
 SMTP vars (`SMTP_HOST/PORT/SECURE/USER/PASS`, `MAIL_FROM`) for invitation email, `APP_URL` for
 invitation links, and `CLOUDINARY_CLOUD_NAME/API_KEY/API_SECRET`. `GOOGLE_CLIENT_ID` is read lazily,
 only by Google sign-in (the backend boots without it; `POST /auth/google` then answers 503) and must

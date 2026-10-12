@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { createTransport, Transporter } from "nodemailer";
+import SMTPTransport from "nodemailer/lib/smtp-transport";
 
 export type SendMailParams = {
   to: string;
@@ -12,7 +13,7 @@ export type SendMailParams = {
 @Injectable()
 export class MailService implements OnModuleInit {
   private readonly logger = new Logger(MailService.name);
-  private transporter: Transporter;
+  private transporter: Transporter<SMTPTransport.SentMessageInfo>;
   private readonly from: string;
 
   constructor(private readonly config: ConfigService) {

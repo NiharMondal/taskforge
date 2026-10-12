@@ -4,6 +4,7 @@ import type { AxiosRequestConfig } from "axios";
 import type { ApiResponse } from "@/types/api";
 
 import { getActiveWorkspaceId } from "./active-workspace";
+import { API_URL } from "./api-url";
 import { toApiError } from "./api-error";
 import { getAuthToken, notifyUnauthorized } from "./auth-token";
 
@@ -14,10 +15,8 @@ import { getAuthToken, notifyUnauthorized } from "./auth-token";
  * All data access belongs in the service / feature-api layer, never in
  * components (see AGENTS.md).
  */
-const baseURL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5001/api/v1";
-
 export const apiClient = axios.create({
-  baseURL,
+  baseURL: API_URL,
   headers: { "Content-Type": "application/json" },
   timeout: 30_000,
 });
@@ -82,11 +81,6 @@ export const api = {
 
   patch: async <T>(url: string, body?: unknown, config?: AxiosRequestConfig): Promise<ApiResponse<T>> => {
     const res = await apiClient.patch<ApiResponse<T>>(url, body, config);
-    return res.data;
-  },
-
-  put: async <T>(url: string, body?: unknown, config?: AxiosRequestConfig): Promise<ApiResponse<T>> => {
-    const res = await apiClient.put<ApiResponse<T>>(url, body, config);
     return res.data;
   },
 

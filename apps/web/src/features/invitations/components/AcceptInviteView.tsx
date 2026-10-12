@@ -46,7 +46,7 @@ export default function AcceptInviteView({ token }: { token: string }) {
 			}
 			router.push("/dashboard");
 		} catch (err) {
-			setError(getApiErrorMessage(err || "Failed to accept invitation"));
+			setError(getApiErrorMessage(err, "Failed to accept invitation"));
 		}
 	};
 

@@ -82,6 +82,14 @@ non-privileged role is effectively OWNER/ADMIN-only. If you need MEMBER- or VIEW
 enforce it in the service (as `IssueService.update` does: VIEWER is rejected outright, MEMBER is
 limited to status/rank) rather than through `@Roles`.
 
+### Accounts and sign-in methods
+
+`User.email` (unique) is the one email for a person. `Auth` holds one row per sign-in method,
+`@@unique([userId, provider])`: an `EMAIL` row carries the bcrypt `password`, a `GOOGLE` row carries
+Google's `sub` as `providerId` (`@@unique([provider, providerId])`). Registering creates User +
+EMAIL auth + workspace + OWNER membership in one transaction; a first Google sign-in does the same
+with a GOOGLE auth. Look users up by email on `User`, never on `Auth`.
+
 ### Google sign-in
 
 `POST /auth/google` is `@Public()`, so it must never trust identity from the body. It accepts only

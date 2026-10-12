@@ -18,7 +18,7 @@ describe("MembershipService.findAllByWorkspaceId", () => {
     );
   });
 
-  it("selects each member's email through Auth, and nothing else from it", async () => {
+  it("selects each member's email from User, and no credentials", async () => {
     await service.findAllByWorkspaceId("ws-A");
 
     expect(prisma.membership.findMany).toHaveBeenCalledWith({
@@ -29,7 +29,7 @@ describe("MembershipService.findAllByWorkspaceId", () => {
             id: true,
             name: true,
             avatarUrl: true,
-            auth: { select: { email: true } },
+            email: true,
           },
         },
       },

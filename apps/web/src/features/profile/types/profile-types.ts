@@ -2,14 +2,13 @@
  * User profile contract types.
  *
  * Mirrors what `GET /users/:id` and `PATCH /users/:id` return: the Prisma `User`
- * row plus `auth: { email }`. The email lives on `Auth`, not `User`, so it is
- * nested (and `null` if the user has no `Auth` row). It is intentionally not
- * part of the update DTO — it is not editable from the UI.
+ * row. `email` is intentionally not part of the update DTO — it is not editable
+ * from the UI.
  */
 export interface User {
 	id: string;
 	name: string;
-	auth: { email: string } | null;
+	email: string;
 	avatarUrl: string | null;
 	avatarPublicId: string | null;
 	createdAt: string;

@@ -65,15 +65,14 @@ export class InvitationService {
     // store the lowercase form.
     const email = normalizeEmail(dto.email);
 
-    const existingAuth = await this.prisma.auth.findFirst({
+    const existingUser = await this.prisma.user.findFirst({
       where: { email: { equals: email, mode: "insensitive" } },
     });
 
-    if (existingAuth) {
-      // Membership is keyed by User.id, which is `Auth.userId` — not `Auth.id`.
+    if (existingUser) {
       const existingMembership = await this.prisma.membership.findUnique({
         where: {
-          userId_workspaceId: { userId: existingAuth.userId, workspaceId },
+          userId_workspaceId: { userId: existingUser.id, workspaceId },
         },
       });
       if (existingMembership) {
@@ -211,14 +210,13 @@ export class InvitationService {
       throw new BadRequestException("Invitation has expired");
     }
 
-    // `userId` is the JWT subject, i.e. User.id — look the Auth row up by its
-    // `userId` column, not its own primary key.
-    const auth = await this.prisma.auth.findUnique({ where: { userId } });
-    if (!auth) {
+    // `userId` is the JWT subject, i.e. User.id.
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
       throw new NotFoundException("User not found");
     }
 
-    if (normalizeEmail(auth.email) !== normalizeEmail(invitation.email)) {
+    if (normalizeEmail(user.email) !== normalizeEmail(invitation.email)) {
       throw new ForbiddenException(
         "This invitation was sent to a different email address",
       );

@@ -20,13 +20,10 @@ describe("InvitationService", () => {
   const workspaceId = "ws-1";
   const actorUserId = "user-admin";
 
-  // Two different ids for the same person: Auth.id is NOT User.id. Mixing them
-  // up is exactly the bug these tests guard against.
-  const invitee = { authId: "auth-77", userId: "user-77" };
+  const invitee = { userId: "user-77" };
 
   let prisma: {
     membership: { findUnique: jest.Mock; create: jest.Mock };
-    auth: { findFirst: jest.Mock; findUnique: jest.Mock };
     invitation: {
       findFirst: jest.Mock;
       findUnique: jest.Mock;
@@ -35,7 +32,7 @@ describe("InvitationService", () => {
       update: jest.Mock;
     };
     workspace: { findUnique: jest.Mock };
-    user: { findUnique: jest.Mock };
+    user: { findFirst: jest.Mock; findUnique: jest.Mock };
     $transaction: jest.Mock;
   };
   let mail: { sendMail: jest.Mock };
@@ -47,7 +44,6 @@ describe("InvitationService", () => {
         findUnique: jest.fn(),
         create: jest.fn().mockResolvedValue({ id: "m-1" }),
       },
-      auth: { findFirst: jest.fn(), findUnique: jest.fn() },
       invitation: {
         findFirst: jest.fn().mockResolvedValue(null),
         findUnique: jest.fn(),
@@ -58,7 +54,10 @@ describe("InvitationService", () => {
       workspace: {
         findUnique: jest.fn().mockResolvedValue({ name: "Acme" }),
       },
-      user: { findUnique: jest.fn().mockResolvedValue({ name: "Alice" }) },
+      user: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findUnique: jest.fn().mockResolvedValue({ name: "Alice" }),
+      },
       $transaction: jest.fn(),
     };
     // The actor is an ADMIN unless a test says otherwise; everyone else is not
@@ -87,10 +86,9 @@ describe("InvitationService", () => {
     const send = (dto: { email: string; role?: WorkspaceRole }) =>
       service.sendInvitation(workspaceId, actorUserId, dto);
 
-    it("checks membership by User.id (Auth.userId), not Auth.id", async () => {
-      prisma.auth.findFirst.mockResolvedValue({
-        id: invitee.authId,
-        userId: invitee.userId,
+    it("checks membership for the user who owns that email", async () => {
+      prisma.user.findFirst.mockResolvedValue({
+        id: invitee.userId,
         email: "bob@example.com",
       });
 
@@ -101,17 +99,11 @@ describe("InvitationService", () => {
           userId_workspaceId: { userId: invitee.userId, workspaceId },
         },
       });
-      expect(prisma.membership.findUnique).not.toHaveBeenCalledWith({
-        where: {
-          userId_workspaceId: { userId: invitee.authId, workspaceId },
-        },
-      });
     });
 
     it("rejects an email that already belongs to a workspace member", async () => {
-      prisma.auth.findFirst.mockResolvedValue({
-        id: invitee.authId,
-        userId: invitee.userId,
+      prisma.user.findFirst.mockResolvedValue({
+        id: invitee.userId,
         email: "bob@example.com",
       });
       prisma.membership.findUnique.mockImplementation(
@@ -158,7 +150,7 @@ describe("InvitationService", () => {
     it("looks up existing accounts and invitations case-insensitively", async () => {
       await send({ email: "Bob@Example.com" });
 
-      expect(prisma.auth.findFirst).toHaveBeenCalledWith({
+      expect(prisma.user.findFirst).toHaveBeenCalledWith({
         where: { email: { equals: "bob@example.com", mode: "insensitive" } },
       });
       expect(prisma.invitation.findFirst).toHaveBeenCalledWith({
@@ -295,18 +287,17 @@ describe("InvitationService", () => {
 
     beforeEach(() => {
       prisma.invitation.findUnique.mockResolvedValue(pendingInvite());
-      prisma.auth.findUnique.mockResolvedValue({
-        id: invitee.authId,
-        userId: invitee.userId,
+      prisma.user.findUnique.mockResolvedValue({
+        id: invitee.userId,
         email: "bob@example.com",
       });
     });
 
-    it("finds the Auth row by userId (the JWT subject), not by its own id", async () => {
+    it("finds the caller by User.id (the JWT subject)", async () => {
       await service.acceptInvitation(token, invitee.userId);
 
-      expect(prisma.auth.findUnique).toHaveBeenCalledWith({
-        where: { userId: invitee.userId },
+      expect(prisma.user.findUnique).toHaveBeenCalledWith({
+        where: { id: invitee.userId },
       });
     });
 
@@ -329,8 +320,8 @@ describe("InvitationService", () => {
     });
 
     it("matches the invited email case-insensitively", async () => {
-      prisma.auth.findUnique.mockResolvedValue({
-        userId: invitee.userId,
+      prisma.user.findUnique.mockResolvedValue({
+        id: invitee.userId,
         email: "Bob@Example.COM",
       });
 
@@ -340,8 +331,8 @@ describe("InvitationService", () => {
     });
 
     it("refuses a user whose email differs from the invitation", async () => {
-      prisma.auth.findUnique.mockResolvedValue({
-        userId: invitee.userId,
+      prisma.user.findUnique.mockResolvedValue({
+        id: invitee.userId,
         email: "mallory@example.com",
       });
 
@@ -351,8 +342,8 @@ describe("InvitationService", () => {
       expect(prisma.membership.create).not.toHaveBeenCalled();
     });
 
-    it("404s when the caller has no Auth row", async () => {
-      prisma.auth.findUnique.mockResolvedValue(null);
+    it("404s when the caller's user no longer exists", async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
 
       await expect(
         service.acceptInvitation(token, invitee.userId),

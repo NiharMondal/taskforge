@@ -19,6 +19,7 @@ import {
 } from "@nestjs/common";
 import { AcceptInvitationDto } from "./dto/accept-invitation.dto";
 import { SendInvitationDto } from "./dto/send-invitation.dto";
+import { ValidateInvitationQueryDto } from "./dto/validate-invitation.dto";
 import { InvitationService } from "./invitation.service";
 
 @Controller("invitations")
@@ -59,8 +60,8 @@ export class InvitationController {
 
   @Get("validate")
   @Public()
-  async validateToken(@Query("token") token: string) {
-    const data = await this.invitationService.validateToken(token);
+  async validateToken(@Query() query: ValidateInvitationQueryDto) {
+    const data = await this.invitationService.validateToken(query.token);
     return sendResponse({
       statusCode: HttpStatus.OK,
       message: "Invitation is valid",

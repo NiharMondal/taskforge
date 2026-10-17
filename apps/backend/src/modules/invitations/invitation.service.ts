@@ -1,4 +1,9 @@
-import { futureDate, generateToken } from "@/helper";
+import {
+  escapeHtml,
+  futureDate,
+  generateToken,
+  normalizeEmail,
+} from "@/helper";
 import { PrismaService } from "@/prisma/prisma.service";
 import {
   BadRequestException,
@@ -12,6 +17,21 @@ import { ConfigService } from "@nestjs/config";
 import { InvitationStatus, WorkspaceRole } from "generated/prisma/enums";
 import { MailService } from "../mail/mail.service";
 import { SendInvitationDto } from "./dto/send-invitation.dto";
+
+/**
+ * What callers of the API may see of an invitation. `token` is excluded: it is
+ * the credential that grants membership and only ever travels by email.
+ */
+const PUBLIC_INVITATION_SELECT = {
+  id: true,
+  email: true,
+  workspaceId: true,
+  role: true,
+  status: true,
+  expiresAt: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
 
 @Injectable()
 export class InvitationService {
@@ -41,14 +61,19 @@ export class InvitationService {
       throw new ForbiddenException("Insufficient permissions");
     }
 
-    const existingUser = await this.prisma.auth.findUnique({
-      where: { email: dto.email },
+    // Rows may predate normalization, so match case-insensitively but always
+    // store the lowercase form.
+    const email = normalizeEmail(dto.email);
+
+    const existingAuth = await this.prisma.auth.findFirst({
+      where: { email: { equals: email, mode: "insensitive" } },
     });
 
-    if (existingUser) {
+    if (existingAuth) {
+      // Membership is keyed by User.id, which is `Auth.userId` — not `Auth.id`.
       const existingMembership = await this.prisma.membership.findUnique({
         where: {
-          userId_workspaceId: { userId: existingUser.id, workspaceId },
+          userId_workspaceId: { userId: existingAuth.userId, workspaceId },
         },
       });
       if (existingMembership) {
@@ -58,11 +83,16 @@ export class InvitationService {
       }
     }
 
-    const existing = await this.prisma.invitation.findUnique({
-      where: { email_workspaceId: { email: dto.email, workspaceId } },
+    const existing = await this.prisma.invitation.findFirst({
+      where: { workspaceId, email: { equals: email, mode: "insensitive" } },
     });
 
-    if (existing?.status === InvitationStatus.PENDING) {
+    // A PENDING invite past its expiry is dead (nothing flips it to EXPIRED
+    // until someone opens the link), so it must not block a re-invite.
+    if (
+      existing?.status === InvitationStatus.PENDING &&
+      existing.expiresAt > new Date()
+    ) {
       throw new ConflictException(
         "A pending invitation already exists for this email",
       );
@@ -73,9 +103,20 @@ export class InvitationService {
     const role = dto.role ?? WorkspaceRole.MEMBER;
 
     const invitation = await this.prisma.invitation.upsert({
-      where: { email_workspaceId: { email: dto.email, workspaceId } },
-      create: { email: dto.email, token, workspaceId, role, expiresAt },
-      update: { token, role, expiresAt, status: InvitationStatus.PENDING },
+      // Key on the stored spelling so a legacy mixed-case row is updated, not
+      // duplicated next to a new lowercase one.
+      where: {
+        email_workspaceId: { email: existing?.email ?? email, workspaceId },
+      },
+      create: { email, token, workspaceId, role, expiresAt },
+      update: {
+        email,
+        token,
+        role,
+        expiresAt,
+        status: InvitationStatus.PENDING,
+      },
+      select: PUBLIC_INVITATION_SELECT,
     });
 
     const workspace = await this.prisma.workspace.findUnique({
@@ -91,13 +132,13 @@ export class InvitationService {
     // Fire-and-forget: a transient email failure must not roll back a
     // successfully persisted invitation. Failures are logged for retry/audit.
     void this.sendInvitationEmail({
-      to: dto.email,
+      to: email,
       inviterName: actor_user?.name ?? "A workspace member",
       workspaceName: workspace?.name ?? "a workspace",
       token,
     }).catch((error) => {
       this.logger.error(
-        `Failed to send invitation email to ${dto.email}: ${
+        `Failed to send invitation email to ${email}: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
@@ -109,6 +150,7 @@ export class InvitationService {
   async listInvitations(workspaceId: string) {
     return this.prisma.invitation.findMany({
       where: { workspaceId },
+      select: PUBLIC_INVITATION_SELECT,
       orderBy: { createdAt: "desc" },
     });
   }
@@ -169,15 +211,14 @@ export class InvitationService {
       throw new BadRequestException("Invitation has expired");
     }
 
-    const auth = await this.prisma.auth.findUnique({
-      where: { id: userId },
-      include: { user: true },
-    });
+    // `userId` is the JWT subject, i.e. User.id — look the Auth row up by its
+    // `userId` column, not its own primary key.
+    const auth = await this.prisma.auth.findUnique({ where: { userId } });
     if (!auth) {
       throw new NotFoundException("User not found");
     }
 
-    if (auth.email !== invitation.email) {
+    if (normalizeEmail(auth.email) !== normalizeEmail(invitation.email)) {
       throw new ForbiddenException(
         "This invitation was sent to a different email address",
       );
@@ -255,9 +296,9 @@ export class InvitationService {
   }) {
     const appUrl =
       this.config.get<string>("APP_URL") ?? "http://localhost:3000";
-    const acceptUrl = `${appUrl.replace(/\/+$/, "")}/invitations/accept?token=${
-      params.token
-    }`;
+    const acceptUrl = `${appUrl.replace(/\/+$/, "")}/invitations/accept?token=${encodeURIComponent(
+      params.token,
+    )}`;
 
     const subject = `${params.inviterName} invited you to join "${params.workspaceName}" on TaskForge`;
 
@@ -266,20 +307,26 @@ export class InvitationService {
       `Accept your invitation: ${acceptUrl}\n\n` +
       `This invitation expires in 7 days. If you weren't expecting this, you can safely ignore this email.`;
 
+    // Inviter and workspace names are user-controlled, so they must be escaped
+    // before landing in the HTML part (the subject and text part are plain text).
+    const inviterName = escapeHtml(params.inviterName);
+    const workspaceName = escapeHtml(params.workspaceName);
+    const safeUrl = escapeHtml(acceptUrl);
+
     const html = `
       <div style="font-family: Arial, Helvetica, sans-serif; max-width: 480px; margin: 0 auto; color: #1a1a1a;">
         <h2 style="margin-bottom: 8px;">You've been invited to TaskForge</h2>
-        <p><strong>${params.inviterName}</strong> has invited you to join the
-          <strong>${params.workspaceName}</strong> workspace.</p>
+        <p><strong>${inviterName}</strong> has invited you to join the
+          <strong>${workspaceName}</strong> workspace.</p>
         <p style="margin: 24px 0;">
-          <a href="${acceptUrl}"
+          <a href="${safeUrl}"
              style="background:#4f46e5;color:#fff;padding:12px 20px;border-radius:6px;text-decoration:none;display:inline-block;">
             Accept invitation
           </a>
         </p>
         <p style="font-size: 13px; color: #666;">
           Or paste this link into your browser:<br />
-          <a href="${acceptUrl}">${acceptUrl}</a>
+          <a href="${safeUrl}">${safeUrl}</a>
         </p>
         <p style="font-size: 12px; color: #999; margin-top: 24px;">
           This invitation expires in 7 days. If you weren't expecting this, you can safely ignore this email.

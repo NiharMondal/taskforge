@@ -45,11 +45,12 @@ export interface RegisterResponse {
   user: AuthUser
 }
 
+/**
+ * `POST /auth/google` takes only Google's signed ID token; the backend verifies
+ * it and reads email/name/picture/sub from it.
+ */
 export interface GoogleAuthRequest {
-  email: string;
-  name: string;
-  image?: string;
-  googleId: string;
+  idToken: string;
 }
 
 export interface GoogleAuthResponse {

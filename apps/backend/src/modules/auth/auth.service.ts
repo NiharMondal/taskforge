@@ -1,4 +1,5 @@
 import { passwordUtils } from "@/common/utils/password";
+import { normalizeEmail } from "@/helper";
 import { PrismaService } from "@/prisma/prisma.service";
 import {
   ConflictException,
@@ -11,12 +12,14 @@ import { WorkspaceRole } from "generated/prisma/enums";
 import { GoogleAuthDto } from "./dto/google-auth.dto";
 import { LoginDto } from "./dto/login.dto";
 import { RegisterDto } from "./dto/register.dto";
+import { GoogleTokenVerifier } from "./google-token-verifier";
 
 @Injectable()
 export class AuthService {
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
+    private googleTokenVerifier: GoogleTokenVerifier,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -127,66 +130,62 @@ export class AuthService {
     };
   }
 
+  /**
+   * Sign in (or sign up) with a Google ID token.
+   *
+   * The endpoint is public, so identity is taken ONLY from the claims of a
+   * token Google has signed — never from the request body. Accounts are matched
+   * on Google's stable `sub` first; the email is only used to link a Google
+   * login to an existing password account, and only because Google vouched for
+   * it (`email_verified`).
+   */
   async googleSignIn(dto: GoogleAuthDto) {
-    const { email, name, image, googleId } = dto;
+    const identity = await this.googleTokenVerifier.verify(dto.idToken);
+    const { sub: googleId, name, picture } = identity;
+    const email = normalizeEmail(identity.email);
 
-    const existingAuth = await this.prisma.auth.findUnique({
-      where: { email },
+    // Returning Google user. `sub` never changes, whereas the email can.
+    const linked = await this.prisma.oAuthAccount.findUnique({
+      where: {
+        provider_providerId: { provider: "GOOGLE", providerId: googleId },
+      },
+      include: { user: { include: { auth: true } } },
+    });
+
+    if (linked) {
+      return this.googleSession(
+        linked.user,
+        linked.user.auth?.email ?? email,
+        picture,
+      );
+    }
+
+    // An account with this (Google-verified) email already exists: link it.
+    // Case-insensitive because rows created before emails were normalized may
+    // be mixed-case.
+    const existingAuth = await this.prisma.auth.findFirst({
+      where: { email: { equals: email, mode: "insensitive" } },
       include: { user: true },
     });
 
-    const user = existingAuth?.user;
-
-    if (user) {
-      const existingAccount = await this.prisma.oAuthAccount.findUnique({
-        where: {
-          provider_providerId: {
-            provider: "GOOGLE",
-            providerId: googleId,
-          },
+    if (existingAuth) {
+      await this.prisma.oAuthAccount.create({
+        data: {
+          provider: "GOOGLE",
+          providerId: googleId,
+          userId: existingAuth.userId,
         },
       });
 
-      if (!existingAccount) {
-        await this.prisma.oAuthAccount.create({
-          data: {
-            provider: "GOOGLE",
-            providerId: googleId,
-            userId: user.id,
-          },
-        });
-      }
-
-      if (!existingAuth) {
-        await this.prisma.auth.create({
-          data: {
-            email,
-            userId: user.id,
-          },
-        });
-      }
-
-      const token = this.jwtService.sign({
-        sub: user.id,
-        email,
-      });
-
-      return {
-        user: {
-          id: user.id,
-          name: user.name,
-          email,
-          avatarUrl: image ?? user.avatarUrl,
-        },
-        accessToken: token,
-      };
+      return this.googleSession(existingAuth.user, existingAuth.email, picture);
     }
 
+    // First time we see this person: user + auth + oauth link + workspace.
     const result = await this.prisma.$transaction(async (tx) => {
       const newUser = await tx.user.create({
         data: {
           name,
-          avatarUrl: image ?? null,
+          avatarUrl: picture ?? null,
         },
       });
 
@@ -222,19 +221,26 @@ export class AuthService {
       return { user: newUser, workspace };
     });
 
-    const token = this.jwtService.sign({
-      sub: result.user.id,
-      email,
-    });
+    return this.googleSession(result.user, email, picture);
+  }
 
+  /**
+   * The session payload for a Google sign-in. A stored (uploaded) avatar wins
+   * over Google's picture so signing in doesn't clobber a custom one.
+   */
+  private googleSession(
+    user: { id: string; name: string; avatarUrl: string | null },
+    email: string,
+    picture?: string,
+  ) {
     return {
       user: {
-        id: result.user.id,
-        name: result.user.name,
+        id: user.id,
+        name: user.name,
         email,
-        avatarUrl: image ?? result.user.avatarUrl,
+        avatarUrl: user.avatarUrl ?? picture ?? null,
       },
-      accessToken: token,
+      accessToken: this.jwtService.sign({ sub: user.id, email }),
     };
   }
 }

@@ -58,10 +58,11 @@ Three layers, applied in order. `src/modules/auth/CLAUDE.md` has module-level de
 1. **`JwtAuthGuard` — global.** Registered once in `app.module.ts` via `APP_GUARD`. It applies to
    every route, so you do not need `@UseGuards(JwtAuthGuard)` (existing controllers still list it
    redundantly; harmless). Opt out with `@Public()` (used on `/auth/register`, `/auth/login`, `GET /`).
-   It throws `ForbiddenException("Token not provided!")` when the `authorization` header is missing.
+   It throws `UnauthorizedException("Token not provided!")` (401) when the `authorization` header is missing.
    `JwtStrategy.validate()` returns the payload unchanged, so `req.user` is `{ sub, email }`.
 2. **`WorkspaceGuard` — opt-in per controller/route.** Resolves the tenant from the
-   `x-workspace-id` header, falling back to `req.params.workspaceId`. Looks up the `Membership` row
+   `x-workspace-id` header, falling back to `req.params.workspaceId`; if both are present and differ
+   it 403s (otherwise membership in A would authorize an action on B). Looks up the `Membership` row
    and 403s if absent. On success it sets `request.workspaceId` and `request.membershipRole`.
 3. **`RolesGuard` — opt-in per route,** always combined with `@Roles(...)`. Must run after
    `WorkspaceGuard` because it reads `request.membershipRole`.
@@ -78,7 +79,17 @@ directly and never hardcoded. Access token expiry is `1d` (`auth.module.ts`). Th
 `RolesGuard` hardcodes a check that `membershipRole` is `OWNER` or `ADMIN` *before* consulting the
 `@Roles(...)` list. So `@Roles(WorkspaceRole.MEMBER)` can never pass, and `@Roles()` with any
 non-privileged role is effectively OWNER/ADMIN-only. If you need MEMBER- or VIEWER-level gating,
-enforce it in the service (as `IssueService.update` does) rather than through `@Roles`.
+enforce it in the service (as `IssueService.update` does: VIEWER is rejected outright, MEMBER is
+limited to status/rank) rather than through `@Roles`.
+
+### Google sign-in
+
+`POST /auth/google` is `@Public()`, so it must never trust identity from the body. It accepts only
+`{ idToken }`; `GoogleTokenVerifier` verifies it with `google-auth-library` (signature, expiry,
+`audience = GOOGLE_CLIENT_ID`, `email_verified`) and `AuthService.googleSignIn` takes `sub`, `email`
+and `picture` from the verified payload. Accounts match on Google's `sub` first, then link by
+(case-insensitive) email. The auth routes are rate-limited by `@nestjs/throttler` (`AUTH_THROTTLE`:
+10/min per client) — behind a reverse proxy, set Express `trust proxy` or every client shares one bucket.
 
 ## Multi-workspace isolation — CRITICAL
 
@@ -95,10 +106,10 @@ Correlated writes must re-verify ownership rather than trusting ids from the cli
 `remove` call `findOne(workspaceId, projectId, issueId)` first so the `prisma.*.update({ where: { id } })`
 that follows is already proven to be in-tenant.
 
-`User` and `Workspace` are the only models without a `workspaceId`. Be aware that `UserController`
-(`/api/v1/users`) is authenticated but otherwise ungated: `GET /users` returns every user in the
-database across all tenants. Treat it as an unfinished admin surface — don't build on it and don't
-copy its shape.
+`User` and `Workspace` are the only models without a `workspaceId`. `UserController`
+(`/api/v1/users`) therefore has no tenant scope to lean on, so it is strictly self-only: `GET`/`PATCH`
+`/users/me` and `/users/:id` where `:id` must equal the JWT `sub` (anything else is 403). There is no
+list and no delete route — don't add one without a tenant-scoped design.
 
 ## API response shape
 
@@ -180,15 +191,24 @@ only touches `rank IS NULL`. Keep the column nullable until it's been run everyw
 
 ## Tests
 
-Only `src/app.controller.spec.ts` exists today; there is no meaningful test suite yet. Written
-feature specs live in `spec/*.md` (gitignored, e.g. `issue-spec.md`, `invitation-spec.md`) and are
-the best statement of intended behavior for issues and invitations.
+`pnpm run test` runs Jest specs colocated with the code (`*.spec.ts`). They use a hand-rolled fake
+`PrismaService` (and `supertest` against a Nest app with mocked services for HTTP-level checks), so
+they need no database. Current coverage: `WorkspaceGuard`, `JwtAuthGuard`, `IssueService.update` role
+rules, `UserController`/`UserService`, `InvitationService`/controller, Google sign-in
+(`GoogleTokenVerifier`, `AuthService.googleSignIn`, throttling) and `SprintService.endSprint`.
+`jest` maps `@/` and `generated/` in `package.json` and transforms the ESM-only `fractional-indexing`.
+`test:e2e` is still the stale Nest placeholder and is not usable yet.
+
+Written feature specs live in `spec/*.md` (gitignored, e.g. `issue-spec.md`, `invitation-spec.md`)
+and are the best statement of intended behavior for issues and invitations.
 
 ## Environment
 
 See `.env.example`. Required: `DATABASE_URL`, `JWT_ACCESS_SECRET`, `NODE_ENV`, `PORT`,
 SMTP vars (`SMTP_HOST/PORT/SECURE/USER/PASS`, `MAIL_FROM`) for invitation email, `APP_URL` for
-invitation links, and `CLOUDINARY_CLOUD_NAME/API_KEY/API_SECRET`. `PrismaService` logs queries when
+invitation links, and `CLOUDINARY_CLOUD_NAME/API_KEY/API_SECRET`. `GOOGLE_CLIENT_ID` is read lazily,
+only by Google sign-in (the backend boots without it; `POST /auth/google` then answers 503) and must
+match the web app's `GOOGLE_CLIENT_ID`. `PrismaService` logs queries when
 `NODE_ENV === "development"`.
 
 ## When compacting

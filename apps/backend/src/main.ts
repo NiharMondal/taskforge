@@ -4,9 +4,14 @@ import { ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import cookieParser from "cookie-parser";
 import "dotenv/config";
+import helmet from "helmet";
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  app.use(helmet());
+  // Run OnModuleDestroy (PrismaService.$disconnect) on SIGTERM/SIGINT instead of
+  // dropping the DB connections mid-flight.
+  app.enableShutdownHooks();
   app.use(cookieParser());
   app.enableCors({
     origin: ["http://localhost:3000", "http://localhost:3001"],

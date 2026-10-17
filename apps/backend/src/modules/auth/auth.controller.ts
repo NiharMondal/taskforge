@@ -2,11 +2,20 @@ import { Public } from "@/common/decorators/public.decorator";
 import { sendResponse } from "@/common/utils/send-response";
 import { AuthService } from "@/modules/auth/auth.service";
 import { RegisterDto } from "@/modules/auth/dto/register.dto";
-import { Body, Controller, HttpCode, HttpStatus, Post } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  HttpCode,
+  HttpStatus,
+  Post,
+  UseGuards,
+} from "@nestjs/common";
+import { ThrottlerGuard } from "@nestjs/throttler";
 import { GoogleAuthDto } from "./dto/google-auth.dto";
 import { LoginDto } from "./dto/login.dto";
 
 @Controller("auth")
+@UseGuards(ThrottlerGuard)
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 

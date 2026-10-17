@@ -23,7 +23,7 @@ export type IssuePriority = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
 export interface IssueUser {
   id: string;
   name: string;
-  email: string;
+  avatarUrl?: string | null;
 }
 
 export interface Sprint {

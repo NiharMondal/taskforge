@@ -60,7 +60,9 @@ export class IssueService {
       .paginate()
       .sort()
       .include({
-        assignee: { select: { id: true, name: true, email: true } },
+        // `email` lives on `Auth`, not `User` — selecting it here makes Prisma
+        // reject the whole query. Mirrors `findOne`.
+        assignee: { select: { id: true, name: true, avatarUrl: true } },
         reporter: {
           select: { id: true, name: true, avatarUrl: true },
         },
@@ -107,6 +109,12 @@ export class IssueService {
     membershipRole: WorkspaceRole,
     dto: UpdateIssueDto,
   ) {
+    // `@Roles` can't gate below OWNER/ADMIN (see RolesGuard), so read-only
+    // access for VIEWER is enforced here, like the MEMBER field rules below.
+    if (membershipRole === WorkspaceRole.VIEWER) {
+      throw new ForbiddenException("Viewers cannot update issues");
+    }
+
     if (membershipRole === WorkspaceRole.MEMBER) {
       // `rank` is deliberately absent: moving a card on the board is a status
       // change plus a position, so members who may re-status an issue may also

@@ -9,14 +9,14 @@ import {
 	Chip,
 	Spinner,
 } from "@heroui/react";
-import { useSession } from "next-auth/react";
-
 import InvitationsList from "@/features/invitations/components/InvitationsList";
 import InviteMemberButton from "@/features/invitations/components/InviteMemberButton";
 import { ROLE_COLOR, ROLE_LABELS } from "@/features/memberships/constants";
 import MemberRoleSelect from "@/features/memberships/components/MemberRoleSelect";
 import RemoveMemberButton from "@/features/memberships/components/RemoveMemberButton";
 import { useMemberships } from "@/features/memberships/hooks/use-memberships";
+import { getMemberEmail } from "@/features/memberships/lib/member";
+import { useCurrentUserId } from "@/features/auth/hooks/use-current-user-id";
 import { useWorkspace } from "@/features/workspace/context/workspace-context";
 
 /**
@@ -28,7 +28,6 @@ import { useWorkspace } from "@/features/workspace/context/workspace-context";
  */
 export default function MembersSettings() {
 	const { activeWorkspaceId } = useWorkspace();
-	const { data: session } = useSession();
 
 	const workspaceId = activeWorkspaceId ?? "";
 	const {
@@ -37,7 +36,7 @@ export default function MembersSettings() {
 		isError,
 	} = useMemberships(workspaceId);
 
-	const currentUserId = session?.user?.id;
+	const currentUserId = useCurrentUserId();
 	const currentRole = members.find((m) => m.userId === currentUserId)?.role;
 	const canManage = currentRole === "OWNER" || currentRole === "ADMIN";
 
@@ -92,9 +91,9 @@ export default function MembersSettings() {
 													</span>
 												)}
 											</p>
-											{member.user?.email && (
+											{getMemberEmail(member) && (
 												<p className="truncate text-xs text-muted">
-													{member.user.email}
+													{getMemberEmail(member)}
 												</p>
 											)}
 										</div>

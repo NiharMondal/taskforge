@@ -1,6 +1,9 @@
+"use client";
+
 import { ArrowRight, FolderPlus } from "lucide-react";
 import Link from "next/link";
 
+import { useWorkspacePermissions } from "@/features/memberships/hooks/use-workspace-permissions";
 import ProjectCard from "@/features/projects/components/ProjectCard";
 import type { Project } from "@/features/projects/types/project-types";
 
@@ -10,6 +13,8 @@ import type { Project } from "@/features/projects/types/project-types";
  * sync, and falls back to a create-first-project empty state.
  */
 export default function RecentProjects({ projects }: { projects: Project[] }) {
+  const { canManageProjects } = useWorkspacePermissions();
+
   return (
     <section className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
@@ -31,20 +36,28 @@ export default function RecentProjects({ projects }: { projects: Project[] }) {
           <div className="flex flex-col gap-1">
             <p className="font-medium">No projects yet</p>
             <p className="text-sm text-muted">
-              Create a project to start tracking issues and sprints.
+              {canManageProjects
+                ? "Create a project to start tracking issues and sprints."
+                : "Projects will appear here once an admin creates them."}
             </p>
           </div>
-          <Link
-            href="/projects"
-            className="inline-flex items-center rounded-md border border-border px-4 py-2 text-sm font-medium transition-colors hover:bg-surface-secondary"
-          >
-            Create your first project
-          </Link>
+          {canManageProjects && (
+            <Link
+              href="/projects"
+              className="inline-flex items-center rounded-md border border-border px-4 py-2 text-sm font-medium transition-colors hover:bg-surface-secondary"
+            >
+              Create your first project
+            </Link>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {projects.map((project) => (
-            <ProjectCard key={project.id} project={project} />
+            <ProjectCard
+              key={project.id}
+              project={project}
+              canManage={canManageProjects}
+            />
           ))}
         </div>
       )}

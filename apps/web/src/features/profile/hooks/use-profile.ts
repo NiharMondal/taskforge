@@ -12,30 +12,26 @@ export const profileKeys = {
 	detail: (userId: string) => [...profileKeys.all, userId] as const,
 };
 
-/** Fetch the current user; `queryFn` unwraps `.data` so the cache holds a plain `User`. */
+/**
+ * Fetch the current user; `queryFn` unwraps `.data` so the cache holds a plain
+ * `User`. `userId` only scopes the cache entry (and gates the query until
+ * signed in) — the request itself is `/users/me`, resolved from the token.
+ */
 export function useCurrentUser(userId: string | undefined) {
 	return useQuery({
 		queryKey: profileKeys.detail(userId ?? ""),
-		queryFn: async () => (await getUser(userId as string)).data,
+		queryFn: async () => (await getUser()).data,
 		enabled: !!userId,
 	});
-}
-
-interface UpdateProfileVars {
-	userId: string;
-	dto: UpdateProfileDto;
 }
 
 export function useUpdateProfile() {
 	const queryClient = useQueryClient();
 
 	return useMutation({
-		mutationFn: ({ userId, dto }: UpdateProfileVars) =>
-			updateProfile(userId, dto),
-		onSuccess: (_res, { userId }) => {
-			queryClient.invalidateQueries({
-				queryKey: profileKeys.detail(userId),
-			});
+		mutationFn: (dto: UpdateProfileDto) => updateProfile(dto),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: profileKeys.all });
 		},
 	});
 }

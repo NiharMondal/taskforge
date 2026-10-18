@@ -53,3 +53,23 @@ export function registerUnauthorizedHandler(handler: UnauthorizedHandler): void 
 export function notifyUnauthorized(): void {
   unauthorizedHandler();
 }
+
+/**
+ * The user id (`sub`) inside the backend access token — the identity the
+ * backend actually authorizes requests as. The payload is read, not verified:
+ * this is only for UI decisions (e.g. which roster row is "me"), never trust.
+ */
+export function getUserIdFromAccessToken(
+  token: string | null | undefined,
+): string | undefined {
+  const payload = token?.split(".")[1];
+  if (!payload) return undefined;
+  try {
+    const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const json = atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, "="));
+    const { sub } = JSON.parse(json) as { sub?: unknown };
+    return typeof sub === "string" ? sub : undefined;
+  } catch {
+    return undefined;
+  }
+}

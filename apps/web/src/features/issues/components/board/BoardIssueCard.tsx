@@ -24,10 +24,13 @@ export default function BoardIssueCard({
   issue,
   assigneeName,
   onOpen,
+  canDrag,
 }: {
   issue: Issue;
   assigneeName?: string;
   onOpen: (issue: Issue) => void;
+  /** False leaves the card clickable but not draggable (VIEWER). */
+  canDrag: boolean;
 }) {
   const {
     attributes,
@@ -36,7 +39,11 @@ export default function BoardIssueCard({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: issue.id, data: { status: issue.status } });
+  } = useSortable({
+    id: issue.id,
+    data: { status: issue.status },
+    disabled: !canDrag,
+  });
 
   const downAt = useRef<{ x: number; y: number } | null>(null);
 
@@ -48,7 +55,13 @@ export default function BoardIssueCard({
         transition,
         opacity: isDragging ? 0.4 : 1,
       }}
-      className="cursor-grab touch-none active:cursor-grabbing"
+      // `touch-none` is only needed while draggable; without it a read-only
+      // board still scrolls under a finger.
+      className={
+        canDrag
+          ? "cursor-grab touch-none active:cursor-grabbing"
+          : "cursor-pointer"
+      }
       {...attributes}
       {...listeners}
       onPointerDown={(e) => {

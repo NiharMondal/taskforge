@@ -40,9 +40,7 @@ export default function CreateWorkspaceButton() {
 			}
 			return true;
 		} catch (error) {
-			toast.danger(
-				getApiErrorMessage(error || "Failed to create workspace"),
-			);
+			toast.danger(getApiErrorMessage(error, "Failed to create workspace"));
 			return false;
 		}
 	};

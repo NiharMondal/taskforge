@@ -8,6 +8,7 @@ import {
 } from "../api/issue-api";
 import type { Issue, UpdateIssueDto } from "../types/issue-types";
 import { TIssueFormValues } from "../schema/issue-schema";
+import { projectKeys } from "@/features/projects/hooks/use-projects";
 
 /**
  * Centralized query keys for the issues feature. Keyed by workspace AND project:
@@ -61,6 +62,10 @@ export function useCreateIssue(workspaceId: string, projectId: string) {
 		onSuccess: () => {
 			queryClient.invalidateQueries({
 				queryKey: issueKeys.list(workspaceId, projectId),
+			});
+			// Project cards show an issue count.
+			queryClient.invalidateQueries({
+				queryKey: projectKeys.list(workspaceId),
 			});
 		},
 	});

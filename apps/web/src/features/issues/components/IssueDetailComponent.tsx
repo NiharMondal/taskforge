@@ -1,19 +1,24 @@
 "use client";
-import { useWorkspace } from "@/features/workspace/context/workspace-context";
-import { useSingleIssue, useUpdateIssue } from "../hooks/use-issues";
+import { useMemo } from "react";
+
+import { Spinner } from "@heroui/react";
+
+import ErrorAlert from "@/components/ui/error-alert";
 import { useMemberships } from "@/features/memberships/hooks/use-memberships";
-import { UpdateIssueDto } from "../types/issue-types";
+import { useWorkspacePermissions } from "@/features/memberships/hooks/use-workspace-permissions";
+import { useSprints } from "@/features/sprint/hooks/use-sprints";
+import { useWorkspace } from "@/features/workspace/context/workspace-context";
+import { getApiErrorMessage } from "@/lib/api-error";
+
+import { useIssueEditor } from "../hooks/use-issue-editor";
+import { useSingleIssue } from "../hooks/use-issues";
 import {
 	TIssueContentValues,
 	TIssueDetailsValues,
 } from "../schema/issue-schema";
-import { NO_SPRINT, UNASSIGNED } from "./IssueForm";
 import IssueContentForm from "./IssueContentForm";
 import IssueDetailsPanel from "./IssueDetailsPanel";
-import { useSprints } from "@/features/sprint/hooks/use-sprints";
-import { toast } from "@heroui/react";
-import { getApiErrorMessage } from "@/lib/api-error";
-import { useMemo } from "react";
+import { NO_SPRINT, UNASSIGNED } from "./IssueForm";
 
 type Props = {
 	projectId: string;
@@ -23,17 +28,22 @@ type Props = {
 export default function IssueDetailComponent({ projectId, issueId }: Props) {
 	const { activeWorkspaceId } = useWorkspace();
 	const workspaceId = activeWorkspaceId ?? "";
-	const { data: issue } = useSingleIssue(workspaceId, projectId, issueId);
+	const {
+		data: issue,
+		isError,
+		error,
+		refetch,
+	} = useSingleIssue(workspaceId, projectId, issueId);
 	const { data: members = [] } = useMemberships(workspaceId);
 	const { data: sprints = [] } = useSprints(workspaceId, projectId);
+	const permissions = useWorkspacePermissions();
 
-	// Two independent mutation instances so each section has its own loading
-	// state — saving the content doesn't spin the details Save button, and vice
-	// versa. Both funnel through the same optimistic cache logic.
-	const { mutateAsync: saveContent, isPending: isSavingContent } =
-		useUpdateIssue(workspaceId, projectId);
-	const { mutateAsync: saveDetails, isPending: isSavingDetails } =
-		useUpdateIssue(workspaceId, projectId);
+	const {
+		handleSaveContent,
+		handleSaveDetails,
+		isSavingContent,
+		isSavingDetails,
+	} = useIssueEditor(workspaceId, projectId, issue);
 
 	const contentValues = useMemo<TIssueContentValues | undefined>(
 		() =>
@@ -55,56 +65,27 @@ export default function IssueDetailComponent({ projectId, issueId }: Props) {
 		[issue],
 	);
 
-	const patch = async (dto: UpdateIssueDto, save: typeof saveContent) => {
-		if (!issue) return false;
-		// Nothing changed — treat as a no-op success.
-		if (Object.keys(dto).length === 0) return true;
-		try {
-			const res = await save({ issueId: issue.id, dto });
-			toast.success(res?.message || "Issue updated successfully");
-			return true;
-		} catch (error) {
-			toast.danger(getApiErrorMessage(error));
-			return false;
-		}
-	};
+	if (isError) {
+		return (
+			<ErrorAlert
+				title="Couldn’t load this issue"
+				description={getApiErrorMessage(
+					error,
+					"It may have been deleted, or you may not have access.",
+				)}
+				onRetry={() => refetch()}
+			/>
+		);
+	}
 
-	const handleSaveContent = async (values: TIssueContentValues) => {
-		if (!issue) return false;
-		const dto: UpdateIssueDto = {
-			...(values.title !== issue.title && { title: values.title }),
-			...((values.description ?? "") !== (issue.description ?? "") && {
-				description: values.description || undefined,
-			}),
-		};
-		return patch(dto, saveContent);
-	};
-
-	const handleSaveDetails = async (values: TIssueDetailsValues) => {
-		if (!issue) return false;
-		const nextAssignee =
-			values.assigneeId === UNASSIGNED
-				? null
-				: (values.assigneeId ?? null);
-		const nextSprint =
-			values.sprintId === NO_SPRINT ? null : (values.sprintId ?? null);
-
-		const dto: UpdateIssueDto = {
-			...(values.status !== issue.status && { status: values.status }),
-			...(values.priority !== issue.priority && {
-				priority: values.priority,
-			}),
-			...(nextAssignee !== (issue.assigneeId ?? null) && {
-				assigneeId: nextAssignee,
-			}),
-			...(nextSprint !== (issue.sprintId ?? null) && {
-				sprintId: nextSprint,
-			}),
-		};
-		return patch(dto, saveDetails);
-	};
-
-	if (!issue || !contentValues || !detailsValues) return null;
+	if (!issue || !contentValues || !detailsValues) {
+		return (
+			<div className="flex items-center gap-2 py-12 text-muted">
+				<Spinner size="sm" />
+				Loading issue…
+			</div>
+		);
+	}
 
 	return (
 		<div className="grid grid-cols-1 gap-5 xl:grid-cols-6">
@@ -113,6 +94,7 @@ export default function IssueDetailComponent({ projectId, issueId }: Props) {
 					defaultValues={contentValues}
 					onSubmit={handleSaveContent}
 					isSubmitting={isSavingContent}
+					canEdit={permissions.canEditIssueFields}
 				/>
 			</div>
 			<div className="xl:col-span-2">
@@ -123,6 +105,7 @@ export default function IssueDetailComponent({ projectId, issueId }: Props) {
 					members={members}
 					sprints={sprints}
 					reporter={issue.reporter}
+					permissions={permissions}
 				/>
 			</div>
 		</div>

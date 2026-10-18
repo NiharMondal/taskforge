@@ -1,14 +1,15 @@
 /**
  * User profile contract types.
  *
- * Mirrors the backend `SafeUser` (Prisma `User` minus `passwordHash`) returned
- * by `GET /users/:id` and `PATCH /users/:id`. Email is intentionally not part
- * of the update DTO — it is not editable from the UI.
+ * Mirrors what `GET /users/:id` and `PATCH /users/:id` return: the Prisma `User`
+ * row plus `auth: { email }`. The email lives on `Auth`, not `User`, so it is
+ * nested (and `null` if the user has no `Auth` row). It is intentionally not
+ * part of the update DTO — it is not editable from the UI.
  */
 export interface User {
 	id: string;
 	name: string;
-	email: string;
+	auth: { email: string } | null;
 	avatarUrl: string | null;
 	avatarPublicId: string | null;
 	createdAt: string;

@@ -10,6 +10,8 @@ type Props = {
 	type?: string;
 	placeholder?: string;
 	isRequired?: boolean;
+	isReadOnly?: boolean;
+	isDisabled?: boolean;
 	ornament?: ReactNode;
 	ornamentAlignment?: "left" | "right";
 };
@@ -20,6 +22,8 @@ export default function FormTextField({
 	type = "text",
 	placeholder,
 	isRequired,
+	isReadOnly,
+	isDisabled,
 	ornament,
 	ornamentAlignment = "right",
 }: Props) {
@@ -38,6 +42,8 @@ export default function FormTextField({
 					onBlur={field.onBlur}
 					isInvalid={!!fieldState.error}
 					isRequired={isRequired}
+					isReadOnly={isReadOnly}
+					isDisabled={isDisabled}
 					aria-label={!label ? (placeholder ?? name) : undefined}
 				>
 					{label && <Label>{label}</Label>}

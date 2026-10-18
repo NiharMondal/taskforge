@@ -2,6 +2,11 @@
 
 import { CircleUserRound } from "lucide-react";
 
+import {
+	canSetIssueStatus,
+	type Permissions,
+} from "@/features/memberships/lib/permissions";
+
 import { statusOptionsFor } from "../constants";
 import type { Issue, IssueStatus } from "../types/issue-types";
 import PriorityChip from "./PriorityChip";
@@ -12,6 +17,7 @@ interface IssueRowProps {
 	issue: Issue;
 	/** Display name for the assignee, resolved from the membership roster. */
 	assigneeName?: string;
+	permissions: Permissions;
 	onStatusChange: (issueId: string, status: IssueStatus) => void;
 	onOpen: (issue: Issue) => void;
 	isUpdating?: boolean;
@@ -28,13 +34,18 @@ interface IssueRowProps {
 export default function IssueRow({
 	issue,
 	assigneeName,
+	permissions,
 	onStatusChange,
 	isUpdating,
 }: IssueRowProps) {
 	const router = useRouter();
-	// Current status + its legal next steps. A lone entry means the issue is
-	// terminal (DONE), so there is nothing to pick and the Select is disabled.
-	const statusOptions = statusOptionsFor(issue.status);
+	// Current status + its legal next steps, minus any the viewer's role may not
+	// move the issue to (VIEWER: all, MEMBER: DONE). A lone entry means there is
+	// nothing to pick — terminal DONE, or no permission — so the Select is
+	// disabled.
+	const statusOptions = statusOptionsFor(issue.status).filter(
+		(s) => s.value === issue.status || canSetIssueStatus(permissions, s.value),
+	);
 	const handleClick = () => {
 		router.push(`/projects/${issue.projectId}/issues/${issue.id}`);
 	};

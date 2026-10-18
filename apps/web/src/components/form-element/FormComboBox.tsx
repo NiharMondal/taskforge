@@ -45,7 +45,7 @@ export default function FormComboBox({
 									isDisabled
 									textValue="No data found"
 								>
-									<span className="text-default-400 text-sm italic">
+									<span className="text-muted text-sm italic">
 										No data found
 									</span>
 								</ListBox.Item>

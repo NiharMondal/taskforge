@@ -1,21 +1,15 @@
 "use client";
 
-import { toast } from "@heroui/react";
-
 import MyModal from "@/components/ui/my-modal";
+import type { Permissions } from "@/features/memberships/lib/permissions";
 import type { Member } from "@/features/memberships/types/membership-types";
-import { getApiErrorMessage } from "@/lib/api-error";
+import { useSprints } from "@/features/sprint/hooks/use-sprints";
 
-import { useUpdateIssue } from "../hooks/use-issues";
-import {
-	TIssueContentValues,
-	TIssueDetailsValues,
-} from "../schema/issue-schema";
-import type { Issue, UpdateIssueDto } from "../types/issue-types";
+import { useIssueEditor } from "../hooks/use-issue-editor";
+import type { Issue } from "../types/issue-types";
 import IssueContentForm from "./IssueContentForm";
 import IssueDetailsPanel from "./IssueDetailsPanel";
 import { NO_SPRINT, UNASSIGNED } from "./IssueForm";
-import { useSprints } from "@/features/sprint/hooks/use-sprints";
 
 type TProps = {
 	/** The issue to edit; null closes the modal. */
@@ -24,6 +18,7 @@ type TProps = {
 	members: Member[];
 	workspaceId: string;
 	projectId: string;
+	permissions: Permissions;
 };
 
 /**
@@ -38,64 +33,15 @@ export default function IssueDetailModal({
 	members,
 	workspaceId,
 	projectId,
+	permissions,
 }: TProps) {
-	// Two independent mutation instances so each section has its own loading
-	// state — saving the content doesn't spin the details Save button, and vice
-	// versa. Both funnel through the same optimistic cache logic.
-	const { mutateAsync: saveContent, isPending: isSavingContent } =
-		useUpdateIssue(workspaceId, projectId);
-	const { mutateAsync: saveDetails, isPending: isSavingDetails } =
-		useUpdateIssue(workspaceId, projectId);
 	const { data: sprints = [] } = useSprints(workspaceId, projectId);
-
-	const patch = async (dto: UpdateIssueDto, save: typeof saveContent) => {
-		if (!issue) return false;
-		// Nothing changed — treat as a no-op success.
-		if (Object.keys(dto).length === 0) return true;
-		try {
-			const res = await save({ issueId: issue.id, dto });
-			toast.success(res?.message || "Issue updated successfully");
-			return true;
-		} catch (error) {
-			toast.danger(getApiErrorMessage(error));
-			return false;
-		}
-	};
-
-	const handleSaveContent = async (values: TIssueContentValues) => {
-		if (!issue) return false;
-		const dto: UpdateIssueDto = {
-			...(values.title !== issue.title && { title: values.title }),
-			...((values.description ?? "") !== (issue.description ?? "") && {
-				description: values.description || undefined,
-			}),
-		};
-		return patch(dto, saveContent);
-	};
-
-	const handleSaveDetails = async (values: TIssueDetailsValues) => {
-		if (!issue) return false;
-		const nextAssignee =
-			values.assigneeId === UNASSIGNED
-				? null
-				: (values.assigneeId ?? null);
-		const nextSprint =
-			values.sprintId === NO_SPRINT ? null : (values.sprintId ?? null);
-
-		const dto: UpdateIssueDto = {
-			...(values.status !== issue.status && { status: values.status }),
-			...(values.priority !== issue.priority && {
-				priority: values.priority,
-			}),
-			...(nextAssignee !== (issue.assigneeId ?? null) && {
-				assigneeId: nextAssignee,
-			}),
-			...(nextSprint !== (issue.sprintId ?? null) && {
-				sprintId: nextSprint,
-			}),
-		};
-		return patch(dto, saveDetails);
-	};
+	const {
+		handleSaveContent,
+		handleSaveDetails,
+		isSavingContent,
+		isSavingDetails,
+	} = useIssueEditor(workspaceId, projectId, issue);
 
 	return (
 		<MyModal
@@ -117,6 +63,7 @@ export default function IssueDetailModal({
 							}}
 							onSubmit={handleSaveContent}
 							isSubmitting={isSavingContent}
+							canEdit={permissions.canEditIssueFields}
 						/>
 					</div>
 					<div className="xl:col-span-2 border-0 xl:border-l pl-4">
@@ -132,6 +79,7 @@ export default function IssueDetailModal({
 							members={members}
 							sprints={sprints}
 							reporter={issue.reporter}
+							permissions={permissions}
 						/>
 					</div>
 				</div>

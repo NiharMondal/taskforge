@@ -11,6 +11,8 @@ import {
 } from "@heroui/react";
 import { useSession } from "next-auth/react";
 
+import { useCurrentUserId } from "@/features/auth/hooks/use-current-user-id";
+import ErrorAlert from "@/components/ui/error-alert";
 import ProfileForm from "@/features/profile/components/ProfileForm";
 import { useCurrentUser, useUpdateProfile } from "@/features/profile/hooks/use-profile";
 import type { TProfileFormValues } from "@/features/profile/schema/profile-schema";
@@ -20,15 +22,21 @@ import { isTempPublicId } from "@/lib/cloudinary";
 
 /**
  * Settings → Profile. Lets the signed-in user update their display name and
- * avatar (`PATCH /users/:id`). Email is shown read-only. On save we also push
+ * avatar (`PATCH /users/me`). Email is shown read-only. On save we also push
  * the new name/image into the Auth.js session via `update()` so the header
  * reflects the change without a re-login.
  */
 export default function ProfileSettings() {
-	const { data: session, update } = useSession();
-	const userId = session?.user?.id;
+	const { update } = useSession();
+	const userId = useCurrentUserId();
 
-	const { data: user, isLoading } = useCurrentUser(userId);
+	const {
+		data: user,
+		isLoading,
+		isError,
+		error,
+		refetch,
+	} = useCurrentUser(userId);
 	const { mutateAsync: updateProfile, isPending } = useUpdateProfile();
 
 	const handleSubmit = async (values: TProfileFormValues) => {
@@ -44,7 +52,7 @@ export default function ProfileSettings() {
 		}
 
 		try {
-			const res = await updateProfile({ userId, dto });
+			const res = await updateProfile(dto);
 			if (res.success) {
 				await update({
 					name: res.data.name,
@@ -65,6 +73,19 @@ export default function ProfileSettings() {
 			return false;
 		}
 	};
+
+	if (isError) {
+		return (
+			<ErrorAlert
+				title="Couldn’t load your profile"
+				description={getApiErrorMessage(
+					error,
+					"Check your connection and try again.",
+				)}
+				onRetry={() => refetch()}
+			/>
+		);
+	}
 
 	return (
 		<Card>
@@ -87,7 +108,7 @@ export default function ProfileSettings() {
 							avatarUrl: user.avatarUrl ?? "",
 							avatarPublicId: user.avatarPublicId ?? "",
 						}}
-						email={user.email}
+						email={user.auth?.email ?? ""}
 						onSubmit={handleSubmit}
 						isSubmitting={isPending}
 					/>

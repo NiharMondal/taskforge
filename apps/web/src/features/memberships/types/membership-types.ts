@@ -9,13 +9,9 @@ import { ICommonUserEntity } from "@/types/common";
  * count, and AI_GUIDE forbids assuming fields the contract hasn't confirmed.
  */
 
-/**
- * The user embedded in a roster row (`GET /memberships`). The email is not a
- * `User` column — the backend selects it through the `Auth` relation, which is
- * optional in the schema. Read it with `getMemberEmail`, not directly.
- */
+/** The user embedded in a roster row (`GET /memberships`), with their email. */
 export interface MemberUser extends ICommonUserEntity {
-	auth?: { email: string } | null;
+	email?: string;
 }
 
 export interface Member {

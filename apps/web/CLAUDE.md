@@ -96,7 +96,7 @@ queryFn: async () => (await getIssues(projectId)).data
 
 `getIssues` is the exception to that one-liner: the issues endpoint is paginated (default 20, max 100), so it walks every page (using `metaData.hasNextPage`) and returns the full list — the board and list render the whole project. That is a stop-gap (one serial request per 100 issues); the real fix is per-lane pagination.
 
-User emails live on `Auth`, not `User`, so the API nests them as `user.auth.email` (members, `/users/:id`). `ICommonUserEntity` has no `email`; use `getMemberEmail` / `getMemberName` (`features/memberships/lib/member.ts`) instead of reading it directly.
+A user's email is `User.email` (the backend's `Auth` table holds only sign-in methods: password hash or Google id). Only the profile (`/users/:id`) and the members roster select it, so `ICommonUserEntity` has no `email`; read a member's with `getMemberEmail` / `getMemberName` (`features/memberships/lib/member.ts`).
 
 Mutations use `.message` from the envelope for toast feedback. Every rejection is normalized to `ApiError` (`src/lib/api-error.ts`) by the response interceptor — render error text with `getApiErrorMessage(error, fallback)` rather than branching on Axios internals.
 

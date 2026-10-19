@@ -63,41 +63,36 @@ enum AuthProvider {
   FACEBOOK
 }
 //// AUTH
+// One row per way a user can sign in. EMAIL rows carry the password hash;
+// provider rows (GOOGLE, ...) carry the provider's stable account id. The email
+// itself is identity, not a credential, so it lives on `User`.
 model Auth {
-  id         String   @id @default(uuid())
-  email      String   @unique
-  password   String?
-  userId     String   @unique
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-}
-
-//// OAUTH PROVIDERS
-model OAuthAccount {
-  id         String   @id @default(uuid())
+  id         String       @id @default(uuid())
   provider   AuthProvider
-  providerId String
+  providerId String? // provider's stable account id (Google `sub`); null for EMAIL
+  password   String? // bcrypt hash; only set for EMAIL
   userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  createdAt  DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([provider, providerId])
+  @@unique([userId, provider])
 }
+
 //// USERS
 model User {
   id             String  @id @default(uuid())
   name           String
+  email          String  @unique
   avatarUrl      String?
   avatarPublicId String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  auth           Auth?
-  oauthAccounts OAuthAccount[]
+  auths          Auth[]
   memberships    Membership[]
   createdIssues  Issue[]      @relation("CreatedIssues")
   assignedIssues Issue[]      @relation("AssignedIssues")

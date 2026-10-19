@@ -8,7 +8,7 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
-import { WorkspaceRole } from "generated/prisma/enums";
+import { AuthProvider, WorkspaceRole } from "generated/prisma/enums";
 import { GoogleAuthDto } from "./dto/google-auth.dto";
 import { LoginDto } from "./dto/login.dto";
 import { RegisterDto } from "./dto/register.dto";
@@ -23,13 +23,16 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto) {
-    const { name, email, password } = dto;
+    const { name, password } = dto;
+    const email = normalizeEmail(dto.email);
 
-    const existingAuth = await this.prisma.auth.findUnique({
-      where: { email },
+    // Case-insensitive because rows created before emails were normalized may
+    // be mixed-case.
+    const existingUser = await this.prisma.user.findFirst({
+      where: { email: { equals: email, mode: "insensitive" } },
     });
 
-    if (existingAuth) {
+    if (existingUser) {
       throw new ConflictException("Email already in use");
     }
 
@@ -40,13 +43,14 @@ export class AuthService {
       const user = await tx.user.create({
         data: {
           name,
+          email,
         },
       });
 
-      // 2. Create Auth
-      const auth = await tx.auth.create({
+      // 2. Create the EMAIL sign-in method
+      await tx.auth.create({
         data: {
-          email,
+          provider: AuthProvider.EMAIL,
           password: passwordHash,
           userId: user.id,
         },
@@ -70,7 +74,6 @@ export class AuthService {
 
       return {
         user,
-        auth,
         workspace,
       };
     });
@@ -79,7 +82,7 @@ export class AuthService {
       user: {
         id: result.user.id,
         name: result.user.name,
-        email: result.auth.email,
+        email: result.user.email,
       },
       workspace: {
         id: result.workspace.id,
@@ -89,43 +92,41 @@ export class AuthService {
   }
 
   async signIn(dto: LoginDto) {
-    const auth = await this.prisma.auth.findUnique({
-      where: { email: dto.email },
+    const user = await this.prisma.user.findFirst({
+      where: {
+        email: { equals: normalizeEmail(dto.email), mode: "insensitive" },
+      },
       include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            avatarUrl: true,
-          },
-        },
+        auths: { where: { provider: AuthProvider.EMAIL } },
       },
     });
 
-    if (!auth) throw new NotFoundException("User not found");
+    if (!user) throw new NotFoundException("User not found");
 
-    if (!auth.password) {
+    // A Google-only account has no EMAIL row, so there is no password to check.
+    const password = user.auths[0]?.password;
+    if (!password) {
       throw new UnauthorizedException("Password is not set for this account");
     }
 
     const isPasswordValid = await passwordUtils.comparePassword(
       dto.password,
-      auth.password,
+      password,
     );
 
     if (!isPasswordValid) throw new UnauthorizedException("Invalid password");
 
     const token = this.jwtService.sign({
-      sub: auth.user.id,
-      email: auth.email,
+      sub: user.id,
+      email: user.email,
     });
     return {
       accessToken: token,
       user: {
-        id: auth.user.id,
-        name: auth.user.name,
-        email: auth.email,
-        avatarUrl: auth.user.avatarUrl,
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        avatarUrl: user.avatarUrl,
       },
     };
   }
@@ -136,8 +137,8 @@ export class AuthService {
    * The endpoint is public, so identity is taken ONLY from the claims of a
    * token Google has signed — never from the request body. Accounts are matched
    * on Google's stable `sub` first; the email is only used to link a Google
-   * login to an existing password account, and only because Google vouched for
-   * it (`email_verified`).
+   * login to an existing account, and only because Google vouched for it
+   * (`email_verified`).
    */
   async googleSignIn(dto: GoogleAuthDto) {
     const identity = await this.googleTokenVerifier.verify(dto.idToken);
@@ -145,60 +146,61 @@ export class AuthService {
     const email = normalizeEmail(identity.email);
 
     // Returning Google user. `sub` never changes, whereas the email can.
-    const linked = await this.prisma.oAuthAccount.findUnique({
+    const linked = await this.prisma.auth.findUnique({
       where: {
-        provider_providerId: { provider: "GOOGLE", providerId: googleId },
+        provider_providerId: {
+          provider: AuthProvider.GOOGLE,
+          providerId: googleId,
+        },
       },
-      include: { user: { include: { auth: true } } },
+      include: { user: true },
     });
 
     if (linked) {
-      return this.googleSession(
-        linked.user,
-        linked.user.auth?.email ?? email,
-        picture,
-      );
+      return this.googleSession(linked.user, picture);
     }
 
     // An account with this (Google-verified) email already exists: link it.
     // Case-insensitive because rows created before emails were normalized may
     // be mixed-case.
-    const existingAuth = await this.prisma.auth.findFirst({
+    const existingUser = await this.prisma.user.findFirst({
       where: { email: { equals: email, mode: "insensitive" } },
-      include: { user: true },
+      include: { auths: { where: { provider: AuthProvider.GOOGLE } } },
     });
 
-    if (existingAuth) {
-      await this.prisma.oAuthAccount.create({
+    if (existingUser) {
+      // One Google login per user. A different Google account claiming this
+      // email must not take over the link that is already there.
+      if (existingUser.auths.length > 0) {
+        throw new ConflictException(
+          "This account is already linked to a different Google account",
+        );
+      }
+
+      await this.prisma.auth.create({
         data: {
-          provider: "GOOGLE",
+          provider: AuthProvider.GOOGLE,
           providerId: googleId,
-          userId: existingAuth.userId,
+          userId: existingUser.id,
         },
       });
 
-      return this.googleSession(existingAuth.user, existingAuth.email, picture);
+      return this.googleSession(existingUser, picture);
     }
 
-    // First time we see this person: user + auth + oauth link + workspace.
+    // First time we see this person: user + GOOGLE auth + workspace + membership.
     const result = await this.prisma.$transaction(async (tx) => {
       const newUser = await tx.user.create({
         data: {
           name,
+          email,
           avatarUrl: picture ?? null,
         },
       });
 
       await tx.auth.create({
         data: {
-          email,
-          userId: newUser.id,
-        },
-      });
-
-      await tx.oAuthAccount.create({
-        data: {
-          provider: "GOOGLE",
+          provider: AuthProvider.GOOGLE,
           providerId: googleId,
           userId: newUser.id,
         },
@@ -221,7 +223,7 @@ export class AuthService {
       return { user: newUser, workspace };
     });
 
-    return this.googleSession(result.user, email, picture);
+    return this.googleSession(result.user, picture);
   }
 
   /**
@@ -229,18 +231,17 @@ export class AuthService {
    * over Google's picture so signing in doesn't clobber a custom one.
    */
   private googleSession(
-    user: { id: string; name: string; avatarUrl: string | null },
-    email: string,
+    user: { id: string; name: string; email: string; avatarUrl: string | null },
     picture?: string,
   ) {
     return {
       user: {
         id: user.id,
         name: user.name,
-        email,
+        email: user.email,
         avatarUrl: user.avatarUrl ?? picture ?? null,
       },
-      accessToken: this.jwtService.sign({ sub: user.id, email }),
+      accessToken: this.jwtService.sign({ sub: user.id, email: user.email }),
     };
   }
 }

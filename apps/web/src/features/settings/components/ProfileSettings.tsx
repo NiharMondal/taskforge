@@ -108,7 +108,7 @@ export default function ProfileSettings() {
 							avatarUrl: user.avatarUrl ?? "",
 							avatarPublicId: user.avatarPublicId ?? "",
 						}}
-						email={user.auth?.email ?? ""}
+						email={user.email}
 						onSubmit={handleSubmit}
 						isSubmitting={isPending}
 					/>

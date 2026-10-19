@@ -18,13 +18,6 @@ export class UserService {
   async findOne(id: string) {
     const user = await this.prisma.user.findUnique({
       where: { id },
-      include: {
-        auth: {
-          select: {
-            email: true,
-          },
-        },
-      },
     });
 
     if (!user) {
@@ -35,11 +28,8 @@ export class UserService {
   }
 
   async findByEmail(email: string) {
-    return this.prisma.auth.findUnique({
+    return this.prisma.user.findUnique({
       where: { email },
-      include: {
-        user: true,
-      },
     });
   }
 
@@ -68,13 +58,6 @@ export class UserService {
       return this.prisma.user.update({
         where: { id },
         data: rest,
-        include: {
-          auth: {
-            select: {
-              email: true,
-            },
-          },
-        },
       });
     }
 
@@ -103,15 +86,6 @@ export class UserService {
       await this.cloudinary.delete(existing.avatarPublicId);
     }
 
-    return this.prisma.user.findUnique({
-      where: { id: user.id },
-      include: {
-        auth: {
-          select: {
-            email: true,
-          },
-        },
-      },
-    });
+    return user;
   }
 }

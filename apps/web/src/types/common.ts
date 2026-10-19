@@ -1,8 +1,8 @@
 /**
  * A user as embedded in other records (issue reporter/assignee, member).
  *
- * There is deliberately no `email` here: the backend keeps it on `Auth`, not
- * `User`, and only some endpoints expose it (as `auth.email`).
+ * There is deliberately no `email` here: only some endpoints select it (the
+ * profile and the members roster), so it is added by the types that need it.
  */
 export interface ICommonUserEntity {
 	id: string;

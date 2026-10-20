@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: taskforge
+          POSTGRES_PASSWORD: taskforge
+          POSTGRES_DB: taskforge_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U taskforge -d taskforge_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # The e2e suite only runs against a database named *e2e*/*test*.
+      DATABASE_URL: postgresql://taskforge:taskforge@localhost:5432/taskforge_e2e?schema=public
+      NODE_ENV: test
+      # Placeholders: nothing in CI signs real sessions or talks to Google.
+      AUTH_SECRET: ci-only-auth-secret
+      JWT_ACCESS_SECRET: ci-only-jwt-secret
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Version comes from `packageManager` in the root package.json.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      # postinstall runs `prisma generate`.
+      - run: pnpm install --frozen-lockfile
+
+      - name: Lint (check only)
+        run: pnpm lint:check
+
+      - name: Type-check
+        run: pnpm typecheck
+
+      - name: Build
+        run: pnpm build
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Migrate e2e database
+        run: pnpm --filter @taskforge/backend exec prisma migrate deploy
+
+      - name: E2E tests
+        run: pnpm test:e2e

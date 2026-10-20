@@ -1,0 +1,13 @@
+{
+  // Under "nodenext", TypeScript keeps the dynamic import() Prisma 7's generated
+  // client uses to load its query compiler, and Jest's CommonJS runtime can't
+  // run that without --experimental-vm-modules. Plain "commonjs" turns it into
+  // require(), so the e2e suite can boot the real PrismaService.
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "resolvePackageJsonExports": false,
+    "incremental": false
+  }
+}

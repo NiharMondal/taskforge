@@ -6,10 +6,8 @@ import { login } from "@/features/auth/api/auth-api";
 import { loginSchema } from "@/features/auth/schemas/auth-schema";
 import { ApiError } from "@/lib/api-error";
 
+import { API_URL } from "./api-url";
 import { authConfig } from "./auth.config";
-
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5001/api/v1";
 
 /**
  * Auth.js v5 entrypoint (Node runtime).

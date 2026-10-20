@@ -29,19 +29,21 @@ pnpm install          # whole workspace; postinstall runs `prisma generate`
 pnpm dev              # backend :5001 (prefix /api/v1) + web :3000, output prefixed per app
 pnpm dev:backend      # or one at a time
 pnpm dev:web
-pnpm build | lint     # across both apps
+pnpm build | lint     # across both apps (`lint` runs eslint --fix in the backend)
+pnpm lint:check       # non-mutating lint, as CI runs it
+pnpm typecheck        # tsc --noEmit in both apps
+pnpm test             # backend unit tests (mocked Prisma, no DB)
+pnpm test:e2e         # backend e2e over HTTP + a real Postgres (see below)
 pnpm db:migrate       # prisma migrate dev in apps/backend
+docker compose up -d  # optional local Postgres on :5433 (dbs `taskforge`, `taskforge_e2e`)
 pnpm --filter @taskforge/backend <script>   # any app script from the root
 ```
 
 `pnpm` only, never npm/yarn. Add a dependency to one app with `pnpm --filter @taskforge/web add <pkg>` (or `pnpm add` from inside the app dir) — never at the root unless it is workspace tooling. pnpm settings (`allowBuilds`, etc.) live **only** in the root `pnpm-workspace.yaml`; pnpm ignores per-app copies.
 
-Backend needs a reachable `DATABASE_URL` (`apps/backend/.env`); the web app reads `apps/web/.env.local`. `generated/` (Prisma client) is gitignored and rebuilt by `pnpm install` / `pnpm db:generate`. `prisma/migrations/` **is** committed: `pnpm db:migrate` builds a fresh database from it, and schema changes ship as a new migration folder in the same commit. Backend CORS is hardcoded in `apps/backend/src/main.ts` to `localhost:3000` / `:3001`.
+Backend needs a reachable `DATABASE_URL` (`apps/backend/.env`); the web app reads `apps/web/.env.local`. `generated/` (Prisma client) is gitignored and rebuilt by `pnpm install` / `pnpm db:generate`. `prisma/migrations/` **is** committed: `pnpm db:migrate` builds a fresh database from it, and schema changes ship as a new migration folder in the same commit. Backend CORS origins come from `CORS_ORIGINS` (comma-separated; unset = `localhost:3000` / `:3001`). Both `.env.example` files list what the code actually reads.
 
-Env-file traps in both `.env.example` files — the examples do not match what the code reads:
-
-- `apps/backend/.env.example` says `PORT = 5000`, but `main.ts` defaults to **5001** and that is what the web app's `NEXT_PUBLIC_API_URL` points at.
-- `apps/web/.env.example` lists `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_PRESET_NAME`, but `src/lib/cloudinary.ts` reads them **with** the `NEXT_PUBLIC_` prefix.
+CI (`.github/workflows/ci.yml`) runs on every PR and push to `main`: frozen install, `lint:check`, `typecheck`, `build`, `test`, then `prisma migrate deploy` + `test:e2e` against a Postgres service.
 
 ## The web/backend contract
 
@@ -75,4 +77,4 @@ These hold on both sides of the wire — breaking one on either side breaks the 
 - **`/users` is self-only.** There is no list or delete route; `GET`/`PATCH /users/me` (or `/users/<your own id>`) is all there is, and any other id is a 403. If you need other users' data, read it through a workspace-scoped route (memberships), not by widening `/users`.
 - **No refresh tokens.** Access tokens last `1d`; on a backend 401 the frontend force-signs-out, because the Auth.js cookie can outlive the backend token. A missing token is also a 401.
 - **Google sign-in needs `GOOGLE_CLIENT_ID` on both sides, with the same value.** The web app forwards Google's `id_token` and the backend verifies it against that client ID; unset on the backend, `POST /auth/google` answers 503.
-- **Test coverage is backend-only.** `pnpm --filter @taskforge/backend test` runs Jest unit and HTTP specs (guards, issues, users, invitations, Google sign-in, sprints) against mocked Prisma — no database needed. `test:e2e` is still the stale Nest placeholder. The frontend has no test runner at all (type-check with `npx tsc --noEmit`).
+- **Test coverage is backend-only.** `pnpm test` runs Jest unit and HTTP specs against mocked Prisma — no database needed. `pnpm test:e2e` boots the real app against Postgres and needs `DATABASE_URL` pointing at a migrated database whose name contains `e2e` or `test` (it refuses anything else). The frontend has no test runner at all (type-check with `pnpm typecheck`).

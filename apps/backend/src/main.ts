@@ -1,25 +1,14 @@
 import { AppModule } from "@/app.module";
-import { HttpExceptionFilter } from "@/lib/http-exception.filter";
-import { ValidationPipe } from "@nestjs/common";
+import { configureApp } from "@/app.setup";
 import { NestFactory } from "@nestjs/core";
-import cookieParser from "cookie-parser";
 import "dotenv/config";
-import helmet from "helmet";
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  app.use(helmet());
+  configureApp(app);
   // Run OnModuleDestroy (PrismaService.$disconnect) on SIGTERM/SIGINT instead of
   // dropping the DB connections mid-flight.
   app.enableShutdownHooks();
-  app.use(cookieParser());
-  app.enableCors({
-    origin: ["http://localhost:3000", "http://localhost:3001"],
-    credentials: true,
-  });
-  app.useGlobalFilters(new HttpExceptionFilter());
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
-  app.setGlobalPrefix("api/v1");
   await app.listen(process.env.PORT ?? 5001);
 }
 void bootstrap();

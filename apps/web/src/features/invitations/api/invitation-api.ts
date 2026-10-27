@@ -2,6 +2,7 @@ import { api, inWorkspace } from "@/lib/axios";
 
 import type { ApiResponse } from "@/types/api";
 
+import type { TInviteFormValues } from "../schema/invitation-schema";
 import type {
   AcceptInvitationResult,
   Invitation,
@@ -25,7 +26,7 @@ export async function getInvitations(
 
 export async function createInvitation(
   workspaceId: string,
-  body: { email: string },
+  body: TInviteFormValues,
 ): Promise<ApiResponse<Invitation>> {
   return api.post<Invitation>("/invitations", body, inWorkspace(workspaceId));
 }

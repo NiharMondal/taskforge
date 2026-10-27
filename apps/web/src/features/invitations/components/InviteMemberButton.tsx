@@ -13,9 +13,10 @@ import InviteForm from "./InviteForm";
 
 /**
  * "Invite member" entry point for the settings page. Opens a modal with the
- * email form; the backend resolves the workspace from the `x-workspace-id`
- * header and defaults the role to MEMBER. Rendering is gated to OWNER/ADMIN
- * by the parent (backend enforces for real).
+ * email and role form; the backend resolves the workspace from the
+ * `x-workspace-id` header and refuses a role with more access than the
+ * inviter's. Rendering is gated to OWNER/ADMIN by the parent (backend enforces
+ * for real).
  */
 export default function InviteMemberButton({
 	workspaceId,

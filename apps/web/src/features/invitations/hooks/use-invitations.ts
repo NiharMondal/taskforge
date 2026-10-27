@@ -7,6 +7,7 @@ import {
   createInvitation,
   getInvitations,
 } from "../api/invitation-api";
+import type { TInviteFormValues } from "../schema/invitation-schema";
 
 /** Centralized query keys for the invitations feature. */
 export const invitationKeys = {
@@ -37,7 +38,7 @@ export function useCreateInvitation(workspaceId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (body: { email: string }) =>
+    mutationFn: (body: TInviteFormValues) =>
       createInvitation(workspaceId, body),
     onSuccess: () => {
       queryClient.invalidateQueries({

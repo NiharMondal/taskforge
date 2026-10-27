@@ -13,8 +13,9 @@ import type { Member, UpdateMembershipDto } from "../types/membership-types";
  * `GET /memberships` returns every member of the *active* workspace — the
  * workspace is resolved from the `x-workspace-id` header (AI_GUIDE → "Backend
  * endpoint": "@workspaceId from header"), so no id is passed in the route.
- * The per-member routes are keyed by `userId` (BACK_END_API → Memberships:
- * `:userId(GET, UPDATE, DELETE)`); the workspace stays implicit in the header.
+ * The per-member routes are keyed by `userId` (`/memberships/:userId`, see
+ * apps/backend/src/modules/memberships/membership.controller.ts); the
+ * workspace stays implicit in the header.
  */
 export async function getMemberships(
   workspaceId: string,

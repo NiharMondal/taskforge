@@ -260,7 +260,7 @@ placeholders in `test/setup-e2e.ts`. Rules:
   client's dynamic `import()` needs `--experimental-vm-modules`, which in turn breaks
   `fractional-indexing`.
 
-Written feature specs live in `spec/*.md` (gitignored, e.g. `issue-spec.md`, `invitation-spec.md`)
+Written feature specs live in `spec/*.md` (committed, e.g. `issue-spec.md`, `invitation-spec.md`)
 and are the best statement of intended behavior for issues and invitations.
 
 ## Environment

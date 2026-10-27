@@ -14,7 +14,7 @@ against the **backend** repo (this is just the reference copy of the schema).
 
 ## 1. Schema change
 
-Add to `model Issue` (already reflected in `.claude/schema.prisma`):
+Add to `model Issue` (applied; see `apps/backend/prisma/schema.prisma`):
 
 ```prisma
 rank String?            // fractional index (base-62), nullable for safe backfill

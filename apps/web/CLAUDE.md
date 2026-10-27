@@ -21,10 +21,8 @@ Path alias: `@/*` → `./src/*`.
 
 ## Reference docs (read before designing anything)
 
-The backend lives alongside this app at `../backend/` (see the root `CLAUDE.md`). Its `prisma/schema.prisma` and `src/modules/*/` controllers are the source of truth; the copies below predate the monorepo and drift:
+The backend lives alongside this app at `../backend/` (see the root `CLAUDE.md`). Its `prisma/schema.prisma` (data model) and `src/modules/*/` controllers (routes and payloads) are the contract — read them directly. Types in `features/*/types/` mirror them by hand. **Every update is PATCH**, never PUT.
 
-- `.claude/schema.prisma` — copy of the backend data model. Types in `features/*/types/` mirror it.
-- `.claude/BACK_END_API.md` — endpoint map. **Every update is PATCH**, never PUT.
 - `.claude/AI_GUIDE.md` — project-level architectural rules (workspace scoping, optimistic updates, no monolithic components).
 - `.claude/FORM_GUIDE.md` — the canonical form pattern with a worked example.
 - `.claude/migrations/` — historical schema-change notes from the two-repo era (all applied).

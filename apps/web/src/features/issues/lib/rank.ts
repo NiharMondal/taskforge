@@ -6,7 +6,7 @@ import type { Issue } from "../types/issue-types";
  * Board ordering helpers built on fractional indexing (base-62 string keys).
  * A card's `rank` lets it sit between any two neighbors without renumbering the
  * rest of the lane — the move is a single-row PATCH (see `Issue.rank` in
- * schema.prisma).
+ * apps/backend/prisma/schema.prisma).
  */
 
 /**

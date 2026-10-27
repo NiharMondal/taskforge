@@ -2,7 +2,7 @@ import type { WorkspaceRole } from "@/features/workspace/types/workspace-types";
 
 /**
  * Invitation domain types. Mirrors the Prisma `Invitation` model
- * (.claude/schema.prisma) — an email invited into a workspace.
+ * (apps/backend/prisma/schema.prisma) — an email invited into a workspace.
  *
  * The `token` is intentionally omitted: list responses must never expose it
  * (it grants membership) and the accept flow receives it via the email link.

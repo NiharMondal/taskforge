@@ -43,17 +43,19 @@ pnpm --filter @taskforge/backend <script>   # any app script from the root
 
 Backend needs a reachable `DATABASE_URL` (`apps/backend/.env`); the web app reads `apps/web/.env.local`. `generated/` (Prisma client) is gitignored and rebuilt by `pnpm install` / `pnpm db:generate`. `prisma/migrations/` **is** committed: `pnpm db:migrate` builds a fresh database from it, and schema changes ship as a new migration folder in the same commit. Backend CORS origins come from `CORS_ORIGINS` (comma-separated; unset = `localhost:3000` / `:3001`). Both `.env.example` files list what the code actually reads.
 
-CI (`.github/workflows/ci.yml`) runs on every PR and push to `main`: frozen install, `lint:check`, `typecheck`, `build`, `test`, then `prisma migrate deploy` + `test:e2e` against a Postgres service.
+CI (`.github/workflows/ci.yml`) runs on every PR and push to `main`: frozen install, `lint:check`, `typecheck`, `build`, `test`, then `prisma migrate deploy`, a `prisma migrate diff --exit-code` check that the migrated database matches `schema.prisma` (a schema edit without its migration fails the build), and `test:e2e` against a Postgres service.
+
+Node is pinned to 24 in `.nvmrc` (CI reads it) and `engines` in the root `package.json`. `fractional-indexing` is pinned to the same exact version in both apps, since both generate board ranks that must stay compatible.
 
 ## The web/backend contract
 
 The backend is the source of truth: `apps/backend/prisma/schema.prisma` for the data model, and the controllers in `apps/backend/src/modules/<name>/` for routes and payloads. Read them directly — they are in the same tree now.
 
-`apps/web/.claude/` still holds hand-maintained copies from the two-repo era (`schema.prisma`, `BACK_END_API.md`). **They drift** — e.g. the schema copy lacks `User.avatarPublicId` — so treat them as convenience summaries, never as the contract. Types in `apps/web/src/features/*/types/` are hand-written to match the backend; when you change the backend schema or a route, update those types (and the copies, if kept) in the same commit.
+There are no copies of the contract to keep in sync (the two-repo era's `apps/web/.claude/schema.prisma` and `BACK_END_API.md` were deleted after they drifted). Types in `apps/web/src/features/*/types/` are hand-written to match the backend; when you change the backend schema or a route, update those types in the same commit.
 
 `apps/web/.claude/migrations/*.md` are historical notes from when frontend work had to hand schema changes to the backend repo (e.g. `add-issue-rank.md`, already applied). New schema changes don't need an outbox: edit `apps/backend/prisma/schema.prisma`, run `pnpm db:migrate`, and change the web code in the same commit.
 
-Feature specs live in `apps/web/spec/*.md` (committed) and `apps/backend/spec/*.md` (gitignored) and are the best statement of intended behavior — consult the relevant one before changing a feature. Never invent an API shape; if a contract is unclear, ask.
+Feature specs live in `apps/web/spec/*.md` (committed) and `apps/backend/spec/*.md` (both committed) and are the best statement of intended behavior — consult the relevant one before changing a feature. Never invent an API shape; if a contract is unclear, ask.
 
 ## Shared invariants
 

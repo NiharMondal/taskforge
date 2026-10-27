@@ -2,7 +2,7 @@
  * Workspace domain types.
  *
  * Derived from the Prisma `Workspace` and `Membership` models
- * (.claude/schema.prisma). Per AI_GUIDE ("Never Guess API") these mirror the
+ * (apps/backend/prisma/schema.prisma). Per AI_GUIDE ("Never Guess API") these mirror the
  * backend models exactly — extend them only when a real contract is documented.
  */
 

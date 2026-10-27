@@ -1,7 +1,7 @@
 /**
  * Backend auth contract types.
  *
- * Derived from the Prisma `User` model (.claude/schema.prisma) and the login
+ * Derived from the Prisma `User` model (apps/backend/prisma/schema.prisma) and the login
  * response documented in spec/auth.md. Do NOT guess fields beyond the contract
  * (see AI_GUIDE: "Never Guess API").
  */

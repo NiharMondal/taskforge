@@ -2,6 +2,9 @@
   "name": "taskforge",
   "private": true,
   "packageManager": "pnpm@10.26.0",
+  "engines": {
+    "node": "^24"
+  },
   "scripts": {
     "free-ports": "lsof -ti tcp:3000,5001,5002 -sTCP:LISTEN | xargs kill 2>/dev/null || true",
     "predev": "pnpm run free-ports",

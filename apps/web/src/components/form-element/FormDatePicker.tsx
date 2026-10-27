@@ -9,6 +9,7 @@ import {
 	FieldError,
 } from "@heroui/react";
 import type { DateValue } from "@internationalized/date";
+import { X } from "lucide-react";
 import { toCalendarDate } from "@/util/format-date";
 type minMaxDate = DateValue | Date | string | number | null | undefined;
 type Props = {
@@ -19,10 +20,12 @@ type Props = {
 	disablePastDate?: boolean;
 	/** Prevent selecting any date after today. */
 	disableFutureDate?: boolean;
-	/** Custom lower bound (ignored when `disablePastDate` is set). */
+	/** Custom lower bound (combined with `disablePastDate`: the later one wins). */
 	minDate?: minMaxDate;
-	/** Custom upper bound (ignored when `disableFutureDate` is set). */
+	/** Custom upper bound (combined with `disableFutureDate`: the earlier one wins). */
 	maxDate?: minMaxDate;
+	/** Swap the calendar icon for a clear (X) button once a date is set. Defaults to `true`. */
+	isClearable?: boolean;
 };
 
 /** A form-held `DateValue` is passed through; JS dates/strings are converted. */
@@ -30,6 +33,17 @@ const resolveBound = (value?: minMaxDate): DateValue | undefined => {
 	if (value == null) return undefined;
 	if (typeof value === "object" && "calendar" in value) return value;
 	return toCalendarDate(value);
+};
+
+/** The tighter of two bounds: the later for a min, the earlier for a max. */
+const tighterBound = (
+	a: DateValue | undefined,
+	b: DateValue | undefined,
+	pick: "later" | "earlier",
+): DateValue | undefined => {
+	if (!a || !b) return a ?? b;
+	const aIsLater = a.compare(b) >= 0;
+	return (pick === "later") === aIsLater ? a : b;
 };
 
 export default function FormDatePicker({
@@ -40,16 +54,23 @@ export default function FormDatePicker({
 	disableFutureDate,
 	minDate,
 	maxDate,
+	isClearable = true,
 }: Props) {
 	const { control } = useFormContext();
 
-	const minValue = disablePastDate
-		? toCalendarDate(new Date())
-		: resolveBound(minDate);
+	const today = toCalendarDate(new Date());
 
-	const maxValue = disableFutureDate
-		? toCalendarDate(new Date())
-		: resolveBound(maxDate);
+	const minValue = tighterBound(
+		disablePastDate ? today : undefined,
+		resolveBound(minDate),
+		"later",
+	);
+
+	const maxValue = tighterBound(
+		disableFutureDate ? today : undefined,
+		resolveBound(maxDate),
+		"earlier",
+	);
 
 	return (
 		<Controller
@@ -77,9 +98,22 @@ export default function FormDatePicker({
 						</DateField.Input>
 
 						<DateField.Suffix>
-							<DatePicker.Trigger>
-								<DatePicker.TriggerIndicator />
-							</DatePicker.Trigger>
+							{/* A native button, not react-aria's: inside a DatePicker an
+							    RAC Button picks up the trigger context and opens the popover. */}
+							{isClearable && field.value ? (
+								<button
+									type="button"
+									onClick={() => field.onChange(null)}
+									aria-label="Clear date"
+									className="flex rounded-sm text-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-accent"
+								>
+									<X size={16} />
+								</button>
+							) : (
+								<DatePicker.Trigger>
+									<DatePicker.TriggerIndicator />
+								</DatePicker.Trigger>
+							)}
 						</DateField.Suffix>
 					</DateField.Group>
 

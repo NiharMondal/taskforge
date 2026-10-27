@@ -1,8 +1,6 @@
-import { MembershipRole } from "@/common/decorators/membership-role.decorator";
-import { Roles } from "@/common/decorators/roles.decorator";
+import { RequirePermission } from "@/common/decorators/require-permission.decorator";
 import { WorkspaceId } from "@/common/decorators/workspaceId.decorator";
 import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
-import { RolesGuard } from "@/common/guards/roles.guard";
 import { WorkspaceGuard } from "@/common/guards/workspace.guard";
 import { sendResponse } from "@/common/utils/send-response";
 import {
@@ -16,7 +14,6 @@ import {
   Post,
   UseGuards,
 } from "@nestjs/common";
-import { WorkspaceRole } from "generated/prisma/enums";
 import { CreateSprintDto } from "./dto/create-sprint.dto";
 import { UpdateSprintDto } from "./dto/update-sprint.dto";
 import { SprintService } from "./sprint.service";
@@ -27,18 +24,13 @@ export class SprintController {
   constructor(private sprintService: SprintService) {}
 
   @Post()
+  @RequirePermission("sprint:manage")
   async create(
     @WorkspaceId() workspaceId: string,
     @Param("projectId") projectId: string,
-    @MembershipRole() membershipRole: WorkspaceRole,
     @Body() dto: CreateSprintDto,
   ) {
-    const sprint = await this.sprintService.create(
-      workspaceId,
-      projectId,
-      membershipRole,
-      dto,
-    );
+    const sprint = await this.sprintService.create(workspaceId, projectId, dto);
     return sendResponse({
       statusCode: HttpStatus.CREATED,
       message: "Sprint created successfully",
@@ -62,20 +54,17 @@ export class SprintController {
 
   @Patch(":sprintId")
   @HttpCode(HttpStatus.OK)
-  @UseGuards(RolesGuard)
-  @Roles(WorkspaceRole.OWNER, WorkspaceRole.ADMIN)
+  @RequirePermission("sprint:manage")
   async updateSprint(
     @WorkspaceId() workspaceId: string,
     @Param("projectId") projectId: string,
     @Param("sprintId") sprintId: string,
-    @MembershipRole() membershipRole: WorkspaceRole,
     @Body() dto: UpdateSprintDto,
   ) {
     const sprint = await this.sprintService.updateSprint(
       workspaceId,
       projectId,
       sprintId,
-      membershipRole,
       dto,
     );
     return sendResponse({
@@ -86,18 +75,12 @@ export class SprintController {
   }
   @Patch(":sprintId/start")
   @HttpCode(HttpStatus.OK)
-  @UseGuards(RolesGuard)
-  @Roles(WorkspaceRole.OWNER, WorkspaceRole.ADMIN)
+  @RequirePermission("sprint:manage")
   async start(
     @WorkspaceId() workspaceId: string,
     @Param("sprintId") sprintId: string,
-    @MembershipRole() membershipRole: WorkspaceRole,
   ) {
-    const sprint = await this.sprintService.startSprint(
-      workspaceId,
-      sprintId,
-      membershipRole,
-    );
+    const sprint = await this.sprintService.startSprint(workspaceId, sprintId);
 
     return sendResponse({
       statusCode: HttpStatus.OK,
@@ -108,18 +91,12 @@ export class SprintController {
 
   @Patch(":sprintId/end")
   @HttpCode(HttpStatus.OK)
-  @UseGuards(RolesGuard)
-  @Roles(WorkspaceRole.OWNER, WorkspaceRole.ADMIN)
+  @RequirePermission("sprint:manage")
   async end(
     @WorkspaceId() workspaceId: string,
     @Param("sprintId") sprintId: string,
-    @MembershipRole() membershipRole: WorkspaceRole,
   ) {
-    const sprint = await this.sprintService.endSprint(
-      workspaceId,
-      sprintId,
-      membershipRole,
-    );
+    const sprint = await this.sprintService.endSprint(workspaceId, sprintId);
 
     return sendResponse({
       statusCode: HttpStatus.OK,

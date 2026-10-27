@@ -4,6 +4,10 @@ import {
   generateToken,
   normalizeEmail,
 } from "@/helper";
+import {
+  assertActorHolds,
+  WorkspaceAccess,
+} from "@/common/permissions/workspace-access";
 import { PrismaService } from "@/prisma/prisma.service";
 import {
   BadRequestException,
@@ -16,6 +20,7 @@ import {
 import { ConfigService } from "@nestjs/config";
 import { InvitationStatus, WorkspaceRole } from "generated/prisma/enums";
 import { MailService } from "../mail/mail.service";
+import { findSystemRole } from "../roles/system-roles";
 import { SendInvitationDto } from "./dto/send-invitation.dto";
 
 /**
@@ -43,23 +48,19 @@ export class InvitationService {
     private config: ConfigService,
   ) {}
 
+  /** `invitation:manage` is checked on the route. */
   async sendInvitation(
     workspaceId: string,
-    actorUserId: string,
+    actor: WorkspaceAccess,
     dto: SendInvitationDto,
   ) {
-    const actor = await this.prisma.membership.findUnique({
-      where: { userId_workspaceId: { userId: actorUserId, workspaceId } },
-    });
-
-    if (
-      !actor ||
-      !([WorkspaceRole.OWNER, WorkspaceRole.ADMIN] as WorkspaceRole[]).includes(
-        actor.role,
-      )
-    ) {
-      throw new ForbiddenException("Insufficient permissions");
-    }
+    const role = dto.role ?? WorkspaceRole.MEMBER;
+    const invitedRole = await findSystemRole(this.prisma, workspaceId, role);
+    assertActorHolds(
+      actor,
+      invitedRole.permissions,
+      "invite someone with more access",
+    );
 
     // Rows may predate normalization, so match case-insensitively but always
     // store the lowercase form.
@@ -99,7 +100,7 @@ export class InvitationService {
 
     const token = generateToken();
     const expiresAt = futureDate(); // By Default 7 Days
-    const role = dto.role ?? WorkspaceRole.MEMBER;
+    const roleId = invitedRole.id;
 
     const invitation = await this.prisma.invitation.upsert({
       // Key on the stored spelling so a legacy mixed-case row is updated, not
@@ -107,11 +108,12 @@ export class InvitationService {
       where: {
         email_workspaceId: { email: existing?.email ?? email, workspaceId },
       },
-      create: { email, token, workspaceId, role, expiresAt },
+      create: { email, token, workspaceId, role, roleId, expiresAt },
       update: {
         email,
         token,
         role,
+        roleId,
         expiresAt,
         status: InvitationStatus.PENDING,
       },
@@ -124,7 +126,7 @@ export class InvitationService {
     });
 
     const actor_user = await this.prisma.user.findUnique({
-      where: { id: actorUserId },
+      where: { id: actor.userId },
       select: { name: true },
     });
 
@@ -233,11 +235,17 @@ export class InvitationService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      // Invitations sent before roles existed have no roleId; map their enum.
+      const roleId =
+        invitation.roleId ??
+        (await findSystemRole(tx, invitation.workspaceId, invitation.role)).id;
+
       const membership = await tx.membership.create({
         data: {
           userId,
           workspaceId: invitation.workspaceId,
           role: invitation.role,
+          roleId,
         },
       });
 
@@ -250,24 +258,8 @@ export class InvitationService {
     });
   }
 
-  async revokeInvitation(
-    workspaceId: string,
-    invitationId: string,
-    actorUserId: string,
-  ) {
-    const actor = await this.prisma.membership.findUnique({
-      where: { userId_workspaceId: { userId: actorUserId, workspaceId } },
-    });
-
-    if (
-      !actor ||
-      !([WorkspaceRole.OWNER, WorkspaceRole.ADMIN] as WorkspaceRole[]).includes(
-        actor.role,
-      )
-    ) {
-      throw new ForbiddenException("Insufficient permissions");
-    }
-
+  /** `invitation:manage` is checked on the route. */
+  async revokeInvitation(workspaceId: string, invitationId: string) {
     const invitation = await this.prisma.invitation.findFirst({
       where: { id: invitationId, workspaceId },
     });

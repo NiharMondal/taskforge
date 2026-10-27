@@ -4,7 +4,6 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { WorkspaceRole } from "generated/prisma/enums";
 import { CreateSprintDto } from "./dto/create-sprint.dto";
 import { UpdateSprintDto } from "./dto/update-sprint.dto";
 
@@ -13,14 +12,7 @@ export class SprintService {
   constructor(private prisma: PrismaService) {}
 
   // CREATE
-  async create(
-    workspaceId: string,
-    projectId: string,
-    role: WorkspaceRole,
-    dto: CreateSprintDto,
-  ) {
-    this.ensureManager(role);
-
+  async create(workspaceId: string, projectId: string, dto: CreateSprintDto) {
     await this.validateProject(workspaceId, projectId);
 
     return this.prisma.sprint.create({
@@ -45,10 +37,8 @@ export class SprintService {
     workspaceId: string,
     projectId: string,
     sprintId: string,
-    role: WorkspaceRole,
     dto: UpdateSprintDto,
   ) {
-    this.ensureManager(role);
     await this.validateProject(workspaceId, projectId);
     await this.getSprint(workspaceId, sprintId);
 
@@ -61,13 +51,7 @@ export class SprintService {
   }
 
   // START SPRINT
-  async startSprint(
-    workspaceId: string,
-    sprintId: string,
-    role: WorkspaceRole,
-  ) {
-    this.ensureManager(role);
-
+  async startSprint(workspaceId: string, sprintId: string) {
     const sprint = await this.getSprint(workspaceId, sprintId);
 
     // ❗ Only one active sprint per project
@@ -95,9 +79,7 @@ export class SprintService {
   }
 
   // END SPRINT
-  async endSprint(workspaceId: string, sprintId: string, role: WorkspaceRole) {
-    this.ensureManager(role);
-
+  async endSprint(workspaceId: string, sprintId: string) {
     const sprint = await this.getSprint(workspaceId, sprintId);
 
     if (!sprint.isActive) {
@@ -182,11 +164,5 @@ export class SprintService {
     });
 
     if (!project) throw new NotFoundException("Project not found");
-  }
-
-  private ensureManager(role: WorkspaceRole) {
-    if (role === WorkspaceRole.VIEWER || role === WorkspaceRole.MEMBER) {
-      throw new ForbiddenException("Insufficient permissions");
-    }
   }
 }

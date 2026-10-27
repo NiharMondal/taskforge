@@ -66,24 +66,41 @@ Three layers, applied in order. `src/modules/auth/CLAUDE.md` has module-level de
 2. **`WorkspaceGuard` — opt-in per controller/route.** Resolves the tenant from the
    `x-workspace-id` header, falling back to `req.params.workspaceId`; if both are present and differ
    it 403s (otherwise membership in A would authorize an action on B). Looks up the `Membership` row
-   and 403s if absent. On success it sets `request.workspaceId` and `request.membershipRole`.
-3. **`RolesGuard` — opt-in per route,** always combined with `@Roles(...)`. Must run after
-   `WorkspaceGuard` because it reads `request.membershipRole`.
+   and its `Role` in one query, and 403s if absent. On success it sets `request.workspaceId` and
+   `request.access` (`WorkspaceAccess`: `userId`, `roleId`, `systemKey`, `isOwner`, `permissions`).
+3. **`@RequirePermission(...keys)` — per route.** Applies `PermissionsGuard`, which 403s unless the
+   caller's role holds every key. It resolves the membership itself if `WorkspaceGuard` hasn't run,
+   so order can't skip it; on a route that also has `@UseGuards(...)`, put `@RequirePermission`
+   above it anyway (decorators apply bottom-up) to avoid a second lookup.
 
 Parameter decorators (in `src/common/decorators/`): `@CurrentUser(): JwtPayload`,
-`@WorkspaceId(): string` (throws if `WorkspaceGuard` did not run), `@MembershipRole(): WorkspaceRole`.
+`@WorkspaceId(): string` (throws if `WorkspaceGuard` did not run), `@Access(): WorkspaceAccess`.
 
 Token secret is `JWT_ACCESS_SECRET`, read via `ConfigService.getOrThrow` — never `process.env`
 directly and never hardcoded. Access token expiry is `1d` (`auth.module.ts`). There is currently
 **no refresh token implementation**.
 
-### RolesGuard gotcha
+### Roles and permissions
 
-`RolesGuard` hardcodes a check that `membershipRole` is `OWNER` or `ADMIN` *before* consulting the
-`@Roles(...)` list. So `@Roles(WorkspaceRole.MEMBER)` can never pass, and `@Roles()` with any
-non-privileged role is effectively OWNER/ADMIN-only. If you need MEMBER- or VIEWER-level gating,
-enforce it in the service (as `IssueService.update` does: VIEWER is rejected outright, MEMBER is
-limited to status/rank) rather than through `@Roles`.
+Each workspace has `Role` rows (name + `permissions: String[]`); `Membership.roleId` /
+`Invitation.roleId` point at one. The four built-ins carry a `systemKey` and are created by
+`seedSystemRoles` (`src/modules/roles/system-roles.ts`) in every transaction that creates a
+workspace. The permission catalog and the built-ins' defaults are
+`src/common/permissions/permissions.ts` — a new key needs a migration to reach existing Role rows,
+and the `add_workspace_roles` migration's seed must match `DEFAULT_ROLE_PERMISSIONS`.
+
+- **OWNER holds every permission in code** (its stored list is ignored), including
+  `workspace:delete`, which no role can be granted. It can't be assigned, invited to or removed.
+- **Unknown stored keys are ignored**, and a membership with no `roleId` (written before roles)
+  falls back to its enum's defaults.
+- **Issue writes are field-level** (`src/common/permissions/issue-access.ts`): an allow-list maps
+  each field to `issue:status` (`status`, `rank`) or the content permissions (`issue:edit:any`, or
+  `issue:edit:own` when the *stored* issue's reporter or assignee is the caller). Fields missing from
+  the map are refused. DONE needs `issue:status:done`, on create too.
+- **No escalation:** `assertActorHolds` refuses a role change, removal or invitation that involves
+  a permission the actor doesn't hold.
+- `Membership.role` / `Invitation.role` (enum) are still written next to `roleId` for older code and
+  the web app; read permissions from `request.access`, never from the enum.
 
 ### Accounts and sign-in methods
 
@@ -208,8 +225,8 @@ only touches `rank IS NULL`. Keep the column nullable until it's been run everyw
 
 `pnpm run test` runs Jest specs colocated with the code (`*.spec.ts`). They use a hand-rolled fake
 `PrismaService` (and `supertest` against a Nest app with mocked services for HTTP-level checks), so
-they need no database. Current coverage: `WorkspaceGuard`, `JwtAuthGuard`, `RolesGuard`, `IssueService`
-role rules and tenant isolation, `MembershipService` role changes/removal, `UserController`/`UserService`,
+they need no database. Current coverage: `WorkspaceGuard`, `JwtAuthGuard`, `PermissionsGuard`, `IssueService`
+permission rules and tenant isolation, `MembershipService` role changes/removal, `UserController`/`UserService`,
 `InvitationService`/controller, register/login/Google sign-in (`AuthService`, `GoogleTokenVerifier`,
 throttling), `WorkspaceService` and `SprintService.endSprint`.
 `jest` maps `@/` and `generated/` in `package.json` and transforms the ESM-only `fractional-indexing`.

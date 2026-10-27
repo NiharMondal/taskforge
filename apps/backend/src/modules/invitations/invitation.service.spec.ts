@@ -1,3 +1,4 @@
+import { accessAs } from "@/common/permissions/test-access";
 import { PrismaService } from "@/prisma/prisma.service";
 import {
   BadRequestException,
@@ -19,6 +20,10 @@ const firstCallArg = <T>(mock: jest.Mock): T =>
 describe("InvitationService", () => {
   const workspaceId = "ws-1";
   const actorUserId = "user-admin";
+  const adminAccess = accessAs(WorkspaceRole.ADMIN, {
+    workspaceId,
+    userId: actorUserId,
+  });
 
   const invitee = { userId: "user-77" };
 
@@ -33,6 +38,7 @@ describe("InvitationService", () => {
     };
     workspace: { findUnique: jest.Mock };
     user: { findFirst: jest.Mock; findUnique: jest.Mock };
+    role: { findFirst: jest.Mock };
     $transaction: jest.Mock;
   };
   let mail: { sendMail: jest.Mock };
@@ -58,6 +64,8 @@ describe("InvitationService", () => {
         findFirst: jest.fn().mockResolvedValue(null),
         findUnique: jest.fn().mockResolvedValue({ name: "Alice" }),
       },
+      // No Role rows by default: the enum's default permissions apply.
+      role: { findFirst: jest.fn().mockResolvedValue(null) },
       $transaction: jest.fn(),
     };
     // The actor is an ADMIN unless a test says otherwise; everyone else is not
@@ -84,7 +92,7 @@ describe("InvitationService", () => {
 
   describe("sendInvitation", () => {
     const send = (dto: { email: string; role?: WorkspaceRole }) =>
-      service.sendInvitation(workspaceId, actorUserId, dto);
+      service.sendInvitation(workspaceId, adminAccess, dto);
 
     it("checks membership for the user who owns that email", async () => {
       prisma.user.findFirst.mockResolvedValue({
@@ -123,13 +131,41 @@ describe("InvitationService", () => {
       expect(prisma.invitation.upsert).not.toHaveBeenCalled();
     });
 
-    it("rejects an actor who is not an OWNER or ADMIN", async () => {
-      prisma.membership.findUnique.mockResolvedValue({
-        role: WorkspaceRole.MEMBER,
+    it("refuses to invite to a role with more access than the actor's own", async () => {
+      // A custom role that may invite, but holds nothing an ADMIN would get.
+      const inviter = {
+        ...adminAccess,
+        systemKey: null,
+        permissions: new Set(["invitation:manage"] as const),
+      };
+
+      await expect(
+        service.sendInvitation(workspaceId, inviter, {
+          email: "bob@example.com",
+          role: WorkspaceRole.ADMIN,
+        }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(prisma.invitation.upsert).not.toHaveBeenCalled();
+    });
+
+    it("stores the id of this workspace's role for the invited role", async () => {
+      prisma.role.findFirst.mockResolvedValue({
+        id: "role-viewer",
+        permissions: [],
       });
 
-      await expect(send({ email: "bob@example.com" })).rejects.toBeInstanceOf(
-        ForbiddenException,
+      await send({ email: "bob@example.com", role: WorkspaceRole.VIEWER });
+
+      expect(prisma.role.findFirst).toHaveBeenCalledWith({
+        where: { workspaceId, systemKey: WorkspaceRole.VIEWER },
+        select: { id: true, permissions: true },
+      });
+      const create: unknown = expect.objectContaining({
+        role: WorkspaceRole.VIEWER,
+        roleId: "role-viewer",
+      });
+      expect(prisma.invitation.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ create }),
       );
     });
 
@@ -311,12 +347,41 @@ describe("InvitationService", () => {
           userId: invitee.userId,
           workspaceId,
           role: WorkspaceRole.MEMBER,
+          roleId: null,
         },
       });
       expect(prisma.invitation.update).toHaveBeenCalledWith({
         where: { id: "inv-1" },
         data: { status: InvitationStatus.ACCEPTED },
       });
+    });
+
+    it("gives the new member the role the invitation points at", async () => {
+      prisma.invitation.findUnique.mockResolvedValue(
+        pendingInvite({ roleId: "role-member" }),
+      );
+
+      await service.acceptInvitation(token, invitee.userId);
+
+      const data: unknown = expect.objectContaining({ roleId: "role-member" });
+      expect(prisma.membership.create).toHaveBeenCalledWith({ data });
+      expect(prisma.role.findFirst).not.toHaveBeenCalled();
+    });
+
+    it("maps an invitation sent before roles existed through its enum", async () => {
+      prisma.role.findFirst.mockResolvedValue({
+        id: "role-member",
+        permissions: [],
+      });
+
+      await service.acceptInvitation(token, invitee.userId);
+
+      expect(prisma.role.findFirst).toHaveBeenCalledWith({
+        where: { workspaceId, systemKey: WorkspaceRole.MEMBER },
+        select: { id: true, permissions: true },
+      });
+      const data: unknown = expect.objectContaining({ roleId: "role-member" });
+      expect(prisma.membership.create).toHaveBeenCalledWith({ data });
     });
 
     it("matches the invited email case-insensitively", async () => {

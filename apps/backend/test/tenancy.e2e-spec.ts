@@ -129,6 +129,33 @@ describe("Tenancy (e2e)", () => {
     ]);
   });
 
+  it("registering seeds the four built-in roles and assigns Owner", async () => {
+    const roles = await prisma.role.findMany({
+      where: { workspaceId: aliceWs },
+      orderBy: { name: "asc" },
+    });
+    expect(roles.map((r) => r.systemKey)).toEqual([
+      "ADMIN",
+      "MEMBER",
+      "OWNER",
+      "VIEWER",
+    ]);
+
+    const ownerPermissions: unknown = expect.arrayContaining([
+      "workspace:delete",
+      "role:manage",
+    ]);
+    const me = await api()
+      .get("/api/v1/memberships/me")
+      .set(as(aliceToken, aliceWs))
+      .expect(200);
+    expect(data(me)).toMatchObject({
+      role: "OWNER",
+      assignedRole: { name: "Owner", systemKey: "OWNER" },
+      permissions: ownerPermissions,
+    });
+  });
+
   describe("before Bob is invited", () => {
     it("rejects Bob sending Alice's workspace header", async () => {
       await api()
@@ -213,6 +240,59 @@ describe("Tenancy (e2e)", () => {
         .post("/api/v1/projects")
         .set(as(bobToken, aliceWs))
         .send({ name: "Not allowed" })
+        .expect(403);
+      await api()
+        .delete(`/api/v1/projects/${projectId}/issues/${issueId}`)
+        .set(as(bobToken, aliceWs))
+        .expect(403);
+      await api()
+        .get("/api/v1/invitations")
+        .set(as(bobToken, aliceWs))
+        .expect(403);
+    });
+
+    it("gives Bob the workspace's Member role", async () => {
+      const me = await api()
+        .get("/api/v1/memberships/me")
+        .set(as(bobToken, aliceWs))
+        .expect(200);
+
+      expect(data(me)).toMatchObject({
+        role: "MEMBER",
+        assignedRole: { name: "Member", systemKey: "MEMBER" },
+      });
+      expect(data<{ permissions: string[] }>(me).permissions.sort()).toEqual([
+        "issue:create",
+        "issue:edit:own",
+        "issue:status",
+      ]);
+    });
+
+    it("does not let Bob rewrite the description of Alice's issue (H3)", async () => {
+      await api()
+        .patch(`/api/v1/projects/${projectId}/issues/${issueId}`)
+        .set(as(bobToken, aliceWs))
+        .send({ description: "Rewritten" })
+        .expect(403);
+    });
+
+    it("lets Bob create an issue and edit it, but not mark it DONE", async () => {
+      const created = await api()
+        .post(`/api/v1/projects/${projectId}/issues`)
+        .set(as(bobToken, aliceWs))
+        .send({ title: "Bob's task", status: "TODO" })
+        .expect(201);
+      const url = `/api/v1/projects/${projectId}/issues/${data<{ id: string }>(created).id}`;
+
+      await api()
+        .patch(url)
+        .set(as(bobToken, aliceWs))
+        .send({ title: "Bob's renamed task", description: "Details" })
+        .expect(200);
+      await api()
+        .patch(url)
+        .set(as(bobToken, aliceWs))
+        .send({ status: "DONE" })
         .expect(403);
     });
   });

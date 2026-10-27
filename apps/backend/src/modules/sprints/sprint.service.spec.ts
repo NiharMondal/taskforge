@@ -1,6 +1,5 @@
 import { PrismaService } from "@/prisma/prisma.service";
 import { NotFoundException } from "@nestjs/common";
-import { WorkspaceRole } from "generated/prisma/enums";
 import { SprintService } from "./sprint.service";
 
 describe("SprintService.endSprint tenant isolation", () => {
@@ -35,7 +34,7 @@ describe("SprintService.endSprint tenant isolation", () => {
   });
 
   it("only releases unfinished issues that belong to the caller's workspace", async () => {
-    await service.endSprint(workspaceId, sprintId, WorkspaceRole.ADMIN);
+    await service.endSprint(workspaceId, sprintId);
 
     expect(prisma.issue.updateMany).toHaveBeenCalledWith({
       where: { sprintId, workspaceId, status: { not: "DONE" } },
@@ -46,9 +45,9 @@ describe("SprintService.endSprint tenant isolation", () => {
   it("cannot end another workspace's sprint, and writes nothing", async () => {
     prisma.sprint.findFirst.mockResolvedValue(null);
 
-    await expect(
-      service.endSprint("ws-B", sprintId, WorkspaceRole.ADMIN),
-    ).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service.endSprint("ws-B", sprintId)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
 
     expect(prisma.sprint.findFirst).toHaveBeenCalledWith({
       where: { id: sprintId, workspaceId: "ws-B" },

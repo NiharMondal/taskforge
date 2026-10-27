@@ -1,7 +1,6 @@
 import { CurrentUser } from "@/common/decorators/current-user.decorator";
-import { Roles } from "@/common/decorators/roles.decorator";
+import { RequirePermission } from "@/common/decorators/require-permission.decorator";
 import { WorkspaceId } from "@/common/decorators/workspaceId.decorator";
-import { RolesGuard } from "@/common/guards/roles.guard";
 import { WorkspaceGuard } from "@/common/guards/workspace.guard";
 import type { JwtPayload } from "@/common/strategies/jwt.strategy";
 import { sendResponse } from "@/common/utils/send-response";
@@ -16,7 +15,6 @@ import {
   Post,
   UseGuards,
 } from "@nestjs/common";
-import { WorkspaceRole } from "generated/prisma/enums";
 import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
 import { CreateWorkspaceDto } from "./dto/create-workspace.dto";
 import { UpdateWorkspaceDto } from "./dto/update-workspace.dto";
@@ -57,8 +55,8 @@ export class WorkspaceController {
   // GET ONE
   @Get(":workspaceId")
   @HttpCode(HttpStatus.OK)
-  @UseGuards(WorkspaceGuard, RolesGuard)
-  @Roles(WorkspaceRole.OWNER, WorkspaceRole.ADMIN)
+  @RequirePermission("workspace:manage")
+  @UseGuards(WorkspaceGuard)
   async findOne(@CurrentUser() user: JwtPayload, @WorkspaceId() id: string) {
     const res = await this.workspaceService.findOne(id, user.sub);
     return sendResponse({
@@ -71,8 +69,8 @@ export class WorkspaceController {
   // UPDATE
   @Patch(":workspaceId")
   @HttpCode(HttpStatus.OK)
-  @UseGuards(WorkspaceGuard, RolesGuard)
-  @Roles(WorkspaceRole.OWNER, WorkspaceRole.ADMIN)
+  @RequirePermission("workspace:manage")
+  @UseGuards(WorkspaceGuard)
   async update(
     @WorkspaceId() workspaceId: string,
     @Body() dto: UpdateWorkspaceDto,
@@ -88,8 +86,8 @@ export class WorkspaceController {
   // DELETE
   @Delete(":workspaceId")
   @HttpCode(HttpStatus.OK)
-  @UseGuards(WorkspaceGuard, RolesGuard)
-  @Roles(WorkspaceRole.OWNER)
+  @RequirePermission("workspace:delete")
+  @UseGuards(WorkspaceGuard)
   async delete(@WorkspaceId() workspaceId: string) {
     const res = await this.workspaceService.delete(workspaceId);
     return sendResponse({

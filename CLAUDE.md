@@ -73,7 +73,7 @@ These hold on both sides of the wire — breaking one on either side breaks the 
 
 ## Known gaps
 
-- **`RolesGuard` is not usable for MEMBER/VIEWER gating.** It hardcodes an OWNER-or-ADMIN check before consulting `@Roles(...)`. Enforce finer-grained rules in the service layer instead.
+- **Roles are per-workspace rows with permission keys, but there is no UI or API to edit them yet.** Every workspace has the four built-in roles (`Role.systemKey`); the catalog is `apps/backend/src/common/permissions/permissions.ts`. `Membership.role` / `Invitation.role` (the enum) are still written alongside `roleId` until custom roles land. The web app still mirrors the rules in `features/memberships/lib/permissions.ts` instead of reading `GET /memberships/me`, and its MEMBER rules are stricter than the backend's (it hides "create issue" and "edit own issue").
 - **`/users` is self-only.** There is no list or delete route; `GET`/`PATCH /users/me` (or `/users/<your own id>`) is all there is, and any other id is a 403. If you need other users' data, read it through a workspace-scoped route (memberships), not by widening `/users`.
 - **No refresh tokens.** Access tokens last `1d`; on a backend 401 the frontend force-signs-out, because the Auth.js cookie can outlive the backend token. A missing token is also a 401.
 - **Google sign-in needs `GOOGLE_CLIENT_ID` on both sides, with the same value.** The web app forwards Google's `id_token` and the backend verifies it against that client ID; unset on the backend, `POST /auth/google` answers 503.

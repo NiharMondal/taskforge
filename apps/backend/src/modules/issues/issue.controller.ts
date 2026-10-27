@@ -1,10 +1,10 @@
+import { Access } from "@/common/decorators/access.decorator";
 import { CurrentUser } from "@/common/decorators/current-user.decorator";
-import { MembershipRole } from "@/common/decorators/membership-role.decorator";
-import { Roles } from "@/common/decorators/roles.decorator";
+import { RequirePermission } from "@/common/decorators/require-permission.decorator";
 import { WorkspaceId } from "@/common/decorators/workspaceId.decorator";
 import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
-import { RolesGuard } from "@/common/guards/roles.guard";
 import { WorkspaceGuard } from "@/common/guards/workspace.guard";
+import type { WorkspaceAccess } from "@/common/permissions/workspace-access";
 import type { JwtPayload } from "@/common/strategies/jwt.strategy";
 import { sendResponse } from "@/common/utils/send-response";
 import {
@@ -20,7 +20,6 @@ import {
   Query,
   UseGuards,
 } from "@nestjs/common";
-import { WorkspaceRole } from "generated/prisma/enums";
 import { CreateIssueDto } from "./dto/create-issue.dto";
 import { QueryIssuesDto } from "./dto/query-issues.dto";
 import { UpdateIssueDto } from "./dto/update-issue.dto";
@@ -33,18 +32,19 @@ export class IssueController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @UseGuards(RolesGuard)
-  @Roles(WorkspaceRole.OWNER, WorkspaceRole.ADMIN)
+  @RequirePermission("issue:create")
   async create(
     @WorkspaceId() workspaceId: string,
     @Param("projectId") projectId: string,
     @CurrentUser() user: JwtPayload,
+    @Access() access: WorkspaceAccess,
     @Body() dto: CreateIssueDto,
   ) {
     const issue = await this.issueService.create(
       workspaceId,
       projectId,
       user.sub,
+      access,
       dto,
     );
     return sendResponse({
@@ -99,14 +99,14 @@ export class IssueController {
     @WorkspaceId() workspaceId: string,
     @Param("projectId") projectId: string,
     @Param("issueId") issueId: string,
-    @MembershipRole() membershipRole: WorkspaceRole,
+    @Access() access: WorkspaceAccess,
     @Body() dto: UpdateIssueDto,
   ) {
     const issue = await this.issueService.update(
       workspaceId,
       projectId,
       issueId,
-      membershipRole,
+      access,
       dto,
     );
     return sendResponse({
@@ -118,8 +118,7 @@ export class IssueController {
 
   @Delete(":issueId")
   @HttpCode(HttpStatus.OK)
-  @UseGuards(RolesGuard)
-  @Roles(WorkspaceRole.OWNER, WorkspaceRole.ADMIN)
+  @RequirePermission("issue:delete")
   async remove(
     @WorkspaceId() workspaceId: string,
     @Param("projectId") projectId: string,

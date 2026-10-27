@@ -1,3 +1,9 @@
+import {
+  assertCanSetStatus,
+  assertCanUpdateIssue,
+  assertCanUpdateSomeIssue,
+} from "@/common/permissions/issue-access";
+import type { WorkspaceAccess } from "@/common/permissions/workspace-access";
 import PrismaQueryBuilder from "@/lib/PrismQueryBuilder";
 import { PrismaService } from "@/prisma/prisma.service";
 import {
@@ -7,7 +13,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { generateKeyBetween } from "fractional-indexing";
-import { IssueStatus, WorkspaceRole } from "generated/prisma/enums";
+import { IssueStatus } from "generated/prisma/enums";
 import { CreateIssueDto } from "./dto/create-issue.dto";
 import { QueryIssuesDto } from "./dto/query-issues.dto";
 import { UpdateIssueDto } from "./dto/update-issue.dto";
@@ -20,8 +26,11 @@ export class IssueService {
     workspaceId: string,
     projectId: string,
     reporterId: string,
+    access: WorkspaceAccess,
     dto: CreateIssueDto,
   ) {
+    // `issue:create` itself is checked on the route.
+    assertCanSetStatus(access, dto.status);
     await this.validateProject(workspaceId, projectId);
     await this.validateAssignee(workspaceId, dto.assigneeId);
     await this.validateSprint(workspaceId, projectId, dto.sprintId);
@@ -106,39 +115,14 @@ export class IssueService {
     workspaceId: string,
     projectId: string,
     issueId: string,
-    membershipRole: WorkspaceRole,
+    access: WorkspaceAccess,
     dto: UpdateIssueDto,
   ) {
-    // `@Roles` can't gate below OWNER/ADMIN (see RolesGuard), so read-only
-    // access for VIEWER is enforced here, like the MEMBER field rules below.
-    if (membershipRole === WorkspaceRole.VIEWER) {
-      throw new ForbiddenException("Viewers cannot update issues");
-    }
-
-    if (membershipRole === WorkspaceRole.MEMBER) {
-      // `rank` is deliberately absent: moving a card on the board is a status
-      // change plus a position, so members who may re-status an issue may also
-      // reorder it.
-      const restrictedFields = [
-        "title",
-        "priority",
-        "sprintId",
-        "assigneeId",
-      ] as const;
-      const hasRestrictedField = restrictedFields.some(
-        (f) => dto[f] !== undefined,
-      );
-      if (hasRestrictedField) {
-        throw new ForbiddenException(
-          "Members can only update the issue status",
-        );
-      }
-      if (dto.status === IssueStatus.DONE) {
-        throw new ForbiddenException("Members cannot mark an issue as DONE");
-      }
-    }
+    assertCanUpdateSomeIssue(access);
 
     const issue = await this.findOne(workspaceId, projectId, issueId);
+    assertCanUpdateIssue(access, issue, dto);
+
     await this.validateAssignee(workspaceId, dto.assigneeId);
     await this.validateSprint(workspaceId, projectId, dto.sprintId);
     return this.prisma.issue.update({

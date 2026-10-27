@@ -24,12 +24,21 @@ let prisma: {
   auth: { findUnique: jest.Mock; create: jest.Mock; deleteMany: jest.Mock };
   user: { findFirst: jest.Mock; create: jest.Mock; update: jest.Mock };
   workspace: { create: jest.Mock };
+  role: { createManyAndReturn: jest.Mock };
   membership: { create: jest.Mock };
   $transaction: jest.Mock;
 };
 let verifier: { verify: jest.Mock };
 let jwt: { sign: jest.Mock };
 let service: AuthService;
+
+/** The system roles seeded for the new workspace, by key. */
+const seededKeys = () =>
+  (
+    prisma.role.createManyAndReturn.mock.calls as [
+      { data: { workspaceId: string; systemKey: WorkspaceRole }[] },
+    ][]
+  )[0][0].data.map((r) => r.systemKey);
 
 beforeEach(() => {
   prisma = {
@@ -50,6 +59,17 @@ beforeEach(() => {
     },
     workspace: {
       create: jest.fn().mockResolvedValue({ id: "ws-new", name: "Alice's" }),
+    },
+    role: {
+      createManyAndReturn: jest.fn(
+        ({ data }: { data: { systemKey: WorkspaceRole }[] }) =>
+          Promise.resolve(
+            data.map((r) => ({
+              id: `role-${r.systemKey}`,
+              systemKey: r.systemKey,
+            })),
+          ),
+      ),
     },
     membership: { create: jest.fn().mockResolvedValue({}) },
     $transaction: jest.fn(),
@@ -91,11 +111,13 @@ describe("AuthService.register", () => {
         userId: "user-bob",
       },
     });
+    expect(seededKeys()).toEqual(["OWNER", "ADMIN", "MEMBER", "VIEWER"]);
     expect(prisma.membership.create).toHaveBeenCalledWith({
       data: {
         userId: "user-bob",
         workspaceId: "ws-new",
         role: WorkspaceRole.OWNER,
+        roleId: "role-OWNER",
       },
     });
     expect(result.user).toEqual({
@@ -414,11 +436,13 @@ describe("AuthService.googleSignIn", () => {
           userId: "user-new",
         },
       });
+      expect(seededKeys()).toEqual(["OWNER", "ADMIN", "MEMBER", "VIEWER"]);
       expect(prisma.membership.create).toHaveBeenCalledWith({
         data: {
           userId: "user-new",
           workspaceId: "ws-new",
           role: WorkspaceRole.OWNER,
+          roleId: "role-OWNER",
         },
       });
       expect(session.user).toMatchObject({

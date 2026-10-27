@@ -8,6 +8,7 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
+import { seedSystemRoles } from "../roles/system-roles";
 import { AuthProvider, WorkspaceRole } from "generated/prisma/enums";
 import { GoogleAuthDto } from "./dto/google-auth.dto";
 import { LoginDto } from "./dto/login.dto";
@@ -63,12 +64,14 @@ export class AuthService {
         },
       });
 
-      // 4. Create Membership
+      // 4. Seed its roles and make the user the OWNER
+      const roleIds = await seedSystemRoles(tx, workspace.id);
       await tx.membership.create({
         data: {
           userId: user.id,
           workspaceId: workspace.id,
           role: WorkspaceRole.OWNER,
+          roleId: roleIds[WorkspaceRole.OWNER],
         },
       });
 
@@ -232,11 +235,13 @@ export class AuthService {
         },
       });
 
+      const roleIds = await seedSystemRoles(tx, workspace.id);
       await tx.membership.create({
         data: {
           userId: newUser.id,
           workspaceId: workspace.id,
           role: WorkspaceRole.OWNER,
+          roleId: roleIds[WorkspaceRole.OWNER],
         },
       });
 

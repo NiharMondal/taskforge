@@ -1,8 +1,11 @@
+import { Access } from "@/common/decorators/access.decorator";
 import { CurrentUser } from "@/common/decorators/current-user.decorator";
 import { Public } from "@/common/decorators/public.decorator";
+import { RequirePermission } from "@/common/decorators/require-permission.decorator";
 import { WorkspaceId } from "@/common/decorators/workspaceId.decorator";
 import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
 import { WorkspaceGuard } from "@/common/guards/workspace.guard";
+import type { WorkspaceAccess } from "@/common/permissions/workspace-access";
 import type { JwtPayload } from "@/common/strategies/jwt.strategy";
 import { sendResponse } from "@/common/utils/send-response";
 import {
@@ -28,15 +31,16 @@ export class InvitationController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @RequirePermission("invitation:manage")
   @UseGuards(JwtAuthGuard, WorkspaceGuard)
   async sendInvitation(
     @WorkspaceId() workspaceId: string,
-    @CurrentUser() user: JwtPayload,
+    @Access() access: WorkspaceAccess,
     @Body() dto: SendInvitationDto,
   ) {
     const invitation = await this.invitationService.sendInvitation(
       workspaceId,
-      user.sub,
+      access,
       dto,
     );
     return sendResponse({
@@ -47,6 +51,7 @@ export class InvitationController {
   }
 
   @Get()
+  @RequirePermission("invitation:manage")
   @UseGuards(JwtAuthGuard, WorkspaceGuard)
   async listInvitations(@WorkspaceId() workspaceId: string) {
     const invitations =
@@ -86,16 +91,15 @@ export class InvitationController {
   }
 
   @Delete(":id")
+  @RequirePermission("invitation:manage")
   @UseGuards(JwtAuthGuard, WorkspaceGuard)
   async revokeInvitation(
     @WorkspaceId() workspaceId: string,
     @Param("id") invitationId: string,
-    @CurrentUser() user: JwtPayload,
   ) {
     const invitation = await this.invitationService.revokeInvitation(
       workspaceId,
       invitationId,
-      user.sub,
     );
     return sendResponse({
       statusCode: HttpStatus.OK,

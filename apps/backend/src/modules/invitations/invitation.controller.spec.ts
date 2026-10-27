@@ -1,4 +1,5 @@
 import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
+import { accessAs } from "@/common/permissions/test-access";
 import { WorkspaceGuard } from "@/common/guards/workspace.guard";
 import { HttpExceptionFilter } from "@/lib/http-exception.filter";
 import { PrismaService } from "@/prisma/prisma.service";
@@ -9,10 +10,16 @@ import {
   ValidationPipe,
 } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
+import { WorkspaceRole } from "generated/prisma/enums";
 import request from "supertest";
 import type { App } from "supertest/types";
 import { InvitationController } from "./invitation.controller";
 import { InvitationService } from "./invitation.service";
+
+const adminAccess = accessAs(WorkspaceRole.ADMIN, {
+  workspaceId: "ws-1",
+  userId: "user-admin",
+});
 
 /** Stands in for JwtAuthGuard + WorkspaceGuard: caller is an admin of ws-1. */
 const allowAsWorkspaceAdmin: CanActivate = {
@@ -20,6 +27,7 @@ const allowAsWorkspaceAdmin: CanActivate = {
     const req = context.switchToHttp().getRequest<Record<string, unknown>>();
     req.user = { sub: "user-admin", email: "admin@example.com" };
     req.workspaceId = "ws-1";
+    req.access = adminAccess;
     return true;
   },
 };
@@ -77,14 +85,10 @@ describe("InvitationController (HTTP validation)", () => {
         .send({ email: "bob@example.com", role })
         .expect(201);
 
-      expect(service.sendInvitation).toHaveBeenCalledWith(
-        "ws-1",
-        "user-admin",
-        {
-          email: "bob@example.com",
-          role,
-        },
-      );
+      expect(service.sendInvitation).toHaveBeenCalledWith("ws-1", adminAccess, {
+        email: "bob@example.com",
+        role,
+      });
     });
 
     it("defaults the role when none is sent", async () => {

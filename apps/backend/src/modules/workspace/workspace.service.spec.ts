@@ -6,6 +6,7 @@ describe("WorkspaceService", () => {
   let prisma: {
     workspace: { create: jest.Mock; update: jest.Mock };
     membership: { create: jest.Mock };
+    role: { createManyAndReturn: jest.Mock };
     $transaction: jest.Mock;
   };
   let service: WorkspaceService;
@@ -17,6 +18,17 @@ describe("WorkspaceService", () => {
         update: jest.fn().mockResolvedValue({ id: "ws-1" }),
       },
       membership: { create: jest.fn().mockResolvedValue({}) },
+      role: {
+        createManyAndReturn: jest.fn(
+          ({ data }: { data: { systemKey: WorkspaceRole }[] }) =>
+            Promise.resolve(
+              data.map((r) => ({
+                id: `role-${r.systemKey}`,
+                systemKey: r.systemKey,
+              })),
+            ),
+        ),
+      },
       $transaction: jest.fn(),
     };
     prisma.$transaction.mockImplementation((cb: (tx: unknown) => unknown) =>
@@ -35,11 +47,28 @@ describe("WorkspaceService", () => {
       expect(prisma.workspace.create).toHaveBeenCalledWith({
         data: { name: "Acme", description: "Where the work happens" },
       });
+      const seeded: unknown = expect.arrayContaining([
+        expect.objectContaining({
+          workspaceId: "ws-1",
+          name: "Owner",
+          systemKey: WorkspaceRole.OWNER,
+        }),
+        expect.objectContaining({
+          name: "Member",
+          systemKey: WorkspaceRole.MEMBER,
+          permissions: ["issue:create", "issue:edit:own", "issue:status"],
+        }),
+      ]);
+      expect(prisma.role.createManyAndReturn).toHaveBeenCalledWith({
+        data: seeded,
+        select: { id: true, systemKey: true },
+      });
       expect(prisma.membership.create).toHaveBeenCalledWith({
         data: {
           userId: "user-1",
           workspaceId: "ws-1",
           role: WorkspaceRole.OWNER,
+          roleId: "role-OWNER",
         },
       });
     });

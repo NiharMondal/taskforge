@@ -43,7 +43,6 @@ enum IssueType {
   SUBTASK
 }
 
-
 enum SubscriptionPlan {
   FREE
   PRO
@@ -62,6 +61,7 @@ enum AuthProvider {
   GOOGLE
   FACEBOOK
 }
+
 //// AUTH
 // One row per way a user can sign in. EMAIL rows carry the password hash;
 // provider rows (GOOGLE, ...) carry the provider's stable account id. The email
@@ -83,11 +83,11 @@ model Auth {
 
 //// USERS
 model User {
-  id             String  @id @default(uuid())
-  name           String
-  email          String  @unique
-  avatarUrl      String?
-  avatarPublicId String?
+  id              String    @id @default(uuid())
+  name            String
+  email           String    @unique
+  avatarUrl       String?
+  avatarPublicId  String?
   // When someone proved they own `email` (today: a Google sign-in). Null means
   // nobody has — e.g. a password registration — and a first Google sign-in
   // then drops that password (see AuthService.googleSignIn).
@@ -124,6 +124,7 @@ model Workspace {
   subscription Subscription?
   auditLogs    AuditLog[]
   labels       Label[]
+  roles        Role[]
 }
 
 //// MEMBERSHIP (RBAC CORE)
@@ -133,14 +134,44 @@ model Membership {
   userId      String
   workspaceId String
   role        WorkspaceRole @default(MEMBER)
+  // The Role row that decides this member's permissions. `role` above is kept
+  // in step (system roles only) until custom roles land; null only for rows
+  // written before roles existed, which WorkspaceGuard maps through `role`.
+  roleId      String?
 
   createdAt DateTime @default(now())
 
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  // NoAction (not Restrict): a role still in use can't be deleted, but deleting
+  // the workspace may still cascade to both roles and memberships.
+  assignedRole Role?     @relation(fields: [roleId], references: [id], onDelete: NoAction)
 
   @@unique([userId, workspaceId])
   @@index([workspaceId])
+  @@index([roleId])
+}
+
+/// A workspace's role: a named set of permission keys (see
+/// src/common/permissions/permissions.ts). Every workspace has the four
+/// built-ins, marked by `systemKey`. OWNER's `permissions` are not read — the
+/// owner implicitly holds every permission.
+model Role {
+  id          String         @id @default(uuid())
+  workspaceId String
+  name        String
+  systemKey   WorkspaceRole?
+  permissions String[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  memberships Membership[]
+  invitations Invitation[]
+
+  @@unique([workspaceId, name])
+  @@unique([workspaceId, systemKey])
 }
 
 //// PROJECTS
@@ -205,7 +236,7 @@ model Issue {
   // two neighbors without renumbering siblings — generated client-side via the
   // `fractional-indexing` lib. Nullable so it can be added over existing rows;
   // backfill then sort lanes by `rank ASC` (NULLS LAST as a safety net).
-  rank String?
+  rank     String?
 
   workspaceId String
   projectId   String
@@ -217,7 +248,7 @@ model Issue {
   parentIssueId String?
 
   //estimate
-  timeEstimate  Int? // Optional but useful for sprints
+  timeEstimate Int? // Optional but useful for sprints
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -229,8 +260,7 @@ model Issue {
   reporter User  @relation("CreatedIssues", fields: [reporterId], references: [id], onDelete: Cascade)
   assignee User? @relation("AssignedIssues", fields: [assigneeId], references: [id], onDelete: SetNull)
 
-
- // Self relation
+  // Self relation
   parentIssue Issue?  @relation("IssueHierarchy", fields: [parentIssueId], references: [id], onDelete: Cascade)
   subIssues   Issue[] @relation("IssueHierarchy")
 
@@ -295,17 +325,20 @@ model Invitation {
   email       String
   workspaceId String
   role        WorkspaceRole    @default(MEMBER)
+  roleId      String?
   token       String           @unique
   status      InvitationStatus @default(PENDING)
   expiresAt   DateTime
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  assignedRole Role?     @relation(fields: [roleId], references: [id], onDelete: NoAction)
 
   @@unique([email, workspaceId])
   @@index([token])
   @@index([workspaceId])
+  @@index([roleId])
 }
 
 //// SUBSCRIPTION (SAAS LAYER)

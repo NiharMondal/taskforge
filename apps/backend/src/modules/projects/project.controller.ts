@@ -1,7 +1,6 @@
-import { Roles } from "@/common/decorators/roles.decorator";
+import { RequirePermission } from "@/common/decorators/require-permission.decorator";
 import { WorkspaceId } from "@/common/decorators/workspaceId.decorator";
 import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
-import { RolesGuard } from "@/common/guards/roles.guard";
 import { WorkspaceGuard } from "@/common/guards/workspace.guard";
 import { sendResponse } from "@/common/utils/send-response";
 import {
@@ -16,7 +15,6 @@ import {
   Post,
   UseGuards,
 } from "@nestjs/common";
-import { WorkspaceRole } from "generated/prisma/enums";
 import { CreateProjectDto } from "./dto/create-project.dto";
 import { UpdateProjectDto } from "./dto/update-project.dto";
 import { ProjectService } from "./project.service";
@@ -28,8 +26,7 @@ export class ProjectController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @UseGuards(RolesGuard)
-  @Roles(WorkspaceRole.OWNER, WorkspaceRole.ADMIN)
+  @RequirePermission("project:manage")
   async create(
     @WorkspaceId() workspaceId: string,
     @Body() dto: CreateProjectDto,
@@ -69,8 +66,7 @@ export class ProjectController {
 
   @Patch(":projectId")
   @HttpCode(HttpStatus.OK)
-  @UseGuards(RolesGuard)
-  @Roles(WorkspaceRole.OWNER, WorkspaceRole.ADMIN)
+  @RequirePermission("project:manage")
   async update(
     @WorkspaceId() workspaceId: string,
     @Param("projectId") projectId: string,
@@ -90,8 +86,7 @@ export class ProjectController {
 
   @Delete(":projectId")
   @HttpCode(HttpStatus.OK)
-  @UseGuards(RolesGuard)
-  @Roles(WorkspaceRole.OWNER, WorkspaceRole.ADMIN)
+  @RequirePermission("project:manage")
   async delete(
     @WorkspaceId() workspaceId: string,
     @Param("projectId") projectId: string,

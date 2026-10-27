@@ -79,6 +79,19 @@ function groupByStatus(issues: Issue[]): Columns {
 }
 
 /**
+ * The rank for the card at `idx` in a lane's final order, from its neighbors.
+ * Undefined when it can't be computed — including when a neighbor exists but
+ * has no rank yet: treating that neighbor as "no bound" would send the card to
+ * the top or bottom of the lane instead of where it was dropped.
+ */
+function rankForPosition(ordered: Issue[], idx: number): string | undefined {
+	const prev = idx > 0 ? ordered[idx - 1] : null;
+	const next = idx < ordered.length - 1 ? ordered[idx + 1] : null;
+	if ((prev && !prev.rank) || (next && !next.rank)) return undefined;
+	return rankBetween(prev?.rank, next?.rank);
+}
+
+/**
  * Kanban board. Columns are status lanes; dragging a card persists its new
  * status *and* position via an optimistic PATCH ({@link useUpdateIssue}).
  *
@@ -215,35 +228,43 @@ export default function BoardView({ projectId }: { projectId: string }) {
 		const container = findContainer(activeId);
 		if (!container) return;
 
-		// Compute the final lane order, then derive the dragged card's new rank
-		// from its neighbors in that order. We capture both out of the (otherwise
-		// pure) updater so the persisted rank matches exactly what's rendered.
-		let newRank: string | undefined;
-		let positionChanged = false;
+		// Work out the final lane order and the dragged card's rank from the
+		// current columns *before* updating state. (Reading values captured inside
+		// a `setColumns` updater doesn't work: after `setActiveId` above, React
+		// defers that updater to the next render, so they were still unset when
+		// the PATCH below was built — reorders were never saved and lane moves
+		// lost their position.)
+		const items = columns[container];
+		const oldIndex = items.findIndex((i) => i.id === activeId);
+		const overIndex = items.findIndex((i) => i.id === String(over.id));
+		const newIndex = overIndex === -1 ? items.length - 1 : overIndex;
+		const positionChanged = oldIndex !== -1 && oldIndex !== newIndex;
+		const ordered = positionChanged
+			? arrayMove(items, oldIndex, newIndex)
+			: items;
 
-		setColumns((prev) => {
-			const items = prev[container];
-			const oldIndex = items.findIndex((i) => i.id === activeId);
-			const overIndex = items.findIndex((i) => i.id === String(over.id));
-			const newIndex = overIndex === -1 ? items.length - 1 : overIndex;
-			const ordered =
-				oldIndex !== -1 && oldIndex !== newIndex
-					? arrayMove(items, oldIndex, newIndex)
-					: items;
+		const idx = ordered.findIndex((i) => i.id === activeId);
+		const newRank = rankForPosition(ordered, idx);
 
-			const idx = ordered.findIndex((i) => i.id === activeId);
-			const prevRank = idx > 0 ? ordered[idx - 1].rank : null;
-			const nextRank =
-				idx < ordered.length - 1 ? ordered[idx + 1].rank : null;
-			newRank = rankBetween(prevRank, nextRank);
-			positionChanged = oldIndex !== newIndex;
-
-			return { ...prev, [container]: ordered };
-		});
+		if (positionChanged) {
+			setColumns((prev) => ({ ...prev, [container]: ordered }));
+		}
 
 		// Persist when the card changed lane and/or position. Always send the new
 		// status; include rank when we could compute one.
 		const laneChanged = !!from && from !== container;
+
+		// Without a rank a same-lane move can't be saved (a status-only PATCH
+		// changes nothing), so put the lane back rather than show an order that
+		// will vanish on the next refetch.
+		if (!laneChanged && positionChanged && !newRank) {
+			setColumns(groupByStatus(issues));
+			toast.danger(
+				"Couldn’t save this card’s position. Try dropping it somewhere else.",
+			);
+			return;
+		}
+
 		if (laneChanged || positionChanged) {
 			updateIssue(
 				{

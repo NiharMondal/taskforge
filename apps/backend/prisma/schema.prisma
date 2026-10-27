@@ -88,6 +88,10 @@ model User {
   email          String  @unique
   avatarUrl      String?
   avatarPublicId String?
+  // When someone proved they own `email` (today: a Google sign-in). Null means
+  // nobody has — e.g. a password registration — and a first Google sign-in
+  // then drops that password (see AuthService.googleSignIn).
+  emailVerifiedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

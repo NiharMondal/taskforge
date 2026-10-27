@@ -99,7 +99,11 @@ with a GOOGLE auth. Look users up by email on `User`, never on `Auth`.
 `{ idToken }`; `GoogleTokenVerifier` verifies it with `google-auth-library` (signature, expiry,
 `audience = GOOGLE_CLIENT_ID`, `email_verified`) and `AuthService.googleSignIn` takes `sub`, `email`
 and `picture` from the verified payload. Accounts match on Google's `sub` first, then link by
-(case-insensitive) email. The auth routes are rate-limited by `@nestjs/throttler` (`AUTH_THROTTLE`:
+(case-insensitive) email. Registration does not verify email, so `User.emailVerifiedAt` records
+who has proven ownership (Google sign-ups; every account that predates the column was backfilled
+as verified). Linking Google to an account whose `emailVerifiedAt` is null deletes its `EMAIL` auth
+and sets the timestamp in one transaction — otherwise whoever pre-registered the address would
+keep password access to the owner's account. The auth routes are rate-limited by `@nestjs/throttler` (`AUTH_THROTTLE`:
 10/min per client) — behind a reverse proxy, set Express `trust proxy` or every client shares one bucket.
 
 ## Multi-workspace isolation — CRITICAL

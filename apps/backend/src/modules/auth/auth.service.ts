@@ -138,7 +138,8 @@ export class AuthService {
    * token Google has signed — never from the request body. Accounts are matched
    * on Google's stable `sub` first; the email is only used to link a Google
    * login to an existing account, and only because Google vouched for it
-   * (`email_verified`).
+   * (`email_verified`). Linking to an account whose email was never verified
+   * removes its password, since anyone could have registered that address.
    */
   async googleSignIn(dto: GoogleAuthDto) {
     const identity = await this.googleTokenVerifier.verify(dto.idToken);
@@ -177,12 +178,30 @@ export class AuthService {
         );
       }
 
-      await this.prisma.auth.create({
-        data: {
-          provider: AuthProvider.GOOGLE,
-          providerId: googleId,
-          userId: existingUser.id,
-        },
+      // Google has just proven this person owns the email. If nobody had
+      // before, the account's password was set by whoever registered the
+      // address — not necessarily its owner (account pre-hijacking). Drop it so
+      // that person can't keep a way in; the owner signs in with Google.
+      const emailWasUnverified = !existingUser.emailVerifiedAt;
+
+      await this.prisma.$transaction(async (tx) => {
+        if (emailWasUnverified) {
+          await tx.auth.deleteMany({
+            where: { userId: existingUser.id, provider: AuthProvider.EMAIL },
+          });
+          await tx.user.update({
+            where: { id: existingUser.id },
+            data: { emailVerifiedAt: new Date() },
+          });
+        }
+
+        await tx.auth.create({
+          data: {
+            provider: AuthProvider.GOOGLE,
+            providerId: googleId,
+            userId: existingUser.id,
+          },
+        });
       });
 
       return this.googleSession(existingUser, picture);
@@ -195,6 +214,7 @@ export class AuthService {
           name,
           email,
           avatarUrl: picture ?? null,
+          emailVerifiedAt: new Date(),
         },
       });
 

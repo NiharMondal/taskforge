@@ -11,6 +11,7 @@ export interface User {
 	email: string;
 	avatarUrl: string | null;
 	avatarPublicId: string | null;
+	emailVerifiedAt: string | null;
 	createdAt: string;
 	updatedAt: string;
 }

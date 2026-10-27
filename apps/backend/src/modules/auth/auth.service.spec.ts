@@ -17,9 +17,12 @@ const identity: GoogleIdentity = {
   picture: "https://lh3.example/alice.png",
 };
 
+// Typed `unknown` so the asymmetric matcher isn't an unsafe `any`.
+const anyDate: unknown = expect.any(Date);
+
 let prisma: {
-  auth: { findUnique: jest.Mock; create: jest.Mock };
-  user: { findFirst: jest.Mock; create: jest.Mock };
+  auth: { findUnique: jest.Mock; create: jest.Mock; deleteMany: jest.Mock };
+  user: { findFirst: jest.Mock; create: jest.Mock; update: jest.Mock };
   workspace: { create: jest.Mock };
   membership: { create: jest.Mock };
   $transaction: jest.Mock;
@@ -33,6 +36,7 @@ beforeEach(() => {
     auth: {
       findUnique: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockResolvedValue({}),
+      deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     user: {
       findFirst: jest.fn().mockResolvedValue(null),
@@ -42,6 +46,7 @@ beforeEach(() => {
         email: "alice@example.com",
         avatarUrl: identity.picture,
       }),
+      update: jest.fn().mockResolvedValue({}),
     },
     workspace: {
       create: jest.fn().mockResolvedValue({ id: "ws-new", name: "Alice's" }),
@@ -258,6 +263,9 @@ describe("AuthService.googleSignIn", () => {
       });
       expect(session.accessToken).toBe("signed.jwt");
       expect(session.user.id).toBe("user-1");
+      // Already linked: no sign-in method is added or removed.
+      expect(prisma.auth.create).not.toHaveBeenCalled();
+      expect(prisma.auth.deleteMany).not.toHaveBeenCalled();
       expect(prisma.user.create).not.toHaveBeenCalled();
       expect(prisma.user.findFirst).not.toHaveBeenCalled();
       expect(prisma.auth.create).not.toHaveBeenCalled();
@@ -336,6 +344,42 @@ describe("AuthService.googleSignIn", () => {
       });
     });
 
+    it("drops the password of an account whose email nobody had verified", async () => {
+      // Whoever registered this address never proved they own it, so the
+      // password may belong to someone else (account pre-hijacking).
+      await service.googleSignIn({ idToken: "t" });
+
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(prisma.auth.deleteMany).toHaveBeenCalledWith({
+        where: { userId: "user-5", provider: AuthProvider.EMAIL },
+      });
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: "user-5" },
+        data: { emailVerifiedAt: anyDate },
+      });
+      expect(prisma.auth.create).toHaveBeenCalled();
+    });
+
+    it("keeps the password of an account whose email was already verified", async () => {
+      prisma.user.findFirst.mockResolvedValue({
+        ...existing,
+        emailVerifiedAt: new Date("2026-10-01"),
+      });
+
+      const session = await service.googleSignIn({ idToken: "t" });
+
+      expect(prisma.auth.deleteMany).not.toHaveBeenCalled();
+      expect(prisma.user.update).not.toHaveBeenCalled();
+      expect(prisma.auth.create).toHaveBeenCalledWith({
+        data: {
+          provider: AuthProvider.GOOGLE,
+          providerId: "google-sub-1",
+          userId: "user-5",
+        },
+      });
+      expect(session.user.id).toBe("user-5");
+    });
+
     it("refuses a second Google account for a user already linked to one", async () => {
       prisma.user.findFirst.mockResolvedValue({
         ...existing,
@@ -346,6 +390,7 @@ describe("AuthService.googleSignIn", () => {
         service.googleSignIn({ idToken: "t" }),
       ).rejects.toBeInstanceOf(ConflictException);
       expect(prisma.auth.create).not.toHaveBeenCalled();
+      expect(prisma.auth.deleteMany).not.toHaveBeenCalled();
       expect(jwt.sign).not.toHaveBeenCalled();
     });
   });
@@ -359,6 +404,7 @@ describe("AuthService.googleSignIn", () => {
           name: "Alice",
           email: "alice@example.com",
           avatarUrl: identity.picture,
+          emailVerifiedAt: anyDate,
         },
       });
       expect(prisma.auth.create).toHaveBeenCalledWith({

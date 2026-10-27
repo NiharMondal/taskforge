@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this directory is
 
-Taskforge, a multi-tenant issue tracker, as a **pnpm-workspace monorepo** (git remote `NiharMondal/task-forge`):
+Taskforge, a multi-tenant issue tracker, as a **pnpm-workspace monorepo** (git remote `NiharMondal/taskforge`):
 
 | dir             | package              | stack                                                   |
 | --------------- | -------------------- | ------------------------------------------------------- |

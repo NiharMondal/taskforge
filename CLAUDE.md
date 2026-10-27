@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this directory is
 
-Taskforge, a multi-tenant issue tracker, as a **pnpm-workspace monorepo** (git remote `NiharMondal/task-forge`):
+Taskforge, a multi-tenant issue tracker, as a **pnpm-workspace monorepo** (git remote `NiharMondal/taskforge`):
 
 | dir             | package              | stack                                                   |
 | --------------- | -------------------- | ------------------------------------------------------- |
@@ -13,6 +13,8 @@ Taskforge, a multi-tenant issue tracker, as a **pnpm-workspace monorepo** (git r
 | `packages/`     | —                    | empty; home for future shared code (types, rank helper) |
 
 One git history, one `pnpm-lock.yaml` at the root, one `pnpm install`. A change that spans both apps is one commit. Both apps' pre-merge histories were preserved (rewritten into their subfolders), so `git log -- apps/backend/...` and blame reach back to the original repos. The former backend repo (`NiharMondal/multi-tenant-backend`) no longer receives new work.
+
+**Branching: `develop` is the default branch and the PR target; `main` only receives `develop`.** Cut feature branches from `develop` and open PRs into it; never PR a feature branch straight into `main`. To release, open a `develop → main` PR. After it merges, fast-forward `develop` to `main` (`git push origin origin/main:develop`) so the merge commit lands on both and the two branches stay identical.
 
 **Read the app-level `CLAUDE.md` before working in either app** — they carry the detail this file deliberately doesn't repeat:
 

@@ -5,8 +5,8 @@ import { getApiErrorMessage } from "@/lib/api-error";
 import GoogleIcon from "@/shared/icons/google-icon";
 import { Button, toast } from "@heroui/react";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Eye, EyeOff } from "lucide-react";
 import { signIn } from "next-auth/react";
+import PasswordVisibilityToggle from "./password-visibility-toggle";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -63,13 +63,10 @@ export default function LoginForm() {
 				label="Password"
 				type={showPassword ? "text" : "password"}
 				ornament={
-					<div onClick={() => setShowPassword((prev) => !prev)}>
-						{showPassword ? (
-							<Eye size={20} />
-						) : (
-							<EyeOff size={20} />
-						)}
-					</div>
+					<PasswordVisibilityToggle
+						isVisible={showPassword}
+						onToggle={() => setShowPassword((prev) => !prev)}
+					/>
 				}
 			/>
 			<div className="flex items-center gap-3 my-4">
@@ -92,8 +89,12 @@ export default function LoginForm() {
 				<GoogleIcon />
 				Continue with Google
 			</Button>
-			<Button type="submit" className={"w-full"}>
-				Login
+			<Button
+				type="submit"
+				className={"w-full"}
+				isDisabled={methods.formState.isSubmitting}
+			>
+				{methods.formState.isSubmitting ? "Signing in…" : "Login"}
 			</Button>
 		</FormWrapper>
 	);

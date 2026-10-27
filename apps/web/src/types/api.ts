@@ -33,11 +33,3 @@ export interface ApiErrorResponse {
   message?: string | string[];
   error?: string;
 }
-
-/** Generic envelope for paginated list endpoints. Adjust to match real backend contracts. */
-export interface Paginated<T> {
-  data: T[];
-  total: number;
-  page: number;
-  pageSize: number;
-}

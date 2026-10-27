@@ -235,11 +235,35 @@ export class InvitationService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      // Claim the invitation first, and only if it is still the one checked
+      // above: PENDING, unexpired, same token. Between that check and now it
+      // may have been revoked, re-sent (new token, maybe a new role) or
+      // accepted by a parallel request; any of those leaves 0 rows claimed and
+      // nothing is written. The row lock this takes also serializes two
+      // accepts of the same invitation.
+      const claimed = await tx.invitation.updateMany({
+        where: {
+          id: invitation.id,
+          token,
+          status: InvitationStatus.PENDING,
+          expiresAt: { gt: new Date() },
+        },
+        data: { status: InvitationStatus.ACCEPTED },
+      });
+
+      if (claimed.count === 0) {
+        throw new BadRequestException(
+          "Invitation has already been accepted, revoked, or expired",
+        );
+      }
+
       // Invitations sent before roles existed have no roleId; map their enum.
       const roleId =
         invitation.roleId ??
         (await findSystemRole(tx, invitation.workspaceId, invitation.role)).id;
 
+      // A membership created since the check above makes this a P2002, which
+      // rolls back the claim and answers 409.
       const membership = await tx.membership.create({
         data: {
           userId,
@@ -247,11 +271,6 @@ export class InvitationService {
           role: invitation.role,
           roleId,
         },
-      });
-
-      await tx.invitation.update({
-        where: { id: invitation.id },
-        data: { status: InvitationStatus.ACCEPTED },
       });
 
       return { workspaceId: invitation.workspaceId, membership };

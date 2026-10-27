@@ -1,3 +1,4 @@
+import { IsOptionalNonNull } from "@/common/decorators/is-optional-non-null.decorator";
 import { IssueStatus, IssuePriority } from "generated/prisma/enums";
 import {
   IsEnum,
@@ -10,7 +11,7 @@ import {
 } from "class-validator";
 
 export class UpdateIssueDto {
-  @IsOptional()
+  @IsOptionalNonNull()
   @IsString()
   @MinLength(2)
   @MaxLength(255)
@@ -21,11 +22,11 @@ export class UpdateIssueDto {
   @MaxLength(2000)
   description?: string;
 
-  @IsOptional()
+  @IsOptionalNonNull()
   @IsEnum(IssueStatus)
   status?: IssueStatus;
 
-  @IsOptional()
+  @IsOptionalNonNull()
   @IsEnum(IssuePriority)
   priority?: IssuePriority;
 

@@ -35,6 +35,7 @@ describe("InvitationService", () => {
       findMany: jest.Mock;
       upsert: jest.Mock;
       update: jest.Mock;
+      updateMany: jest.Mock;
     };
     workspace: { findUnique: jest.Mock };
     user: { findFirst: jest.Mock; findUnique: jest.Mock };
@@ -56,6 +57,7 @@ describe("InvitationService", () => {
         findMany: jest.fn().mockResolvedValue([]),
         upsert: jest.fn().mockResolvedValue({ id: "inv-1" }),
         update: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       workspace: {
         findUnique: jest.fn().mockResolvedValue({ name: "Acme" }),
@@ -350,10 +352,42 @@ describe("InvitationService", () => {
           roleId: null,
         },
       });
-      expect(prisma.invitation.update).toHaveBeenCalledWith({
-        where: { id: "inv-1" },
+      const where: unknown = expect.objectContaining({
+        id: "inv-1",
+        token,
+        status: InvitationStatus.PENDING,
+      });
+      expect(prisma.invitation.updateMany).toHaveBeenCalledWith({
+        where,
         data: { status: InvitationStatus.ACCEPTED },
       });
+    });
+
+    it("writes nothing if the invitation changed after it was checked", async () => {
+      // Revoked, re-sent or accepted in parallel: the conditional claim
+      // matches no row.
+      prisma.invitation.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        service.acceptInvitation(token, invitee.userId),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.membership.create).not.toHaveBeenCalled();
+    });
+
+    it("claims the invitation before creating the membership", async () => {
+      const order: string[] = [];
+      prisma.invitation.updateMany.mockImplementation(() => {
+        order.push("claim");
+        return Promise.resolve({ count: 1 });
+      });
+      prisma.membership.create.mockImplementation(() => {
+        order.push("membership");
+        return Promise.resolve({ id: "m-1" });
+      });
+
+      await service.acceptInvitation(token, invitee.userId);
+
+      expect(order).toEqual(["claim", "membership"]);
     });
 
     it("gives the new member the role the invitation points at", async () => {

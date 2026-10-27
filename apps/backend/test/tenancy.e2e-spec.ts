@@ -4,6 +4,7 @@ import { MailService } from "@/modules/mail/mail.service";
 import { PrismaService } from "@/prisma/prisma.service";
 import { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
+import { Prisma } from "generated/prisma/client";
 import { randomUUID } from "crypto";
 import request, { Response } from "supertest";
 import { App } from "supertest/types";
@@ -26,6 +27,12 @@ describe("Tenancy (e2e)", () => {
   const bob = {
     name: "Bob",
     email: `bob-${run}@e2e.test`,
+    password: "secret123",
+  };
+
+  const carol = {
+    name: "Carol",
+    email: `carol-${run}@e2e.test`,
     password: "secret123",
   };
 
@@ -99,7 +106,7 @@ describe("Tenancy (e2e)", () => {
       where: { id: { in: [aliceWs, bobWs] } },
     });
     await prisma.user.deleteMany({
-      where: { email: { in: [alice.email, bob.email] } },
+      where: { email: { in: [alice.email, bob.email, carol.email] } },
     });
     await app.close();
   });
@@ -334,5 +341,60 @@ describe("Tenancy (e2e)", () => {
 
     const ranks = created.map((res) => data<{ rank: string }>(res).rank);
     expect(new Set(ranks).size).toBe(ranks.length);
+  });
+
+  describe("errors keep the envelope", () => {
+    it("reports a duplicate from the database as Prisma P2002", async () => {
+      // The filter maps P2002 to 409; this checks the driver adapter really
+      // reports a unique violation that way.
+      const error: unknown = await prisma.user
+        .create({ data: { name: "Dup", email: alice.email } })
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(Prisma.PrismaClientKnownRequestError);
+      expect((error as Prisma.PrismaClientKnownRequestError).code).toBe(
+        "P2002",
+      );
+    });
+
+    it("refuses null for a required field with a 400, not a 500", async () => {
+      const res = await api()
+        .patch(`/api/v1/projects/${projectId}/issues/${issueId}`)
+        .set(as(aliceToken, aliceWs))
+        .send({ title: null })
+        .expect(400);
+
+      expect(res.body).toMatchObject({ success: false, statusCode: 400 });
+    });
+  });
+
+  it("accepts an invitation once when two accepts race", async () => {
+    const { token: carolToken } = await signUp(carol);
+    await api()
+      .post("/api/v1/invitations")
+      .set(as(aliceToken, aliceWs))
+      .send({ email: carol.email, role: "VIEWER" })
+      .expect(201);
+    const { token } = await prisma.invitation.findFirstOrThrow({
+      where: { workspaceId: aliceWs, email: carol.email },
+    });
+
+    const accept = () =>
+      api()
+        .post("/api/v1/invitations/accept")
+        .set(as(carolToken))
+        .send({ token });
+    const results = await Promise.all([accept(), accept()]);
+
+    const statuses = results.map((r) => r.status).sort();
+    expect(statuses[0]).toBe(201);
+    expect([400, 409]).toContain(statuses[1]);
+    const failed = results.find((r) => r.status !== 201);
+    expect(failed?.body).toMatchObject({ success: false });
+    await expect(
+      prisma.membership.count({
+        where: { workspaceId: aliceWs, user: { email: carol.email } },
+      }),
+    ).resolves.toBe(1);
   });
 });

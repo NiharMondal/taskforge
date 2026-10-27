@@ -158,7 +158,14 @@ Controllers return `sendResponse()` from `src/common/utils/send-response.ts`:
 Errors are shaped by the global `HttpExceptionFilter` (`src/lib/http-exception.filter.ts`), which
 spreads Nest's exception response under `{ success: false, ... }` — so error bodies carry
 `message` (and `statusCode`/`error` from Nest), not a top-level `error` string you set yourself.
-The filter only `@Catch(HttpException)`; unhandled non-HTTP errors fall through to Nest's default 500.
+The filter catches everything: Prisma's P2002 (unique) and P2003 (foreign key) become 409 and P2025
+(record gone) 404; any other error is logged and answered with an enveloped 500 that never includes
+the error's own message. Throw `HttpException`s for anything a client should see.
+
+For an optional DTO field whose column is NOT NULL, use `@IsOptionalNonNull()`
+(`src/common/decorators/`) instead of `@IsOptional()`, which lets `null` through to the database.
+Keep `@IsOptional()` where the column is nullable and clients clear it with `null` (e.g. an issue's
+`assigneeId`/`sprintId`, a sprint's `goal` and dates).
 
 ## Listing endpoints — PrismaQueryBuilder
 

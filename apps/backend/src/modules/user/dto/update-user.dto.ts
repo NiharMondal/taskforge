@@ -1,8 +1,9 @@
+import { IsOptionalNonNull } from "@/common/decorators/is-optional-non-null.decorator";
 import { IsOptional, IsString, IsUrl } from "class-validator";
 
 export class UpdateUserDto {
   @IsString()
-  @IsOptional()
+  @IsOptionalNonNull()
   name?: string;
 
   @IsUrl()

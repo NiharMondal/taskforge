@@ -82,6 +82,16 @@ describe("SprintController (HTTP validation)", () => {
       });
     });
 
+    it("rejects null for the name, whose column can't be null", async () => {
+      // `@IsOptional()` used to let this through to Prisma and a 500.
+      await request(server())
+        .patch("/projects/p-1/sprints/s-1")
+        .send({ name: null })
+        .expect(400);
+
+      expect(service.updateSprint).not.toHaveBeenCalled();
+    });
+
     it("still rejects malformed fields", async () => {
       await request(server())
         .patch("/projects/p-1/sprints/s-1")

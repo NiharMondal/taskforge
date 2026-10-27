@@ -1,7 +1,8 @@
+import { IsOptionalNonNull } from "@/common/decorators/is-optional-non-null.decorator";
 import { IsOptional, IsString, IsDateString } from "class-validator";
 
 export class UpdateSprintDto {
-  @IsOptional()
+  @IsOptionalNonNull()
   @IsString()
   name?: string;
 

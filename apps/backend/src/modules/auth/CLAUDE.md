@@ -2,9 +2,10 @@
 
 ## File locations
 Auth constructs live outside this module:
-- Guards: `src/common/guards/` (jwt-auth.guard.ts, workspace.guard.ts, roles.guard.ts)
+- Guards: `src/common/guards/` (jwt-auth.guard.ts, workspace.guard.ts, permissions.guard.ts)
+- Permissions: `src/common/permissions/` (catalog in permissions.ts, membership → WorkspaceAccess in workspace-access.ts, issue field rules in issue-access.ts)
 - Strategy: `src/common/strategies/jwt.strategy.ts`
-- Decorators: `src/common/decorators/` (public, roles, current-user, workspaceId)
+- Decorators: `src/common/decorators/` (public, require-permission, access, current-user, workspaceId)
 - Types: `src/common/types/authenticated-request.interface.ts`
 
 ## Strategy wiring

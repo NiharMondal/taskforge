@@ -108,7 +108,11 @@ and the `add_workspace_roles` migration's seed must match `DEFAULT_ROLE_PERMISSI
 `@@unique([userId, provider])`: an `EMAIL` row carries the bcrypt `password`, a `GOOGLE` row carries
 Google's `sub` as `providerId` (`@@unique([provider, providerId])`). Registering creates User +
 EMAIL auth + workspace + OWNER membership in one transaction; a first Google sign-in does the same
-with a GOOGLE auth. Look users up by email on `User`, never on `Auth`.
+with a GOOGLE auth. The email column is on `User`, never on `Auth`. Password login starts from
+the `EMAIL` `Auth` row, matched through its user's email (`auth.findFirst({ where: { provider:
+EMAIL, user: { email } } })`), and answers every failure with the same 401 "Invalid email or
+password" — after a bcrypt comparison against a dummy hash when nothing matched, so neither the
+message nor the timing reveals whether an email is registered.
 
 ### Google sign-in
 

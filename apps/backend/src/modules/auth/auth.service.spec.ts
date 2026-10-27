@@ -1,10 +1,6 @@
 import { passwordUtils } from "@/common/utils/password";
 import { PrismaService } from "@/prisma/prisma.service";
-import {
-  ConflictException,
-  NotFoundException,
-  UnauthorizedException,
-} from "@nestjs/common";
+import { ConflictException, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { AuthProvider, WorkspaceRole } from "generated/prisma/enums";
 import { AuthService } from "./auth.service";
@@ -21,7 +17,12 @@ const identity: GoogleIdentity = {
 const anyDate: unknown = expect.any(Date);
 
 let prisma: {
-  auth: { findUnique: jest.Mock; create: jest.Mock; deleteMany: jest.Mock };
+  auth: {
+    findUnique: jest.Mock;
+    findFirst: jest.Mock;
+    create: jest.Mock;
+    deleteMany: jest.Mock;
+  };
   user: { findFirst: jest.Mock; create: jest.Mock; update: jest.Mock };
   workspace: { create: jest.Mock };
   role: { createManyAndReturn: jest.Mock };
@@ -44,6 +45,7 @@ beforeEach(() => {
   prisma = {
     auth: {
       findUnique: jest.fn().mockResolvedValue(null),
+      findFirst: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockResolvedValue({}),
       deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
@@ -153,29 +155,39 @@ describe("AuthService.register", () => {
 });
 
 describe("AuthService.signIn", () => {
-  const user = (auths: object[]) => ({
+  const bob = {
     id: "user-bob",
     name: "Bob",
     email: "bob@example.com",
     avatarUrl: null,
-    auths,
+  };
+  /** The EMAIL Auth row the lookup returns, with its user. */
+  const emailAuth = (password: string) => ({
+    provider: AuthProvider.EMAIL,
+    password,
+    userId: bob.id,
+    user: bob,
   });
+  const signIn = (email: string, password: string) =>
+    service.signIn({ email, password });
 
-  it("signs in with the password on the user's EMAIL auth", async () => {
-    const password = await passwordUtils.hashPassword("secret1");
-    prisma.user.findFirst.mockResolvedValue(
-      user([{ provider: AuthProvider.EMAIL, password }]),
+  it("looks up the EMAIL sign-in method by its user's email", async () => {
+    prisma.auth.findFirst.mockResolvedValue(
+      emailAuth(await passwordUtils.hashPassword("secret1")),
     );
 
-    const session = await service.signIn({
-      email: "Bob@Example.com",
-      password: "secret1",
-    });
+    const session = await signIn("Bob@Example.com", "secret1");
 
-    expect(prisma.user.findFirst).toHaveBeenCalledWith({
-      where: { email: { equals: "bob@example.com", mode: "insensitive" } },
-      include: { auths: { where: { provider: AuthProvider.EMAIL } } },
+    expect(prisma.auth.findFirst).toHaveBeenCalledWith({
+      where: {
+        provider: AuthProvider.EMAIL,
+        user: {
+          email: { equals: "bob@example.com", mode: "insensitive" },
+        },
+      },
+      include: { user: true },
     });
+    expect(prisma.user.findFirst).not.toHaveBeenCalled();
     expect(jwt.sign).toHaveBeenCalledWith({
       sub: "user-bob",
       email: "bob@example.com",
@@ -183,30 +195,41 @@ describe("AuthService.signIn", () => {
     expect(session.user.email).toBe("bob@example.com");
   });
 
-  it("refuses a Google-only account (no EMAIL auth)", async () => {
-    prisma.user.findFirst.mockResolvedValue(user([]));
+  describe("gives every failure the same answer", () => {
+    const rejection = async (attempt: Promise<unknown>) => {
+      const error = await attempt.catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(UnauthorizedException);
+      expect(jwt.sign).not.toHaveBeenCalled();
+      return (error as UnauthorizedException).message;
+    };
 
-    await expect(
-      service.signIn({ email: "bob@example.com", password: "secret1" }),
-    ).rejects.toBeInstanceOf(UnauthorizedException);
-    expect(jwt.sign).not.toHaveBeenCalled();
-  });
+    it("for an unknown email, a Google-only account and a wrong password", async () => {
+      // Unknown email, or an account with no EMAIL sign-in (Google only):
+      // either way there is no EMAIL Auth row to find.
+      const unknown = await rejection(signIn("nobody@example.com", "secret1"));
 
-  it("refuses a wrong password", async () => {
-    const password = await passwordUtils.hashPassword("secret1");
-    prisma.user.findFirst.mockResolvedValue(
-      user([{ provider: AuthProvider.EMAIL, password }]),
-    );
+      prisma.auth.findFirst.mockResolvedValue(
+        emailAuth(await passwordUtils.hashPassword("secret1")),
+      );
+      const wrongPassword = await rejection(
+        signIn("bob@example.com", "nope12"),
+      );
 
-    await expect(
-      service.signIn({ email: "bob@example.com", password: "wrong-pw" }),
-    ).rejects.toBeInstanceOf(UnauthorizedException);
-  });
+      expect(unknown).toBe("Invalid email or password");
+      expect(wrongPassword).toBe(unknown);
+    });
 
-  it("404s an unknown email", async () => {
-    await expect(
-      service.signIn({ email: "nobody@example.com", password: "secret1" }),
-    ).rejects.toBeInstanceOf(NotFoundException);
+    it("still runs a password comparison when no account matches", async () => {
+      const compare = jest.spyOn(passwordUtils, "comparePassword");
+
+      await rejection(signIn("nobody@example.com", "secret1"));
+
+      expect(compare).toHaveBeenCalledWith(
+        "secret1",
+        expect.stringMatching(/^\$2[aby]\$12\$/),
+      );
+      compare.mockRestore();
+    });
   });
 });
 

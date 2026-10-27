@@ -4,7 +4,6 @@ import { PrismaService } from "@/prisma/prisma.service";
 import {
   ConflictException,
   Injectable,
-  NotFoundException,
   UnauthorizedException,
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
@@ -14,6 +13,14 @@ import { GoogleAuthDto } from "./dto/google-auth.dto";
 import { LoginDto } from "./dto/login.dto";
 import { RegisterDto } from "./dto/register.dto";
 import { GoogleTokenVerifier } from "./google-token-verifier";
+
+/**
+ * A bcrypt hash (cost 12, like real ones) of a random string nobody knows.
+ * Compared against when no account matches, so a miss takes as long as a
+ * wrong password.
+ */
+const DUMMY_PASSWORD_HASH =
+  "$2b$12$6MwxTD0GzVe2z674jsvmmeLb5GTNHDmOUK.7tFq.31DEnwDm1nLSq";
 
 @Injectable()
 export class AuthService {
@@ -94,30 +101,37 @@ export class AuthService {
     };
   }
 
+  /**
+   * Password sign-in. Starts from the EMAIL sign-in method (`Auth`), matched
+   * through its user's email — the email itself lives on `User`.
+   *
+   * Every failure is the same 401, and an unknown email still pays for a
+   * bcrypt comparison, so neither the response nor its timing tells a caller
+   * whether an address is registered (or only signs in with Google).
+   */
   async signIn(dto: LoginDto) {
-    const user = await this.prisma.user.findFirst({
+    const auth = await this.prisma.auth.findFirst({
       where: {
-        email: { equals: normalizeEmail(dto.email), mode: "insensitive" },
+        provider: AuthProvider.EMAIL,
+        // Case-insensitive because rows created before emails were normalized
+        // may be mixed-case.
+        user: {
+          email: { equals: normalizeEmail(dto.email), mode: "insensitive" },
+        },
       },
-      include: {
-        auths: { where: { provider: AuthProvider.EMAIL } },
-      },
+      include: { user: true },
     });
-
-    if (!user) throw new NotFoundException("User not found");
-
-    // A Google-only account has no EMAIL row, so there is no password to check.
-    const password = user.auths[0]?.password;
-    if (!password) {
-      throw new UnauthorizedException("Password is not set for this account");
-    }
 
     const isPasswordValid = await passwordUtils.comparePassword(
       dto.password,
-      password,
+      auth?.password ?? DUMMY_PASSWORD_HASH,
     );
 
-    if (!isPasswordValid) throw new UnauthorizedException("Invalid password");
+    if (!auth?.password || !isPasswordValid) {
+      throw new UnauthorizedException("Invalid email or password");
+    }
+
+    const { user } = auth;
 
     const token = this.jwtService.sign({
       sub: user.id,

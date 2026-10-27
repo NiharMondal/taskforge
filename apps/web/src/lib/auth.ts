@@ -100,7 +100,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           };
         } catch (error) {
           // Map expected auth rejections to a single generic credentials error:
-          //   401 invalid password · 404 user not found · 400 validation.
+          //   401 bad email/password (the backend never says which) · 400
+          //   validation. 404 is kept for older backends that reported an
+          //   unknown email separately.
           // Anything else (500, network) is a real fault — rethrow so it
           // surfaces as a server error instead of "wrong password".
           if (

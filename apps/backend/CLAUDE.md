@@ -200,11 +200,14 @@ And `.withDefaultFilter()` is the only thing scoping the query to a tenant, so n
 
 ## Cloudinary upload lifecycle
 
-Images are uploaded by the **frontend** directly to a temp folder (`taskforge/temp/<kind>`), which
-posts back `{ url, publicId }`. The backend then either `promoteToPermanent(publicId)` (strips the
-`/temp/` segment) on a successful DB save, or deletes the temp asset. `POST /cloudinary/delete-temp`
-exists for abandoned uploads and refuses any publicId not under `/temp/`, so a saved asset cannot be
-destroyed through it. `User` stores both `avatarUrl` and `avatarPublicId`.
+Images are uploaded by the **frontend** directly to a per-user temp folder
+(`taskforge/temp/<kind>/<userId>`), which posts back `{ url, publicId }`. The backend then either
+`promoteToPermanent(publicId)` (renames it to a server-chosen id in the permanent folder, never
+overwriting) on a successful DB save, or deletes the temp asset. `POST /cloudinary/delete-temp`
+exists for abandoned uploads and only deletes from the caller's own temp folder, so neither a saved
+asset nor another user's pending upload can be destroyed through it. `User` stores both
+`avatarUrl` and `avatarPublicId`; `avatarUrl` is never taken from the client (it is the promoted
+asset's URL, Google's picture, or `null` after `avatarPublicId: null` removes the avatar).
 
 ## Issue board ordering
 

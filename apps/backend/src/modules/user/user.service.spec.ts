@@ -103,6 +103,18 @@ describe("UserService.update avatar handling", () => {
     expect(cloudinary.promoteToPermanent).not.toHaveBeenCalled();
   });
 
+  it("ignores a client-sent avatarUrl", async () => {
+    await service.update(userId, {
+      name: "Me",
+      avatarUrl: "https://evil.example/x.png",
+    });
+
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: userId },
+      data: { name: "Me" },
+    });
+  });
+
   it("updates plain fields without touching Cloudinary", async () => {
     await service.update(userId, { name: "Renamed" });
 

@@ -44,12 +44,18 @@ export class CloudinaryService {
   }
 
   /**
-   * Cleanup for an unsaved upload, exposed over HTTP. Refuses anything that is
-   * not in a temp folder so a saved (permanent) asset can never be destroyed
-   * through this endpoint, regardless of what publicId the client sends.
+   * Cleanup for an unsaved upload, exposed over HTTP. Only touches the caller's
+   * own temp folder, `taskforge/temp/<kind>/<userId>/...`: anything else (a
+   * saved asset, or another user's pending upload) is left alone, whatever
+   * publicId the client sends.
    */
-  async deleteTemp(publicId: string): Promise<void> {
-    if (!this.isTemp(publicId)) return;
+  async deleteTemp(publicId: string, userId: string): Promise<void> {
+    // [taskforge, temp, <kind>, <userId>, ...name]: the owner segment must be
+    // followed by a name, or an old-style "temp/<kind>/<name>" whose name
+    // happens to equal a user id would count as theirs.
+    const segments = publicId.split("/");
+    const isOwn = segments.length > 4 && segments[3] === userId;
+    if (!this.isTemp(publicId) || !isOwn) return;
     await this.delete(publicId);
   }
 

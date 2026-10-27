@@ -1,11 +1,28 @@
 import { PrismaService } from "@/prisma/prisma.service";
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
+import type { Prisma } from "generated/prisma/client";
 import { CreateSprintDto } from "./dto/create-sprint.dto";
 import { UpdateSprintDto } from "./dto/update-sprint.dto";
+
+type Db = Pick<Prisma.TransactionClient, "sprint">;
+
+/**
+ * A sprint can't end before it starts; the same day is fine (the web form's
+ * date pickers send both as the same instant). Either date may be absent.
+ */
+function assertDateOrder(
+  startDate: Date | string | null | undefined,
+  endDate: Date | string | null | undefined,
+) {
+  if (startDate && endDate && new Date(endDate) < new Date(startDate)) {
+    throw new BadRequestException("endDate must be on or after startDate");
+  }
+}
 
 @Injectable()
 export class SprintService {
@@ -14,6 +31,7 @@ export class SprintService {
   // CREATE
   async create(workspaceId: string, projectId: string, dto: CreateSprintDto) {
     await this.validateProject(workspaceId, projectId);
+    assertDateOrder(dto.startDate, dto.endDate);
 
     return this.prisma.sprint.create({
       data: {
@@ -40,7 +58,17 @@ export class SprintService {
     dto: UpdateSprintDto,
   ) {
     await this.validateProject(workspaceId, projectId);
-    await this.getSprint(workspaceId, sprintId);
+    const sprint = await this.getSprint(
+      this.prisma,
+      workspaceId,
+      projectId,
+      sprintId,
+    );
+    // A field the PATCH leaves out keeps its stored value; `null` clears it.
+    assertDateOrder(
+      dto.startDate !== undefined ? dto.startDate : sprint.startDate,
+      dto.endDate !== undefined ? dto.endDate : sprint.endDate,
+    );
 
     return this.prisma.sprint.update({
       where: { id: sprintId, projectId, workspaceId },
@@ -51,36 +79,52 @@ export class SprintService {
   }
 
   // START SPRINT
-  async startSprint(workspaceId: string, sprintId: string) {
-    const sprint = await this.getSprint(workspaceId, sprintId);
+  async startSprint(workspaceId: string, projectId: string, sprintId: string) {
+    // Locked per project: two starts at once would each see no active sprint
+    // and both go ahead. The lock is released when the transaction ends.
+    return this.prisma.$transaction(async (tx) => {
+      const lock = `sprint-start:${projectId}`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lock}::text, 0))`;
 
-    // ❗ Only one active sprint per project
-    const activeSprint = await this.prisma.sprint.findFirst({
-      where: {
-        projectId: sprint.projectId,
-        workspaceId,
-        isActive: true,
-      },
-    });
+      const sprint = await this.getSprint(tx, workspaceId, projectId, sprintId);
 
-    if (activeSprint) {
-      throw new ForbiddenException(
-        "Another sprint is already active in this project",
-      );
-    }
+      if (sprint.completedAt) {
+        throw new BadRequestException(
+          "This sprint has ended and can't be started again",
+        );
+      }
 
-    return this.prisma.sprint.update({
-      where: { id: sprintId },
-      data: {
-        isActive: true,
-        startDate: new Date(),
-      },
+      // ❗ Only one active sprint per project
+      const activeSprint = await tx.sprint.findFirst({
+        where: { projectId, workspaceId, isActive: true },
+      });
+
+      if (activeSprint) {
+        throw new ForbiddenException(
+          activeSprint.id === sprintId
+            ? "This sprint is already active"
+            : "Another sprint is already active in this project",
+        );
+      }
+
+      return tx.sprint.update({
+        where: { id: sprintId },
+        data: {
+          isActive: true,
+          startDate: new Date(),
+        },
+      });
     });
   }
 
   // END SPRINT
-  async endSprint(workspaceId: string, sprintId: string) {
-    const sprint = await this.getSprint(workspaceId, sprintId);
+  async endSprint(workspaceId: string, projectId: string, sprintId: string) {
+    const sprint = await this.getSprint(
+      this.prisma,
+      workspaceId,
+      projectId,
+      sprintId,
+    );
 
     if (!sprint.isActive) {
       throw new ForbiddenException("Sprint is not active");
@@ -99,58 +143,29 @@ export class SprintService {
         },
       });
 
+      const now = new Date();
       return tx.sprint.update({
         where: { id: sprintId },
         data: {
           isActive: false,
-          endDate: new Date(),
+          endDate: now,
+          completedAt: now,
         },
       });
     });
   }
 
-  // ASSIGN ISSUE TO SPRINT
-  async addIssue(workspaceId: string, sprintId: string, issueId: string) {
-    const sprint = await this.getSprint(workspaceId, sprintId);
-
-    const issue = await this.prisma.issue.findFirst({
-      where: { id: issueId, workspaceId },
-    });
-
-    if (!issue) throw new NotFoundException("Issue not found");
-
-    // ❗ Must belong to same project
-    if (issue.projectId !== sprint.projectId) {
-      throw new ForbiddenException(
-        "Issue must belong to the same project as sprint",
-      );
-    }
-
-    return this.prisma.issue.update({
-      where: { id: issueId },
-      data: { sprintId },
-    });
-  }
-
-  // REMOVE ISSUE FROM SPRINT
-  async removeIssue(workspaceId: string, issueId: string) {
-    const issue = await this.prisma.issue.findFirst({
-      where: { id: issueId, workspaceId },
-    });
-
-    if (!issue) throw new NotFoundException("Issue not found");
-
-    return this.prisma.issue.update({
-      where: { id: issueId },
-      data: { sprintId: null },
-    });
-  }
-
   // HELPERS
 
-  private async getSprint(workspaceId: string, sprintId: string) {
-    const sprint = await this.prisma.sprint.findFirst({
-      where: { id: sprintId, workspaceId },
+  /** The sprint, if it belongs to this workspace *and* the project in the URL. */
+  private async getSprint(
+    db: Db,
+    workspaceId: string,
+    projectId: string,
+    sprintId: string,
+  ) {
+    const sprint = await db.sprint.findFirst({
+      where: { id: sprintId, workspaceId, projectId },
     });
 
     if (!sprint) throw new NotFoundException("Sprint not found");

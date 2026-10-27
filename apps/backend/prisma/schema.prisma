@@ -203,9 +203,12 @@ model Sprint {
   name String
   goal String?
 
-  startDate DateTime?
-  endDate   DateTime?
-  isActive  Boolean   @default(false)
+  startDate   DateTime?
+  endDate     DateTime?
+  isActive    Boolean   @default(false)
+  // Set when the sprint is ended; a completed sprint can't be started again.
+  // (`endDate` can't mark this: it is also a planned date set on create.)
+  completedAt DateTime?
 
   projectId   String
   workspaceId String
@@ -272,6 +275,10 @@ model Issue {
   @@index([workspaceId, projectId])
   @@index([workspaceId, status])
   @@index([workspaceId, assigneeId])
+  // Foreign keys Postgres doesn't index on its own: ending a sprint filters on
+  // sprintId, and deleting a parent cascades through parentIssueId.
+  @@index([sprintId])
+  @@index([parentIssueId])
   // Serves the board query: WHERE projectId=? AND status=? ORDER BY rank.
   @@index([projectId, status, rank])
 }
@@ -319,6 +326,8 @@ model IssueLabel {
   label Label @relation(fields: [labelId], references: [id], onDelete: Cascade)
 
   @@id([issueId, labelId])
+  // The primary key leads with issueId, so it can't serve lookups by label.
+  @@index([labelId])
 }
 
 //// INVITATIONS
@@ -338,7 +347,6 @@ model Invitation {
   assignedRole Role?     @relation(fields: [roleId], references: [id], onDelete: NoAction)
 
   @@unique([email, workspaceId])
-  @@index([token])
   @@index([workspaceId])
   @@index([roleId])
 }

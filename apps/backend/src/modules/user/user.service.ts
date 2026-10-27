@@ -36,7 +36,11 @@ export class UserService {
   async update(id: string, dto: UpdateUserDto) {
     const existing = await this.findOne(id);
 
-    const { avatarPublicId, ...rest } = dto;
+    const { avatarPublicId } = dto;
+    // `avatarUrl` is never taken from the client: it always comes from the
+    // asset the server promoted (or Google, or null on removal), so it can't
+    // point somewhere other than `avatarPublicId`.
+    const rest = { name: dto.name };
 
     // An explicit null removes the avatar: clear both fields, then destroy the
     // stored asset (best-effort; `delete` only logs a Cloudinary failure).

@@ -5,6 +5,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Matches,
   Max,
   Min,
 } from "class-validator";
@@ -30,6 +31,17 @@ export class QueryIssuesDto {
   @IsOptional()
   @IsUUID()
   sprintId?: string;
+
+  /**
+   * `field:direction`, e.g. `rank:asc`. Declared so the whitelisting pipe
+   * keeps it; the fields match `allowedFields` in `IssueService.findAll`.
+   */
+  @IsOptional()
+  @Matches(/^(createdAt|priority|status|rank):(asc|desc)$/, {
+    message:
+      "sort must be one of createdAt, priority, status or rank, then :asc or :desc",
+  })
+  sort?: string;
 
   @IsOptional()
   @Type(() => Number)

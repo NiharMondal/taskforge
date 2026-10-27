@@ -10,6 +10,7 @@ export class CreateWorkspaceDto {
   @IsString()
   @IsNotEmpty()
   @MinLength(3)
+  @MaxLength(100)
   name!: string;
 
   @IsOptional()

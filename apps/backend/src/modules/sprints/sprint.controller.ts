@@ -78,9 +78,14 @@ export class SprintController {
   @RequirePermission("sprint:manage")
   async start(
     @WorkspaceId() workspaceId: string,
+    @Param("projectId") projectId: string,
     @Param("sprintId") sprintId: string,
   ) {
-    const sprint = await this.sprintService.startSprint(workspaceId, sprintId);
+    const sprint = await this.sprintService.startSprint(
+      workspaceId,
+      projectId,
+      sprintId,
+    );
 
     return sendResponse({
       statusCode: HttpStatus.OK,
@@ -94,9 +99,14 @@ export class SprintController {
   @RequirePermission("sprint:manage")
   async end(
     @WorkspaceId() workspaceId: string,
+    @Param("projectId") projectId: string,
     @Param("sprintId") sprintId: string,
   ) {
-    const sprint = await this.sprintService.endSprint(workspaceId, sprintId);
+    const sprint = await this.sprintService.endSprint(
+      workspaceId,
+      projectId,
+      sprintId,
+    );
 
     return sendResponse({
       statusCode: HttpStatus.OK,

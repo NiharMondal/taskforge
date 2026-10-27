@@ -29,7 +29,12 @@ export function RegisterForm() {
 
 	const onSubmit = async (values: RegisterInput) => {
 		try {
-			const res = await register(values);
+			// Only what the backend reads: `confirmPassword` is form-only.
+			const res = await register({
+				name: values.name,
+				email: values.email,
+				password: values.password,
+			});
 			if (res.success) {
 				await signIn("credentials", {
 					email: values.email,

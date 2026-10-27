@@ -69,7 +69,7 @@ These hold on both sides of the wire — breaking one on either side breaks the 
 
 **Routes are `/api/v1/...`** and issues are project-scoped: `/projects/:projectId/issues`, `/projects/:projectId/sprints`. There is no workspace-wide issues endpoint (the frontend's `/issues` route just redirects to `/projects`).
 
-**Cloudinary uploads are two-phase.** The browser uploads directly to a `temp/` folder with an unsigned preset and posts back `{ avatarUrl, avatarPublicId }`; the backend *promotes* the asset on successful save, or deletes it. `POST /cloudinary/delete-temp` handles abandoned uploads and refuses any publicId not under `/temp/`. The frontend never holds the API secret.
+**Cloudinary uploads are two-phase.** The browser uploads directly to a `temp/` folder with an unsigned preset and posts back `{ avatarUrl, avatarPublicId }`; the backend *promotes* the asset on successful save, or deletes it. `POST /cloudinary/delete-temp` handles abandoned uploads and only deletes from the caller's own temp folder (`taskforge/temp/<kind>/<userId>/…`), so neither a saved asset nor someone else's pending upload can be destroyed through it. The backend never takes `avatarUrl` from the client; it comes from the promoted asset. The frontend never holds the API secret.
 
 ## Known gaps
 

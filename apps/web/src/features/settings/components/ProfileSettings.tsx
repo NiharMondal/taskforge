@@ -106,6 +106,7 @@ export default function ProfileSettings() {
 				) : (
 					<ProfileForm
 						key={user.id}
+						userId={user.id}
 						defaultValues={{
 							name: user.name,
 							avatarUrl: user.avatarUrl ?? "",

@@ -6,7 +6,8 @@ export const workspaceSchema = z.object({
 		.string()
 		.trim()
 		.min(1, "Name is required")
-		.min(3, "Name must be at least 3 characters"),
+		.min(3, "Name must be at least 3 characters")
+		.max(100, "Name must be at most 100 characters"),
 	description: z
 		.string()
 		.max(500, "Description must be at most 500 characters")

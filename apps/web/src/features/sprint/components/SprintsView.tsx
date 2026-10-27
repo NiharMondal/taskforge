@@ -265,6 +265,11 @@ function SprintRow({
 							Active
 						</Chip>
 					)}
+					{sprint.completedAt && (
+						<Chip size="sm" variant="soft">
+							Completed
+						</Chip>
+					)}
 				</div>
 				{sprint.goal && (
 					<p className="text-sm text-muted">{sprint.goal}</p>
@@ -287,7 +292,7 @@ function SprintRow({
 							<Square className="h-3.5 w-3.5" />
 							End
 						</Button>
-					) : (
+					) : sprint.completedAt ? null : (
 						// The span carries the "why is this greyed out" hint: the
 						// Button doesn't forward `title`, and a disabled button
 						// swallows hover anyway.

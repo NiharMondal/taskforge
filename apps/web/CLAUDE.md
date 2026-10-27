@@ -154,7 +154,7 @@ Rich text is TipTap (`@tiptap/react` + `starter-kit`) via `src/components/ui/Ric
 
 ### Image upload (Cloudinary)
 
-Two-phase, per `spec/cloudinary.md`: the browser uploads directly to Cloudinary via an unsigned preset into a `temp/` folder (`uploadToCloudinary` in `src/lib/cloudinary.ts`), then sends `{ avatarUrl, avatarPublicId }` to the backend, which *promotes* the asset on save. Removing a saved avatar sends `avatarPublicId: null`, which clears both fields and deletes the stored asset. Unsaved temp assets are cleaned up through the backend's `/cloudinary/delete-temp` (best-effort; the frontend never holds the API secret).
+Two-phase, per `spec/cloudinary.md`: the browser uploads directly to Cloudinary via an unsigned preset into the user's own temp folder, `temp/user-avatar/<userId>` (`uploadToCloudinary` in `src/lib/cloudinary.ts`; the backend's delete-temp only accepts that folder), then sends `{ avatarUrl, avatarPublicId }` to the backend, which *promotes* the asset on save. Removing a saved avatar sends `avatarPublicId: null`, which clears both fields and deletes the stored asset. Unsaved temp assets are cleaned up through the backend's `/cloudinary/delete-temp` (best-effort; the frontend never holds the API secret).
 
 ### UI library
 

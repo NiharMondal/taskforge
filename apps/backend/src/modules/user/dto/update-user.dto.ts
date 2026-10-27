@@ -1,11 +1,14 @@
 import { IsOptionalNonNull } from "@/common/decorators/is-optional-non-null.decorator";
-import { IsOptional, IsString, IsUrl } from "class-validator";
+import { IsOptional, IsString, IsUrl, MaxLength } from "class-validator";
 
 export class UpdateUserDto {
   @IsString()
   @IsOptionalNonNull()
+  @MaxLength(100)
   name?: string;
 
+  // Accepted for compatibility but ignored: the server sets avatarUrl from the
+  // asset it promotes (see UserService.update).
   @IsUrl()
   @IsOptional()
   avatarUrl?: string;

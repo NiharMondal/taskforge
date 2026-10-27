@@ -83,14 +83,24 @@ describe("CloudinaryService", () => {
   });
 
   describe("deleteTemp", () => {
-    it("deletes a temp upload", async () => {
-      await service.deleteTemp(tempId);
-      expect(mockDestroy).toHaveBeenCalledWith(tempId, { invalidate: true });
+    const ownTempId = "taskforge/temp/user-avatar/user-1/abc";
+
+    it("deletes the caller's own temp upload", async () => {
+      await service.deleteTemp(ownTempId, "user-1");
+      expect(mockDestroy).toHaveBeenCalledWith(ownTempId, { invalidate: true });
+    });
+
+    it("ignores another user's temp upload", async () => {
+      await service.deleteTemp(ownTempId, "user-2");
+      // Uploaded before per-user folders: no owner, so nobody can delete it.
+      await service.deleteTemp(tempId, "user-1");
+      await service.deleteTemp(tempId, "abc");
+      expect(mockDestroy).not.toHaveBeenCalled();
     });
 
     it("ignores anything outside the temp prefix", async () => {
-      await service.deleteTemp("taskforge/user-avatar/someone");
-      await service.deleteTemp("taskforge/user-avatar/someone/temp/x");
+      await service.deleteTemp("taskforge/user-avatar/user-1/x", "user-1");
+      await service.deleteTemp("taskforge/user-avatar/someone/temp/x", "temp");
       expect(mockDestroy).not.toHaveBeenCalled();
     });
   });

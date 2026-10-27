@@ -11,7 +11,7 @@
     "build": "pnpm --filter \"./apps/*\" run build",
     "lint": "pnpm --filter \"./apps/*\" run lint",
     "lint:check": "pnpm --filter @taskforge/backend run lint:check && pnpm --filter @taskforge/web run lint",
-    "typecheck": "pnpm --filter @taskforge/web exec tsc --noEmit && pnpm --filter @taskforge/backend exec tsc --noEmit",
+    "typecheck": "pnpm --filter @taskforge/web run typecheck && pnpm --filter @taskforge/backend exec tsc --noEmit",
     "test": "pnpm --filter @taskforge/backend run test",
     "test:e2e": "pnpm --filter @taskforge/backend run test:e2e",
     "db:generate": "pnpm --filter @taskforge/backend exec prisma generate",

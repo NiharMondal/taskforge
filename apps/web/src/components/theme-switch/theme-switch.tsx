@@ -1,6 +1,6 @@
 "use client";
 
-import {Button, DropdownItem, DropdownMenu, DropdownPopover, DropdownRoot, DropdownTrigger, Label} from "@heroui/react";
+import {Button, DropdownItem, DropdownMenu, DropdownPopover, DropdownRoot, Label} from "@heroui/react";
 import {Moon, Sun, Monitor} from "lucide-react";
 import {useTheme} from "next-themes";
 import {useSyncExternalStore} from "react";

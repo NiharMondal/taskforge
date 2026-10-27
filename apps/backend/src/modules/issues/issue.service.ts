@@ -13,10 +13,24 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { generateKeyBetween } from "fractional-indexing";
+import type { Prisma } from "generated/prisma/client";
 import { IssueStatus } from "generated/prisma/enums";
 import { CreateIssueDto } from "./dto/create-issue.dto";
 import { QueryIssuesDto } from "./dto/query-issues.dto";
 import { UpdateIssueDto } from "./dto/update-issue.dto";
+
+/** The Prisma client, or a transaction client from `$transaction`. */
+type Db = Pick<Prisma.TransactionClient, "issue">;
+
+/** True when the fractional-indexing library can build a key after `rank`. */
+function isValidRank(rank: string): boolean {
+  try {
+    generateKeyBetween(rank, null);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 @Injectable()
 export class IssueService {
@@ -39,20 +53,22 @@ export class IssueService {
     // which ranks it has to sort after.
     const status = dto.status ?? IssueStatus.BACKLOG;
 
-    return this.prisma.issue.create({
-      data: {
-        title: dto.title,
-        description: dto.description,
-        status,
-        priority: dto.priority,
-        sprintId: dto.sprintId,
-        assigneeId: dto.assigneeId,
-        rank: await this.appendRank(workspaceId, projectId, status),
-        workspaceId,
-        projectId,
-        reporterId,
-      },
-    });
+    return this.inLockedLane(projectId, status, async (tx) =>
+      tx.issue.create({
+        data: {
+          title: dto.title,
+          description: dto.description,
+          status,
+          priority: dto.priority,
+          sprintId: dto.sprintId,
+          assigneeId: dto.assigneeId,
+          rank: await this.appendRank(tx, workspaceId, projectId, status),
+          workspaceId,
+          projectId,
+          reporterId,
+        },
+      }),
+    );
   }
 
   async findAll(workspaceId: string, projectId: string, query: QueryIssuesDto) {
@@ -125,23 +141,43 @@ export class IssueService {
 
     await this.validateAssignee(workspaceId, dto.assigneeId);
     await this.validateSprint(workspaceId, projectId, dto.sprintId);
-    return this.prisma.issue.update({
-      where: { id: issueId },
-      data: {
-        title: dto.title,
-        description: dto.description,
-        status: dto.status,
-        priority: dto.priority,
-        sprintId: dto.sprintId,
-        assigneeId: dto.assigneeId,
-        rank: await this.resolveUpdateRank(
-          workspaceId,
-          projectId,
-          issue.status,
-          dto,
+
+    const write = (db: Db, rank: string | undefined) =>
+      db.issue.update({
+        where: { id: issueId },
+        data: {
+          title: dto.title,
+          description: dto.description,
+          status: dto.status,
+          priority: dto.priority,
+          sprintId: dto.sprintId,
+          assigneeId: dto.assigneeId,
+          rank,
+        },
+      });
+
+    if (dto.rank !== undefined) {
+      // The board computed the key on drop from what the user saw; store it
+      // verbatim.
+      this.validateRank(dto.rank);
+      return write(this.prisma, dto.rank);
+    }
+
+    // A status change without a rank (the board falls back to a status-only
+    // PATCH when it can't compute a key) would keep the rank the card had in
+    // the lane it left and sort arbitrarily in the new one, so append it to the
+    // end of the target lane — the same way a create does.
+    const targetLane = dto.status;
+    if (targetLane && targetLane !== issue.status) {
+      return this.inLockedLane(projectId, targetLane, async (tx) =>
+        write(
+          tx,
+          await this.appendRank(tx, workspaceId, projectId, targetLane),
         ),
-      },
-    });
+      );
+    }
+
+    return write(this.prisma, undefined);
   }
 
   async remove(workspaceId: string, projectId: string, issueId: string) {
@@ -153,46 +189,42 @@ export class IssueService {
   }
 
   /**
-   * The rank to persist for an update, or `undefined` to leave the stored one
-   * alone (Prisma ignores undefined fields).
-   *
-   * The board computes the fractional key client-side on drop and sends it with
-   * the new status — that key is authoritative, it is what the user just saw.
-   * When a status change arrives *without* a rank (the frontend falls back to a
-   * status-only PATCH when it cannot compute a key) the card would otherwise
-   * keep the rank it held in the lane it left and sort arbitrarily in its new
-   * one, so append it to the end of the target lane instead.
+   * Run `write` in a transaction holding a lock on one `(project, status)`
+   * lane. Appending reads the lane's last rank and writes the next one; without
+   * the lock, two appends at the same moment read the same last rank and give
+   * both cards the same key, which the board can't place anything between.
+   * The advisory lock is released when the transaction ends.
    */
-  private async resolveUpdateRank(
-    workspaceId: string,
+  private inLockedLane<T>(
     projectId: string,
-    currentStatus: IssueStatus,
-    dto: UpdateIssueDto,
-  ) {
-    if (dto.rank !== undefined) {
-      this.validateRank(dto.rank);
-      return dto.rank;
-    }
-
-    if (!dto.status || dto.status === currentStatus) return undefined;
-
-    return this.appendRank(workspaceId, projectId, dto.status);
+    status: IssueStatus,
+    write: (tx: Db) => Promise<T>,
+  ): Promise<T> {
+    return this.prisma.$transaction(async (tx) => {
+      const lane = `issue-lane:${projectId}:${status}`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lane}::text, 0))`;
+      return write(tx);
+    });
   }
 
   /**
    * A fractional index that sorts after every ranked issue in a
-   * `(project, status)` lane — i.e. appends to the end of the lane.
+   * `(project, status)` lane — i.e. appends to the end of the lane. Call it
+   * inside `inLockedLane` for that lane.
    *
    * Un-ranked rows are filtered out: Postgres sorts NULLs first on `DESC`, so
-   * a single un-backfilled row would otherwise shadow the real maximum.
+   * a single un-backfilled row would otherwise shadow the real maximum. The
+   * column sorts in byte order (COLLATE "C"), matching the keys.
    */
   private async appendRank(
+    db: Db,
     workspaceId: string,
     projectId: string,
     status: IssueStatus,
   ) {
-    const last = await this.prisma.issue.findFirst({
-      where: { workspaceId, projectId, status, rank: { not: null } },
+    const where = { workspaceId, projectId, status, rank: { not: null } };
+    const last = await db.issue.findFirst({
+      where,
       orderBy: { rank: "desc" },
       select: { rank: true },
     });
@@ -200,18 +232,24 @@ export class IssueService {
     try {
       return generateKeyBetween(last?.rank ?? null, null);
     } catch {
-      // A stored key that isn't a valid fractional index (hand-edited row, or a
-      // botched backfill) would otherwise 500 every create in that lane. Start a
-      // fresh sequence instead — the card may land mid-lane, but the write lands.
-      return generateKeyBetween(null, null);
+      // The highest stored key isn't a valid fractional index (hand-edited
+      // row, botched backfill). Append after the highest key that *is* valid
+      // rather than restarting at "a0", which would likely collide.
+      const ranks = await db.issue.findMany({ where, select: { rank: true } });
+      const highestValid = ranks
+        .map((r) => r.rank as string)
+        .filter(isValidRank)
+        .reduce<string | null>(
+          (max, r) => (max === null || r > max ? r : max),
+          null,
+        );
+      return generateKeyBetween(highestValid, null);
     }
   }
 
   /** Reject a client-supplied rank the fractional-index library can't build on. */
   private validateRank(rank: string) {
-    try {
-      generateKeyBetween(rank, null);
-    } catch {
+    if (!isValidRank(rank)) {
       throw new BadRequestException("Invalid issue rank");
     }
   }

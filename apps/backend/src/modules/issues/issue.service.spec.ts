@@ -13,7 +13,11 @@ describe("IssueService.update permission rules", () => {
 
   /** The issue as stored; nobody involved is `me` unless a test says so. */
   let stored: { reporterId: string; assigneeId: string | null };
-  let prisma: { issue: { findFirst: jest.Mock; update: jest.Mock } };
+  let prisma: {
+    issue: { findFirst: jest.Mock; update: jest.Mock };
+    $transaction: jest.Mock;
+    $executeRaw: jest.Mock;
+  };
   let service: IssueService;
 
   beforeEach(() => {
@@ -29,7 +33,12 @@ describe("IssueService.update permission rules", () => {
         ),
         update: jest.fn().mockResolvedValue({ id: issueId }),
       },
+      $transaction: jest.fn(),
+      $executeRaw: jest.fn().mockResolvedValue(1),
     };
+    prisma.$transaction.mockImplementation((cb: (tx: unknown) => unknown) =>
+      cb(prisma),
+    );
     service = new IssueService(prisma as unknown as PrismaService);
   });
 
@@ -140,6 +149,8 @@ describe("IssueService.create permission rules", () => {
   let prisma: {
     issue: { create: jest.Mock; findFirst: jest.Mock };
     project: { findFirst: jest.Mock };
+    $transaction: jest.Mock;
+    $executeRaw: jest.Mock;
   };
   let service: IssueService;
 
@@ -150,7 +161,12 @@ describe("IssueService.create permission rules", () => {
         findFirst: jest.fn().mockResolvedValue(null),
       },
       project: { findFirst: jest.fn().mockResolvedValue({ id: "proj-1" }) },
+      $transaction: jest.fn(),
+      $executeRaw: jest.fn().mockResolvedValue(1),
     };
+    prisma.$transaction.mockImplementation((cb: (tx: unknown) => unknown) =>
+      cb(prisma),
+    );
     service = new IssueService(prisma as unknown as PrismaService);
   });
 
@@ -177,6 +193,122 @@ describe("IssueService.create permission rules", () => {
     await create(WorkspaceRole.ADMIN, { status: IssueStatus.DONE });
 
     expect(prisma.issue.create).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("IssueService lane ranks", () => {
+  const workspaceId = "ws-1";
+  const projectId = "proj-1";
+  const owner = accessAs(WorkspaceRole.OWNER, { workspaceId });
+
+  /** Every call on the fake Prisma, in order, so lock-before-read is checkable. */
+  let calls: string[];
+  let prisma: {
+    issue: {
+      findFirst: jest.Mock;
+      findMany: jest.Mock;
+      create: jest.Mock;
+      update: jest.Mock;
+    };
+    project: { findFirst: jest.Mock };
+    $transaction: jest.Mock;
+    $executeRaw: jest.Mock;
+  };
+  let service: IssueService;
+  /** The highest stored rank in the lane, as the DB would return it. */
+  let laneMax: string | null;
+
+  beforeEach(() => {
+    calls = [];
+    laneMax = "a3";
+    const track =
+      <T>(name: string, value: (args: never) => T) =>
+      (args: never) => {
+        calls.push(name);
+        return Promise.resolve(value(args));
+      };
+    prisma = {
+      issue: {
+        findFirst: jest.fn(
+          track("findFirst", (args: { orderBy?: unknown }) =>
+            args.orderBy
+              ? laneMax && { rank: laneMax }
+              : {
+                  id: "issue-1",
+                  status: IssueStatus.TODO,
+                  reporterId: "u",
+                  assigneeId: null,
+                },
+          ),
+        ),
+        findMany: jest.fn(
+          track("findMany", () => [
+            { rank: "a1" },
+            { rank: "a5" },
+            { rank: "!!broken" },
+          ]),
+        ),
+        create: jest.fn(track("create", () => ({ id: "issue-new" }))),
+        update: jest.fn(track("update", () => ({ id: "issue-1" }))),
+      },
+      project: { findFirst: jest.fn().mockResolvedValue({ id: projectId }) },
+      $transaction: jest.fn((cb: (tx: unknown) => unknown) => {
+        calls.push("begin");
+        return cb(prisma);
+      }),
+      $executeRaw: jest.fn(track("lock", () => 1)),
+    };
+    service = new IssueService(prisma as unknown as PrismaService);
+  });
+
+  const rankWritten = (mock: jest.Mock) =>
+    (mock.mock.calls[0] as [{ data: { rank?: string } }])[0].data.rank;
+
+  it("locks the lane before reading its last rank, and appends after it", async () => {
+    await service.create(workspaceId, projectId, "u", owner, {
+      title: "New",
+      status: IssueStatus.TODO,
+    });
+
+    expect(calls).toEqual(["begin", "lock", "findFirst", "create"]);
+    expect(rankWritten(prisma.issue.create)).toBe("a4");
+  });
+
+  it("locks the target lane for a status change sent without a rank", async () => {
+    await service.update(workspaceId, projectId, "issue-1", owner, {
+      status: IssueStatus.IN_PROGRESS,
+    });
+
+    expect(calls).toEqual([
+      "findFirst",
+      "begin",
+      "lock",
+      "findFirst",
+      "update",
+    ]);
+    expect(rankWritten(prisma.issue.update)).toBe("a4");
+  });
+
+  it("stores a client-computed rank as sent, without locking", async () => {
+    await service.update(workspaceId, projectId, "issue-1", owner, {
+      status: IssueStatus.IN_PROGRESS,
+      rank: "a0V",
+    });
+
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(rankWritten(prisma.issue.update)).toBe("a0V");
+  });
+
+  it("appends after the highest valid key when the stored maximum is corrupt", async () => {
+    laneMax = "!!broken";
+
+    await service.create(workspaceId, projectId, "u", owner, {
+      title: "New",
+      status: IssueStatus.TODO,
+    });
+
+    // Not "a0", which would collide with the start of the lane.
+    expect(rankWritten(prisma.issue.create)).toBe("a6");
   });
 });
 

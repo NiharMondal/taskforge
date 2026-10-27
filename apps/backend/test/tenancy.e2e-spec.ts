@@ -319,4 +319,20 @@ describe("Tenancy (e2e)", () => {
 
     expect(appended.rank > "a0").toBe(true);
   });
+
+  it("gives cards created at the same moment in one lane distinct ranks (H7)", async () => {
+    const lane = "QA_REQUESTED";
+    const created = await Promise.all(
+      Array.from({ length: 8 }, (_, i) =>
+        api()
+          .post(`/api/v1/projects/${projectId}/issues`)
+          .set(as(aliceToken, aliceWs))
+          .send({ title: `Parallel ${i}`, status: lane })
+          .expect(201),
+      ),
+    );
+
+    const ranks = created.map((res) => data<{ rank: string }>(res).rank);
+    expect(new Set(ranks).size).toBe(ranks.length);
+  });
 });

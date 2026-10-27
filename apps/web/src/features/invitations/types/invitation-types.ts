@@ -34,3 +34,16 @@ export interface AcceptInvitationResult {
   workspaceId: string;
   role?: WorkspaceRole;
 }
+
+/**
+ * Payload of the public `GET /invitations/validate?token=` — what the accept
+ * page shows before the invitee commits. Only returned for a PENDING,
+ * unexpired token; anything else is a 4xx.
+ */
+export interface InvitationPreview {
+  email: string;
+  workspaceId: string;
+  workspaceName: string;
+  role: WorkspaceRole;
+  expiresAt: string;
+}

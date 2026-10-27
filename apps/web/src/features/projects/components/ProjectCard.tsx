@@ -8,28 +8,43 @@ import {
 	Chip,
 	toast,
 } from "@heroui/react";
-import { Pencil } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 import Link from "next/link";
 
 import type { Project } from "../types/project-types";
 import { useBoolean } from "ahooks";
+import ConfirmModal from "@/components/ui/confirm-modal";
 import MyModal from "@/components/ui/my-modal";
 import ProjectForm from "./ProjectForm";
-import { useUpdateProject } from "../hooks/use-projects";
+import { useDeleteProject, useUpdateProject } from "../hooks/use-projects";
 import { TProjectFormValues } from "../schema/project-schema";
 import { getApiErrorMessage } from "@/lib/api-error";
 
 interface ProjectCardProps {
 	project: Project;
-	/** OWNER/ADMIN only: shows the edit control. */
+	/** OWNER/ADMIN only: shows the edit and delete controls. */
 	canManage: boolean;
 }
 
 export default function ProjectCard({ project, canManage }: ProjectCardProps) {
 	const [isOpen, { setTrue: openModal, setFalse: closeModal }] = useBoolean();
+	const [isDeleteOpen, { setTrue: openDelete, setFalse: closeDelete }] =
+		useBoolean();
 
 	const { mutateAsync: updateProject, isPending: isUpdating } =
 		useUpdateProject(project.workspaceId);
+	const { mutateAsync: deleteProject, isPending: isDeleting } =
+		useDeleteProject(project.workspaceId);
+
+	const handleDeleteProject = async () => {
+		try {
+			const res = await deleteProject(project.id);
+			toast.success(res.message || "Project deleted");
+			closeDelete();
+		} catch (error) {
+			toast.danger(getApiErrorMessage(error, "Failed to delete project"));
+		}
+	};
 
 	const handleUpdateProject = async (values: TProjectFormValues) => {
 		try {
@@ -54,16 +69,27 @@ export default function ProjectCard({ project, canManage }: ProjectCardProps) {
 					<CardTitle className="text-base">{project.name}</CardTitle>
 
 					{canManage && (
-						<Button
-							isIconOnly
-							size="sm"
-							variant="ghost"
-							aria-label={`Edit ${project.name}`}
-							className="relative z-10 -mr-1 -mt-1"
-							onClick={openModal}
-						>
-							<Pencil className="size-4" aria-hidden />
-						</Button>
+						<div className="relative z-10 -mr-1 -mt-1 flex gap-1">
+							<Button
+								isIconOnly
+								size="sm"
+								variant="ghost"
+								aria-label={`Edit ${project.name}`}
+								onClick={openModal}
+							>
+								<Pencil className="size-4" aria-hidden />
+							</Button>
+							<Button
+								isIconOnly
+								size="sm"
+								variant="ghost"
+								aria-label={`Delete ${project.name}`}
+								className="text-danger"
+								onClick={openDelete}
+							>
+								<Trash2 className="size-4" aria-hidden />
+							</Button>
+						</div>
 					)}
 				</CardHeader>
 
@@ -99,6 +125,28 @@ export default function ProjectCard({ project, canManage }: ProjectCardProps) {
 					onSuccess={closeModal}
 				/>
 			</MyModal>
+
+			<ConfirmModal
+				isOpen={isDeleteOpen}
+				onClose={closeDelete}
+				title="Delete project"
+				description={
+					<>
+						Delete{" "}
+						<span className="font-medium text-foreground">
+							{project.name}
+						</span>{" "}
+						with all of its {project._count?.issues ?? 0} issues and{" "}
+						{project._count?.sprints ?? 0} sprints? This can’t be
+						undone.
+					</>
+				}
+				confirmLabel="Delete project"
+				pendingLabel="Deleting…"
+				isPending={isDeleting}
+				onConfirm={handleDeleteProject}
+				typeToConfirm={project.name}
+			/>
 		</>
 	);
 }

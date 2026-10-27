@@ -24,5 +24,6 @@ export interface User {
 export interface UpdateProfileDto {
 	name?: string;
 	avatarUrl?: string;
-	avatarPublicId?: string;
+	/** `null` removes the avatar (the backend also deletes the stored image). */
+	avatarPublicId?: string | null;
 }

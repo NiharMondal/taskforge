@@ -92,6 +92,17 @@ describe("UserService.update avatar handling", () => {
     );
   });
 
+  it("removes the avatar on an explicit null and destroys the stored asset", async () => {
+    await service.update(userId, { avatarPublicId: null, avatarUrl: "x" });
+
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: userId },
+      data: { avatarUrl: null, avatarPublicId: null },
+    });
+    expect(cloudinary.delete).toHaveBeenCalledWith(ownPublicId);
+    expect(cloudinary.promoteToPermanent).not.toHaveBeenCalled();
+  });
+
   it("updates plain fields without touching Cloudinary", async () => {
     await service.update(userId, { name: "Renamed" });
 

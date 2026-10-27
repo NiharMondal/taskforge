@@ -1,6 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { createProject, getProjects, updateProject } from "../api/project-api";
+import { issueKeys } from "@/features/issues/hooks/use-issues";
+import { sprintKeys } from "@/features/sprint/hooks/use-sprints";
+
+import {
+  createProject,
+  deleteProject,
+  getProjects,
+  updateProject,
+} from "../api/project-api";
 import type { Project } from "../types/project-types";
 import type { TProjectFormValues } from "../schema/project-schema";
 
@@ -76,6 +84,31 @@ export function useUpdateProject(workspaceId: string) {
     },
 
     onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: key });
+    },
+  });
+}
+
+/**
+ * Delete a project. The backend cascades its issues and sprints, so their
+ * cache entries are dropped too instead of lingering under a dead project id.
+ */
+export function useDeleteProject(workspaceId: string) {
+  const queryClient = useQueryClient();
+  const key = projectKeys.list(workspaceId);
+
+  return useMutation({
+    mutationFn: (projectId: string) => deleteProject(workspaceId, projectId),
+    onSuccess: (_res, projectId) => {
+      queryClient.setQueryData<Project[]>(key, (old) =>
+        old?.filter((project) => project.id !== projectId),
+      );
+      queryClient.removeQueries({
+        queryKey: issueKeys.list(workspaceId, projectId),
+      });
+      queryClient.removeQueries({
+        queryKey: sprintKeys.list(workspaceId, projectId),
+      });
       queryClient.invalidateQueries({ queryKey: key });
     },
   });

@@ -2,6 +2,7 @@
 import { useMemo } from "react";
 
 import { Spinner } from "@heroui/react";
+import { useRouter } from "next/navigation";
 
 import ErrorAlert from "@/components/ui/error-alert";
 import { useMemberships } from "@/features/memberships/hooks/use-memberships";
@@ -16,6 +17,7 @@ import {
 	TIssueContentValues,
 	TIssueDetailsValues,
 } from "../schema/issue-schema";
+import DeleteIssueButton from "./DeleteIssueButton";
 import IssueContentForm from "./IssueContentForm";
 import IssueDetailsPanel from "./IssueDetailsPanel";
 import { NO_SPRINT, UNASSIGNED } from "./IssueForm";
@@ -26,6 +28,7 @@ type Props = {
 };
 
 export default function IssueDetailComponent({ projectId, issueId }: Props) {
+	const router = useRouter();
 	const { activeWorkspaceId } = useWorkspace();
 	const workspaceId = activeWorkspaceId ?? "";
 	const {
@@ -97,7 +100,7 @@ export default function IssueDetailComponent({ projectId, issueId }: Props) {
 					canEdit={permissions.canEditIssueFields}
 				/>
 			</div>
-			<div className="xl:col-span-2">
+			<div className="xl:col-span-2 flex flex-col gap-3">
 				<IssueDetailsPanel
 					defaultValues={detailsValues}
 					onSubmit={handleSaveDetails}
@@ -107,6 +110,16 @@ export default function IssueDetailComponent({ projectId, issueId }: Props) {
 					reporter={issue.reporter}
 					permissions={permissions}
 				/>
+				{permissions.canDeleteIssue && (
+					<DeleteIssueButton
+						workspaceId={workspaceId}
+						projectId={projectId}
+						issue={issue}
+						onDeleted={() =>
+							router.replace(`/projects/${projectId}/issues`)
+						}
+					/>
+				)}
 			</div>
 		</div>
 	);

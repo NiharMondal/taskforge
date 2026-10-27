@@ -125,7 +125,10 @@ export default function BoardView({ projectId }: { projectId: string }) {
 	);
 	const [syncedIssues, setSyncedIssues] = useState(issues);
 	const [activeId, setActiveId] = useState<string | null>(null);
-	const [selectedIssue, setSelectedIssue] = useState<Issue | null>(null);
+	// Only the id: the modal reads the issue from the live list, so it shows
+	// saves and refetches, and closes if the issue is deleted.
+	const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
+	const selectedIssue = issues.find((i) => i.id === selectedIssueId) ?? null;
 	const draggedFrom = useRef<IssueStatus | null>(null);
 
 	if (issues !== syncedIssues) {
@@ -286,7 +289,7 @@ export default function BoardView({ projectId }: { projectId: string }) {
 	};
 
 	const handleClose = () => {
-		setSelectedIssue(null);
+		setSelectedIssueId(null);
 		closeModal();
 	};
 	return (
@@ -332,7 +335,7 @@ export default function BoardView({ projectId }: { projectId: string }) {
 								label={label}
 								issues={columns[value]}
 								assigneeNames={assigneeNames}
-								onOpenIssue={setSelectedIssue}
+								onOpenIssue={(issue) => setSelectedIssueId(issue.id)}
 								canDrag={permissions.canChangeIssueStatus}
 							/>
 						))}

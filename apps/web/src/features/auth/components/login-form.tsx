@@ -10,25 +10,8 @@ import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
+import { resolvePostLoginTarget } from "../lib/callback-url";
 import { LoginInput, loginSchema } from "../schemas/auth-schema";
-
-/**
- * Where to land after a successful sign-in. The proxy puts the originally
- * requested URL (absolute, e.g. an `/invite/<token>` link) in `callbackUrl`;
- * honoring it only when same-origin prevents open redirects.
- */
-function resolvePostLoginTarget(callbackUrl: string | null): string {
-	if (!callbackUrl) return "/dashboard";
-	try {
-		const url = new URL(callbackUrl, window.location.origin);
-		if (url.origin === window.location.origin) {
-			return url.pathname + url.search;
-		}
-	} catch {
-		// Malformed callbackUrl — fall through to the dashboard.
-	}
-	return "/dashboard";
-}
 
 export default function LoginForm() {
 	const [showPassword, setShowPassword] = useState(false);
@@ -98,7 +81,13 @@ export default function LoginForm() {
 				type="button"
 				className="w-full"
 				variant="outline"
-				onPress={() => signIn("google")}
+				onPress={() =>
+					signIn("google", {
+						redirectTo: resolvePostLoginTarget(
+							searchParams.get("callbackUrl"),
+						),
+					})
+				}
 			>
 				<GoogleIcon />
 				Continue with Google

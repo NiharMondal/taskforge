@@ -49,3 +49,11 @@ export async function updateProject(
 		inWorkspace(workspaceId),
 	);
 }
+
+/** Delete a project with its issues and sprints (`DELETE /projects/:projectId`). */
+export async function deleteProject(
+	workspaceId: string,
+	projectId: string,
+): Promise<ApiResponse<Project>> {
+	return api.delete<Project>(`/projects/${projectId}`, inWorkspace(workspaceId));
+}

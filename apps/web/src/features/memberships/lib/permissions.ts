@@ -29,8 +29,11 @@ export interface Permissions {
 	/** Change an issue's status or its board position. */
 	canChangeIssueStatus: boolean;
 	canMarkIssueDone: boolean;
+	canDeleteIssue: boolean;
 	canManageProjects: boolean;
 	canManageSprints: boolean;
+	/** OWNER only; the backend never grants `workspace:delete` to a role. */
+	canDeleteWorkspace: boolean;
 }
 
 export function getPermissions(role: WorkspaceRole | undefined): Permissions {
@@ -44,8 +47,10 @@ export function getPermissions(role: WorkspaceRole | undefined): Permissions {
 		canEditIssueFields: isManager,
 		canChangeIssueStatus: isManager || isMember,
 		canMarkIssueDone: isManager,
+		canDeleteIssue: isManager,
 		canManageProjects: isManager,
 		canManageSprints: isManager,
+		canDeleteWorkspace: role === "OWNER",
 	};
 }
 

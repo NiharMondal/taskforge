@@ -6,6 +6,7 @@ import type { TInviteFormValues } from "../schema/invitation-schema";
 import type {
   AcceptInvitationResult,
   Invitation,
+  InvitationPreview,
 } from "../types/invitation-types";
 
 /**
@@ -31,8 +32,28 @@ export async function createInvitation(
   return api.post<Invitation>("/invitations", body, inWorkspace(workspaceId));
 }
 
+/** Public: look up a token before accepting it (no workspace header needed). */
+export async function validateInvitation(
+  token: string,
+): Promise<ApiResponse<InvitationPreview>> {
+  return api.get<InvitationPreview>("/invitations/validate", {
+    params: { token },
+  });
+}
+
 export async function acceptInvitation(body: {
   token: string;
 }): Promise<ApiResponse<AcceptInvitationResult>> {
   return api.post<AcceptInvitationResult>("/invitations/accept", body);
+}
+
+/** Revoke a pending invitation (`DELETE /invitations/:id`); its link stops working. */
+export async function revokeInvitation(
+  workspaceId: string,
+  invitationId: string,
+): Promise<ApiResponse<Invitation>> {
+  return api.delete<Invitation>(
+    `/invitations/${invitationId}`,
+    inWorkspace(workspaceId),
+  );
 }

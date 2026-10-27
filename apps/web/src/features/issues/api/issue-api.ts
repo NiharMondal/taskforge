@@ -107,3 +107,15 @@ export async function updateIssue(
 		inWorkspace(workspaceId),
 	);
 }
+
+/** Delete an issue (`DELETE /projects/:projectId/issues/:issueId`). */
+export async function deleteIssue(
+	workspaceId: string,
+	projectId: string,
+	issueId: string,
+): Promise<ApiResponse<Issue>> {
+	return api.delete<Issue>(
+		`/projects/${projectId}/issues/${issueId}`,
+		inWorkspace(workspaceId),
+	);
+}

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
 	createIssue,
+	deleteIssue,
 	getIssues,
 	getSingleIssue,
 	updateIssue,
@@ -119,6 +120,35 @@ export function useUpdateIssue(workspaceId: string, projectId: string) {
 			// made from the detail view reconciles with the server.
 			queryClient.invalidateQueries({
 				queryKey: issueKeys.detail(workspaceId, projectId, issueId),
+			});
+		},
+	});
+}
+
+/**
+ * Delete an issue. On success it is dropped from the list cache at once (so an
+ * open detail modal, which reads from the list, closes) and its detail entry is
+ * removed rather than refetched into a 404.
+ */
+export function useDeleteIssue(workspaceId: string, projectId: string) {
+	const queryClient = useQueryClient();
+	const key = issueKeys.list(workspaceId, projectId);
+
+	return useMutation({
+		mutationFn: (issueId: string) =>
+			deleteIssue(workspaceId, projectId, issueId),
+		onSuccess: (_res, issueId) => {
+			queryClient.setQueryData<Issue[]>(key, (old) =>
+				old?.filter((issue) => issue.id !== issueId),
+			);
+			queryClient.removeQueries({
+				queryKey: issueKeys.detail(workspaceId, projectId, issueId),
+				exact: true,
+			});
+			queryClient.invalidateQueries({ queryKey: key });
+			// Project cards show an issue count.
+			queryClient.invalidateQueries({
+				queryKey: projectKeys.list(workspaceId),
 			});
 		},
 	});

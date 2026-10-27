@@ -6,13 +6,30 @@ import {
   acceptInvitation,
   createInvitation,
   getInvitations,
+  revokeInvitation,
+  validateInvitation,
 } from "../api/invitation-api";
 import type { TInviteFormValues } from "../schema/invitation-schema";
 
 /** Centralized query keys for the invitations feature. */
 export const invitationKeys = {
   list: (workspaceId: string) => ["invitations", workspaceId] as const,
+  /** Not workspace-scoped: the token alone identifies the invitation. */
+  preview: (token: string) => ["invitations", "preview", token] as const,
 };
+
+/**
+ * What an invite token is for (workspace, role, invited email). A 4xx means
+ * the token is unknown, used, revoked or expired, so it is not retried.
+ */
+export function useInvitationPreview(token: string) {
+  return useQuery({
+    queryKey: invitationKeys.preview(token),
+    queryFn: async () => (await validateInvitation(token)).data,
+    enabled: !!token,
+    retry: false,
+  });
+}
 
 /**
  * Invitations of a workspace. Keyed by workspaceId so a workspace switch
@@ -60,6 +77,21 @@ export function useAcceptInvitation() {
     mutationFn: acceptInvitation,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: workspaceKeys.all });
+    },
+  });
+}
+
+/** Revoke a pending invitation; the list refetches to show it as REVOKED. */
+export function useRevokeInvitation(workspaceId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (invitationId: string) =>
+      revokeInvitation(workspaceId, invitationId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: invitationKeys.list(workspaceId),
+      });
     },
   });
 }

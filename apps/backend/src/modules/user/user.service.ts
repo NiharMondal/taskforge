@@ -38,6 +38,17 @@ export class UserService {
 
     const { avatarPublicId, ...rest } = dto;
 
+    // An explicit null removes the avatar: clear both fields, then destroy the
+    // stored asset (best-effort; `delete` only logs a Cloudinary failure).
+    if (avatarPublicId === null) {
+      const user = await this.prisma.user.update({
+        where: { id },
+        data: { ...rest, avatarUrl: null, avatarPublicId: null },
+      });
+      await this.cloudinary.delete(existing.avatarPublicId);
+      return user;
+    }
+
     // A later avatar change destroys the stored asset, so storing an arbitrary
     // publicId would let a user adopt (and then delete) someone else's avatar.
     // The only ids a client may legitimately send are a fresh temp upload

@@ -7,12 +7,15 @@ import { useForm } from "react-hook-form";
 import { FormTextField, FormWrapper } from "@/components/form-element";
 import { Eye, EyeOff } from "lucide-react";
 import { signIn } from "next-auth/react";
+import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { register } from "../api/auth-api";
+import { resolvePostLoginTarget } from "../lib/callback-url";
 import { registerSchema, type RegisterInput } from "../schemas/auth-schema";
 
 export function RegisterForm() {
 	const [showPassword, setShowPassword] = useState(false);
+	const searchParams = useSearchParams();
 
 	const methods = useForm<RegisterInput>({
 		resolver: zodResolver(registerSchema),
@@ -32,7 +35,10 @@ export function RegisterForm() {
 					email: values.email,
 					password: values.password,
 					redirect: true,
-					redirectTo: "/dashboard",
+					// e.g. back to the invite link that sent them here
+					redirectTo: resolvePostLoginTarget(
+						searchParams.get("callbackUrl"),
+					),
 				});
 			}
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any

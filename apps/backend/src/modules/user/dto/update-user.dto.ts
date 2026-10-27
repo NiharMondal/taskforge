@@ -13,8 +13,8 @@ export class UpdateUserDto {
   // Cloudinary public id returned to the frontend after it uploads the avatar
   // into the temp folder (e.g. "taskforge/temp/user-avatar/abc"). Only a temp
   // asset (or the user's current avatar, unchanged) is accepted — see
-  // UserService.update.
+  // UserService.update. `null` removes the avatar.
   @IsString()
   @IsOptional()
-  avatarPublicId?: string;
+  avatarPublicId?: string | null;
 }

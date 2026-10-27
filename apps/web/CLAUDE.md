@@ -121,7 +121,7 @@ Mutations use `.message` from the envelope for toast feedback. Every rejection i
 
 ### Roles and permissions
 
-The JWT has no role — it comes from the membership roster. `useWorkspacePermissions()` (`features/memberships/hooks/`) returns the viewer's flags (`canCreateIssue`, `canEditIssueFields`, `canChangeIssueStatus`, `canMarkIssueDone`, `canManageProjects`, `canManageSprints`), computed by `getPermissions` in `features/memberships/lib/permissions.ts`. That file mirrors the backend rules (create/delete and project/sprint writes are OWNER/ADMIN; a MEMBER may change `status` — never to `DONE` — and board `rank`; a VIEWER is read-only), so **change both together**. Which roster row is "me" comes from the access token's `sub` (what the backend authorizes as), not the cached session id. Flags are all `false` *while loading*; if the role still can't be determined afterwards (roster failed, user not on it) the hook **fails open** (`UNRESTRICTED_PERMISSIONS`, `isRoleKnown: false`, plus a dev-only `[permissions]` console warning) so a lookup problem never locks an owner out. Hide or disable controls with these flags rather than letting users hit a 403 toast — but they are UX only; the backend is the authority.
+The JWT has no role — it comes from the membership roster. `useWorkspacePermissions()` (`features/memberships/hooks/`) returns the viewer's flags (`canCreateIssue`, `canEditIssueFields`, `canChangeIssueStatus`, `canMarkIssueDone`, `canDeleteIssue`, `canManageProjects`, `canManageSprints`, `canDeleteWorkspace`), computed by `getPermissions` in `features/memberships/lib/permissions.ts`. That file mirrors the backend rules (create/delete and project/sprint writes are OWNER/ADMIN; a MEMBER may change `status` — never to `DONE` — and board `rank`; a VIEWER is read-only), so **change both together**. Which roster row is "me" comes from the access token's `sub` (what the backend authorizes as), not the cached session id. Flags are all `false` *while loading*; if the role still can't be determined afterwards (roster failed, user not on it) the hook **fails open** (`UNRESTRICTED_PERMISSIONS`, `isRoleKnown: false`, plus a dev-only `[permissions]` console warning) so a lookup problem never locks an owner out. Hide or disable controls with these flags rather than letting users hit a 403 toast — but they are UX only; the backend is the authority.
 
 ### Rendering user HTML
 
@@ -154,7 +154,7 @@ Rich text is TipTap (`@tiptap/react` + `starter-kit`) via `src/components/ui/Ric
 
 ### Image upload (Cloudinary)
 
-Two-phase, per `spec/cloudinary.md`: the browser uploads directly to Cloudinary via an unsigned preset into a `temp/` folder (`uploadToCloudinary` in `src/lib/cloudinary.ts`), then sends `{ avatarUrl, avatarPublicId }` to the backend, which *promotes* the asset on save. Unsaved temp assets are cleaned up through the backend's `/cloudinary/delete-temp` (best-effort; the frontend never holds the API secret).
+Two-phase, per `spec/cloudinary.md`: the browser uploads directly to Cloudinary via an unsigned preset into a `temp/` folder (`uploadToCloudinary` in `src/lib/cloudinary.ts`), then sends `{ avatarUrl, avatarPublicId }` to the backend, which *promotes* the asset on save. Removing a saved avatar sends `avatarPublicId: null`, which clears both fields and deletes the stored asset. Unsaved temp assets are cleaned up through the backend's `/cloudinary/delete-temp` (best-effort; the frontend never holds the API secret).
 
 ### UI library
 

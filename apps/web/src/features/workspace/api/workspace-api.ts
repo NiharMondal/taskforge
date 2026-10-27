@@ -59,3 +59,16 @@ export async function updateWorkspace(
  * change of which id we send. There is no `POST /workspaces/switch` route in
  * the documented contract, and none is required.
  */
+
+/**
+ * Delete a workspace with everything in it (`DELETE /workspaces/:workspaceId`).
+ * OWNER only. Pinned to the workspace being deleted, like `updateWorkspace`.
+ */
+export async function deleteWorkspace(
+  workspaceId: string,
+): Promise<ApiResponse<Workspace>> {
+  return api.delete<Workspace>(
+    `/workspaces/${workspaceId}`,
+    inWorkspace(workspaceId),
+  );
+}

@@ -31,8 +31,8 @@ pnpm run test -- -t "substring of the it() name"
 
 Prisma:
 
-npx prisma generate # REQUIRED after clone/schema change — see "Generated client" below
-npx prisma migrate dev --name "<migration-name>"
+pnpm exec prisma generate # REQUIRED after clone/schema change — see "Generated client" below
+pnpm exec prisma migrate dev --name "<migration-name>"
 
 Server listens on `PORT` (default 5001) with global prefix `api/v1`, so routes are `/api/v1/...`.
 CORS allows the comma-separated `CORS_ORIGINS` (default `http://localhost:3000,http://localhost:3001`)
@@ -44,12 +44,12 @@ with credentials. The HTTP setup (helmet, CORS, filter, pipe, prefix) lives in `
 `prisma/schema.prisma` uses the new `prisma-client` generator with `output = "../generated/prisma"`.
 Consequences:
 
-- `generated/` is gitignored. A fresh clone will not compile until `npx prisma generate` runs.
+- `generated/` is gitignored. A fresh clone will not compile until `pnpm exec prisma generate` runs (`pnpm install` does it via the root `postinstall`).
 - Import models/enums from the generated path, NOT from `@prisma/client`:
   - enums: `import { WorkspaceRole, IssueStatus } from "generated/prisma/enums"`
   - types: `import { User } from "generated/prisma/client"`
   - Note these are bare `generated/...` specifiers (resolved via the tsconfig `paths` entry `generated/*` → `./generated/*`; there is no `baseUrl`), not `@/`-prefixed.
-- `prisma/migrations/` is committed. History starts at the `*_init` baseline (generated from the schema on 2026-10-01); earlier migrations were never tracked. Add schema changes with `npx prisma migrate dev --name <change>` and commit the new folder.
+- `prisma/migrations/` is committed. History starts at the `*_init` baseline (generated from the schema on 2026-10-01); earlier migrations were never tracked. Add schema changes with `pnpm exec prisma migrate dev --name <change>` and commit the new folder.
 - The datasource block in `schema.prisma` has no `url`; the URL is supplied by `prisma.config.ts`
   (`DATABASE_URL`) for the CLI, and by `PrismaService` for runtime.
 - `@/*` maps to `src/*` (tsconfig paths).
@@ -60,7 +60,8 @@ Three layers, applied in order. `src/modules/auth/CLAUDE.md` has module-level de
 
 1. **`JwtAuthGuard` — global.** Registered once in `app.module.ts` via `APP_GUARD`. It applies to
    every route, so you do not need `@UseGuards(JwtAuthGuard)` (existing controllers still list it
-   redundantly; harmless). Opt out with `@Public()` (used on `/auth/register`, `/auth/login`, `GET /`).
+   redundantly; harmless). Opt out with `@Public()` (used on `POST /auth/register`, `POST /auth/login`, `POST /auth/google`,
+   `GET /invitations/validate` and `GET /`).
    It throws `UnauthorizedException("Token not provided!")` (401) when the `authorization` header is missing.
    `JwtStrategy.validate()` returns the payload unchanged, so `req.user` is `{ sub, email }`.
 2. **`WorkspaceGuard` — opt-in per controller/route.** Resolves the tenant from the
@@ -250,10 +251,10 @@ drives it with supertest against Postgres: sign-up, cross-workspace isolation, t
 check, invite → accept, and MEMBER limits. `MailService` is overridden; other boot-time secrets get
 placeholders in `test/setup-e2e.ts`. Rules:
 
-- `DATABASE_URL` must point at a **migrated** database whose name contains `e2e` or `test`
+- `DATABASE_URL` must point at a **migrated** database whose name has `e2e` or `test` as a whole word, e.g. `taskforge_e2e` (`latest` doesn't count)
   (`setup-e2e.ts` refuses anything else, so it can't touch a dev DB). Locally:
   `docker compose up -d` (repo root) then
-  `DATABASE_URL=postgresql://taskforge:taskforge@localhost:5433/taskforge_e2e npx prisma migrate deploy`
+  `DATABASE_URL=postgresql://taskforge:taskforge@localhost:5433/taskforge_e2e pnpm exec prisma migrate deploy`
   and the same `DATABASE_URL` for `pnpm run test:e2e`.
 - Tests create uniquely-named users and delete their own rows in `afterAll`; never truncate.
 - e2e compiles with `test/tsconfig.e2e.json` (`module: commonjs`): under `nodenext` the Prisma 7
@@ -265,12 +266,17 @@ and are the best statement of intended behavior for issues and invitations.
 
 ## Environment
 
-See `.env.example`. Required: `DATABASE_URL`, `JWT_ACCESS_SECRET`, `NODE_ENV`, `PORT` (optional `CORS_ORIGINS`),
-SMTP vars (`SMTP_HOST/PORT/SECURE/USER/PASS`, `MAIL_FROM`) for invitation email, `APP_URL` for
-invitation links, and `CLOUDINARY_CLOUD_NAME/API_KEY/API_SECRET`. `GOOGLE_CLIENT_ID` is read lazily,
-only by Google sign-in (the backend boots without it; `POST /auth/google` then answers 503) and must
-match the web app's `GOOGLE_CLIENT_ID`. `PrismaService` logs queries when
-`NODE_ENV === "development"`.
+See `.env.example`. What the code actually does with each:
+
+- **Boot fails without** `DATABASE_URL`, `JWT_ACCESS_SECRET`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`,
+  `SMTP_PASS`, `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY` and `CLOUDINARY_API_SECRET` (read with
+  `getOrThrow` in constructors — which is why `test/setup-e2e.ts` gives them placeholders).
+- **Optional, with defaults:** `PORT` (5001), `CORS_ORIGINS` (`localhost:3000`/`:3001`), `APP_URL`
+  (`http://localhost:3000`, used in invitation links), `MAIL_FROM` (falls back to `SMTP_USER`),
+  `SMTP_SECURE` (`"true"`, or implied by port 465).
+- `NODE_ENV` only switches `PrismaService` query logging on (`development`).
+- `GOOGLE_CLIENT_ID` is read lazily, only by Google sign-in (the backend boots without it;
+  `POST /auth/google` then answers 503) and must match the web app's `GOOGLE_CLIENT_ID`.
 
 ## When compacting
 

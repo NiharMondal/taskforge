@@ -13,7 +13,7 @@ pnpm lint       # run ESLint
 pnpm add <pkg>  # install packages (always use pnpm, not npm/yarn)
 ```
 
-No test runner is configured — there are no tests to run. Type-check with `npx tsc --noEmit`.
+No test runner is configured — there are no tests to run. Type-check with `pnpm typecheck` (`next typegen` then `tsc --noEmit`; plain `tsc` misses the generated route types).
 
 Requires `.env.local` (copy `.env.example`): `NEXT_PUBLIC_API_URL` (backend base, defaults to `http://localhost:5001/api/v1`), `AUTH_SECRET`, `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` (Google sign-in; without them the OAuth redirect carries `client_id=undefined`), plus `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME` / `NEXT_PUBLIC_CLOUDINARY_PRESET_NAME` for avatar upload. The API base URL default lives once, in `src/lib/api-url.ts`.
 

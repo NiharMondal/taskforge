@@ -31,22 +31,18 @@ export const uploadToCloudinary = async (file: File, folder: string) => {
 
 Delete Temp Image
 
-```javascript
-import { envConfig } from "@/config/env-config";
+As built in `src/lib/cloudinary.ts`, it goes through the shared `api` client (so it carries the
+auth token) and the backend only deletes ids in the caller's own temp folder:
 
-export const deleteTempImage = async (currentPublicId: string) => {
-    try {
-        await fetch(`${envConfig.backend_url}/cloudinary/delete-temp`, {
-            method: "POST",
-            body: JSON.stringify({ publicId: currentPublicId }),
-            headers: {
-                "Content-Type": "application/json",
-            },
-        });
-    } catch (error) {
-        console.log(error);
-    }
-};
+```ts
+export async function deleteTempImage(publicId?: string | null): Promise<void> {
+	if (!isTempPublicId(publicId)) return;
+	try {
+		await api.post("/cloudinary/delete-temp", { publicId });
+	} catch {
+		// ignore — cleanup is best-effort
+	}
+}
 ```
 
 Using reusable component

@@ -27,6 +27,7 @@ Both apps must be up; the web app is useless alone.
 ```bash
 pnpm install          # whole workspace; postinstall runs `prisma generate`
 pnpm dev              # backend :5001 (prefix /api/v1) + web :3000, output prefixed per app
+                      # NOTE: first kills whatever listens on :3000, :5001 and :5002 (`predev` → `free-ports`)
 pnpm dev:backend      # or one at a time
 pnpm dev:web
 pnpm build | lint     # across both apps (`lint` runs eslint --fix in the backend)
@@ -79,4 +80,4 @@ These hold on both sides of the wire — breaking one on either side breaks the 
 - **`/users` is self-only.** There is no list or delete route; `GET`/`PATCH /users/me` (or `/users/<your own id>`) is all there is, and any other id is a 403. If you need other users' data, read it through a workspace-scoped route (memberships), not by widening `/users`.
 - **No refresh tokens.** Access tokens last `1d`; on a backend 401 the frontend force-signs-out, because the Auth.js cookie can outlive the backend token. A missing token is also a 401.
 - **Google sign-in needs `GOOGLE_CLIENT_ID` on both sides, with the same value.** The web app forwards Google's `id_token` and the backend verifies it against that client ID; unset on the backend, `POST /auth/google` answers 503.
-- **Test coverage is backend-only.** `pnpm test` runs Jest unit and HTTP specs against mocked Prisma — no database needed. `pnpm test:e2e` boots the real app against Postgres and needs `DATABASE_URL` pointing at a migrated database whose name contains `e2e` or `test` (it refuses anything else). The frontend has no test runner at all (type-check with `pnpm typecheck`).
+- **Test coverage is backend-only.** `pnpm test` runs Jest unit and HTTP specs against mocked Prisma — no database needed. `pnpm test:e2e` boots the real app against Postgres and needs `DATABASE_URL` pointing at a migrated database whose name has `e2e` or `test` as a whole word, e.g. `taskforge_e2e` (it refuses anything else, including names like `latest`). The frontend has no test runner at all (type-check with `pnpm typecheck`).

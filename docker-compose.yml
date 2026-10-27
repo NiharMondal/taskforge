@@ -3,7 +3,8 @@
 #   docker compose up -d
 #
 # Creates two databases: `taskforge` (dev) and `taskforge_e2e` (e2e tests,
-# which refuse to run against a database without "e2e"/"test" in its name).
+# which refuse to run against a database without "e2e"/"test" as a word in
+# its name).
 # Port 5433 on the host so it doesn't collide with a locally installed Postgres.
 services:
   postgres:

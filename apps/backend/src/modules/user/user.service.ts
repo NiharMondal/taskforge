@@ -38,11 +38,11 @@ export class UserService {
 
     const { avatarPublicId, ...rest } = dto;
 
-    // promoteToPermanent() happily adopts any existing Cloudinary asset, and a
-    // later avatar change destroys the previous one — so accepting an arbitrary
+    // A later avatar change destroys the stored asset, so storing an arbitrary
     // publicId would let a user adopt (and then delete) someone else's avatar.
-    // The only ids a client may legitimately send are a fresh temp upload, or
-    // its own current avatar echoed back unchanged.
+    // The only ids a client may legitimately send are a fresh temp upload
+    // (which promoteToPermanent moves to a server-chosen id), or its own
+    // current avatar echoed back unchanged.
     const isUnchanged = avatarPublicId === existing.avatarPublicId;
     if (
       avatarPublicId &&
@@ -61,7 +61,10 @@ export class UserService {
       });
     }
 
-    const promoted = await this.cloudinary.promoteToPermanent(avatarPublicId);
+    const promoted = await this.cloudinary.promoteToPermanent(
+      avatarPublicId,
+      `taskforge/user-avatar/${id}`,
+    );
 
     let user: User;
 

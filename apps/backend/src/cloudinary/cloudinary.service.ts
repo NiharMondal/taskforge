@@ -1,4 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
+import { randomUUID } from "node:crypto";
 import { ConfigService } from "@nestjs/config";
 import { v2 as cloudinary, UploadApiResponse } from "cloudinary";
 
@@ -14,7 +15,8 @@ export type UploadedAsset = {
  *  - The frontend uploads directly into a temp folder, e.g.
  *    `taskforge/temp/user-avatar`, and sends us back { avatarUrl, avatarPublicId }.
  *  - On a successful DB save we `promoteToPermanent()` which moves the asset out
- *    of `.../temp/...` into its permanent folder (`taskforge/user-avatar`).
+ *    of the temp folder into a permanent folder the *server* picks (e.g.
+ *    `taskforge/user-avatar/<userId>`), under a fresh random name.
  *  - If the record is never saved (or the save fails) we `delete()` the temp
  *    asset so nothing is left orphaned in Cloudinary.
  */
@@ -22,8 +24,11 @@ export type UploadedAsset = {
 export class CloudinaryService {
   private readonly logger = new Logger(CloudinaryService.name);
 
-  /** The path segment that marks an asset as not-yet-saved. */
-  private readonly tempSegment = "/temp/";
+  /**
+   * Where every not-yet-saved upload lives. A prefix, not a substring match:
+   * `includes("/temp/")` would also accept e.g. `taskforge/user-avatar/x/temp/y`.
+   */
+  private readonly tempPrefix = "taskforge/temp/";
 
   constructor(private readonly config: ConfigService) {
     cloudinary.config({
@@ -35,7 +40,7 @@ export class CloudinaryService {
 
   /** True when the publicId still lives in a temp folder. */
   isTemp(publicId: string): boolean {
-    return publicId.includes(this.tempSegment);
+    return publicId.startsWith(this.tempPrefix);
   }
 
   /**
@@ -49,26 +54,26 @@ export class CloudinaryService {
   }
 
   /**
-   * Move an asset from its temp folder to the permanent one by stripping the
-   * `/temp/` segment from its publicId, e.g.
-   *   taskforge/temp/user-avatar/abc  ->  taskforge/user-avatar/abc
+   * Move a temp upload into `permanentFolder` under a fresh random name, e.g.
+   *   taskforge/temp/user-avatar/abc  ->  taskforge/user-avatar/<userId>/<uuid>
    *
-   * No-op (returns the asset as-is) if it is already permanent.
+   * The destination is never derived from the client-chosen temp id: unsigned
+   * uploads let the caller pick `public_id`, so a stripped-`/temp/` destination
+   * could be aimed at another user's existing asset. `overwrite: false` is a
+   * second guard — a rename can never replace an asset that already exists.
    */
-  async promoteToPermanent(tempPublicId: string): Promise<UploadedAsset> {
+  async promoteToPermanent(
+    tempPublicId: string,
+    permanentFolder: string,
+  ): Promise<UploadedAsset> {
     if (!this.isTemp(tempPublicId)) {
-      const existing = (await cloudinary.api.resource(
-        tempPublicId,
-      )) as UploadApiResponse;
-      return { url: existing.secure_url, publicId: existing.public_id };
+      throw new Error(`Not a temp asset: "${tempPublicId}"`);
     }
-
-    const permanentPublicId = tempPublicId.replace(this.tempSegment, "/");
 
     const result = (await cloudinary.uploader.rename(
       tempPublicId,
-      permanentPublicId,
-      { overwrite: true, invalidate: true },
+      `${permanentFolder}/${randomUUID()}`,
+      { overwrite: false, invalidate: true },
     )) as UploadApiResponse;
 
     return { url: result.secure_url, publicId: result.public_id };

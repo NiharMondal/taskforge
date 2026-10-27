@@ -12,8 +12,8 @@ import { api } from "@/lib/axios";
 const CLOUD_NAME = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
 const PRESET_NAME = process.env.NEXT_PUBLIC_CLOUDINARY_PRESET_NAME;
 
-/** The path segment marking an asset as not-yet-saved (mirrors the backend). */
-const TEMP_SEGMENT = "/temp/";
+/** Where not-yet-saved uploads live (mirrors the backend's `tempPrefix`). */
+const TEMP_PREFIX = "taskforge/temp/";
 
 export interface CloudinaryUpload {
 	/** `secure_url` — sent to the backend as `avatarUrl`. */
@@ -24,7 +24,7 @@ export interface CloudinaryUpload {
 
 /** True when a publicId still lives in a temp folder (i.e. is an orphan if unsaved). */
 export function isTempPublicId(publicId?: string | null): boolean {
-	return !!publicId && publicId.includes(TEMP_SEGMENT);
+	return !!publicId && publicId.startsWith(TEMP_PREFIX);
 }
 
 /**

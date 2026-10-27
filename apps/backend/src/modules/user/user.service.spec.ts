@@ -31,7 +31,7 @@ describe("UserService.update avatar handling", () => {
       },
     };
     cloudinary = {
-      isTemp: jest.fn((id: string) => id.includes("/temp/")),
+      isTemp: jest.fn((id: string) => id.startsWith("taskforge/temp/")),
       promoteToPermanent: jest.fn().mockResolvedValue({
         url: "https://cdn.example/user-avatar/fresh.png",
         publicId: "taskforge/user-avatar/fresh",
@@ -64,7 +64,11 @@ describe("UserService.update avatar handling", () => {
   it("promotes a fresh temp upload and removes the old avatar", async () => {
     await service.update(userId, { avatarPublicId: tempPublicId });
 
-    expect(cloudinary.promoteToPermanent).toHaveBeenCalledWith(tempPublicId);
+    // The destination folder is chosen here, per user — never from the client.
+    expect(cloudinary.promoteToPermanent).toHaveBeenCalledWith(
+      tempPublicId,
+      "taskforge/user-avatar/user-1",
+    );
     const data: unknown = expect.objectContaining({
       avatarUrl: "https://cdn.example/user-avatar/fresh.png",
       avatarPublicId: "taskforge/user-avatar/fresh",

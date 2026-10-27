@@ -38,7 +38,7 @@ This is a **Next.js 16** App Router project (not Next.js 13/14/15 — APIs may d
 
 ### Multi-tenant model
 
-Every workspace is a tenant. The active workspace is stored in `localStorage` (`taskforge.activeWorkspaceId`) and surfaced via `useWorkspace()` (from `src/features/workspace/context/workspace-context.tsx`). Every API request carries it as `x-workspace-id` — the axios interceptor in `src/lib/axios.ts` attaches it automatically. Switching workspaces calls `queryClient.invalidateQueries()` to drop all cached server data.
+Every workspace is a tenant. The active workspace is stored in `localStorage` (`taskforge.activeWorkspaceId`) and surfaced via `useWorkspace()` (from `src/features/workspace/context/workspace-context.tsx`). Every API request carries it as `x-workspace-id`. **Workspace-scoped API functions take `workspaceId` as their first argument and pass `inWorkspace(workspaceId)` (`src/lib/axios.ts`) as the request config** — the hook supplies the same id it keys the cache by, so a response can only land in the cache entry of the workspace it was fetched for. The interceptor only falls back to the active workspace for requests that don't name one. Switching workspaces invalidates nothing: the new workspace's queries load under their own keys, and invalidating would refetch the old workspace's still-mounted queries (which is how B's data once got stored under A's key).
 
 Auth tokens identify the *user*; the workspace header identifies the *tenant*. A user belongs to many workspaces, so the header **is** the workspace switch. Issue/project query keys include both `workspaceId` and `projectId` so cache entries never leak across tenants or projects.
 

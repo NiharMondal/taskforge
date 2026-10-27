@@ -1,4 +1,4 @@
-import { api } from "@/lib/axios";
+import { api, inWorkspace } from "@/lib/axios";
 
 import type { ApiResponse } from "@/types/api";
 
@@ -43,7 +43,13 @@ export async function updateWorkspace(
   workspaceId: string,
   dto: TWorkspaceFormValues,
 ): Promise<ApiResponse<Workspace>> {
-  return api.patch<Workspace>(`/workspaces/${workspaceId}`, dto);
+  // The backend 403s a header that disagrees with the path, so send the one
+  // being edited rather than whichever workspace is active.
+  return api.patch<Workspace>(
+    `/workspaces/${workspaceId}`,
+    dto,
+    inWorkspace(workspaceId),
+  );
 }
 
 /**

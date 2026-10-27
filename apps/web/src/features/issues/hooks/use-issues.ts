@@ -28,12 +28,12 @@ export function useIssues(workspaceId: string, projectId: string) {
 		queryKey: issueKeys.list(workspaceId, projectId),
 		// Unwrap the ApiResponse envelope so the cache holds a plain Issue[] —
 		// the optimistic update in useUpdateIssue depends on that.
-		queryFn: async () => (await getIssues(projectId)).data,
+		queryFn: async () => (await getIssues(workspaceId, projectId)).data,
 		enabled: !!workspaceId && !!projectId,
 		// The board and list views share this exact query key, so hopping between
-		// them (or remounting) serves the cached list instead of refetching. A
-		// workspace switch still invalidates everything, and mutations invalidate
-		// on settle, so the data can't go stale in a way the user would notice.
+		// them (or remounting) serves the cached list instead of refetching.
+		// Mutations invalidate on settle, so the data can't go stale in a way the
+		// user would notice.
 		staleTime: 60_000,
 	});
 }
@@ -49,7 +49,8 @@ export function useSingleIssue(
 		// tried to iterate a non-array. Keep the detail entry separate.
 		queryKey: issueKeys.detail(workspaceId, projectId, issueId),
 		// Unwrap the ApiResponse envelope so the cache holds a plain Issue.
-		queryFn: async () => (await getSingleIssue(projectId, issueId)).data,
+		queryFn: async () =>
+			(await getSingleIssue(workspaceId, projectId, issueId)).data,
 		enabled: !!workspaceId && !!projectId && !!issueId,
 	});
 }
@@ -58,7 +59,8 @@ export function useCreateIssue(workspaceId: string, projectId: string) {
 	const queryClient = useQueryClient();
 
 	return useMutation({
-		mutationFn: (dto: TIssueFormValues) => createIssue(projectId, dto),
+		mutationFn: (dto: TIssueFormValues) =>
+			createIssue(workspaceId, projectId, dto),
 		onSuccess: () => {
 			queryClient.invalidateQueries({
 				queryKey: issueKeys.list(workspaceId, projectId),
@@ -88,7 +90,7 @@ export function useUpdateIssue(workspaceId: string, projectId: string) {
 
 	return useMutation({
 		mutationFn: ({ issueId, dto }: UpdateIssueVars) =>
-			updateIssue(projectId, issueId, dto),
+			updateIssue(workspaceId, projectId, issueId, dto),
 
 		onMutate: async ({ issueId, dto }) => {
 			// Cancel in-flight refetches so they don't clobber the optimistic write.

@@ -22,7 +22,7 @@ export function useInvitations(workspaceId: string, enabled = true) {
   return useQuery({
     queryKey: invitationKeys.list(workspaceId),
     // Unwrap the ApiResponse envelope so the cache holds a plain Invitation[].
-    queryFn: async () => (await getInvitations()).data,
+    queryFn: async () => (await getInvitations(workspaceId)).data,
     enabled: !!workspaceId && enabled,
     staleTime: 60 * 1000,
   });
@@ -37,7 +37,8 @@ export function useCreateInvitation(workspaceId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: createInvitation,
+    mutationFn: (body: { email: string }) =>
+      createInvitation(workspaceId, body),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: invitationKeys.list(workspaceId),

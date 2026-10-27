@@ -15,6 +15,25 @@ import { getAuthToken, notifyUnauthorized } from "./auth-token";
  * All data access belongs in the service / feature-api layer, never in
  * components (see AGENTS.md).
  */
+const WORKSPACE_HEADER = "x-workspace-id";
+
+/**
+ * Request config that pins a request to `workspaceId`. Workspace-scoped feature
+ * APIs take the id from their caller (the hook, which also keys its cache by
+ * it) and pass this, so a response can only ever land in the cache entry of the
+ * workspace it was fetched for — never the one that happens to be active when
+ * it is sent or arrives.
+ */
+export function inWorkspace(
+  workspaceId: string,
+  config: AxiosRequestConfig = {},
+): AxiosRequestConfig {
+  return {
+    ...config,
+    headers: { ...config.headers, [WORKSPACE_HEADER]: workspaceId },
+  };
+}
+
 export const apiClient = axios.create({
   baseURL: API_URL,
   headers: { "Content-Type": "application/json" },
@@ -24,15 +43,22 @@ export const apiClient = axios.create({
 // Request: attach the Bearer JWT and the active-workspace context.
 // The token identifies the *user*; `x-workspace-id` identifies the *tenant* the
 // request applies to (AI_GUIDE → "every request must include workspace context").
+//
+// A request that names its workspace (see `inWorkspace`) keeps it. Otherwise
+// the active workspace is read *before* awaiting the token: that await can be a
+// network round-trip, and a workspace switch during it must not re-target a
+// request that was started for the previous workspace.
 apiClient.interceptors.request.use(async (config) => {
+  if (!config.headers.has(WORKSPACE_HEADER)) {
+    const workspaceId = getActiveWorkspaceId();
+    if (workspaceId) {
+      config.headers.set(WORKSPACE_HEADER, workspaceId);
+    }
+  }
+
   const token = await getAuthToken();
   if (token) {
     config.headers.set("Authorization", `Bearer ${token}`);
-  }
-
-  const workspaceId = getActiveWorkspaceId();
-  if (workspaceId) {
-    config.headers.set("x-workspace-id", workspaceId);
   }
   return config;
 });

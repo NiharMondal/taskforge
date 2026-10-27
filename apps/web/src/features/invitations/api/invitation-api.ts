@@ -1,4 +1,4 @@
-import { api } from "@/lib/axios";
+import { api, inWorkspace } from "@/lib/axios";
 
 import type { ApiResponse } from "@/types/api";
 
@@ -17,14 +17,17 @@ import type {
  * workspace via the `x-workspace-id` header — no id is passed in the route.
  * `POST /invitations/accept` resolves the workspace from the token itself.
  */
-export async function getInvitations(): Promise<ApiResponse<Invitation[]>> {
-  return api.get<Invitation[]>("/invitations");
+export async function getInvitations(
+  workspaceId: string,
+): Promise<ApiResponse<Invitation[]>> {
+  return api.get<Invitation[]>("/invitations", inWorkspace(workspaceId));
 }
 
-export async function createInvitation(body: {
-  email: string;
-}): Promise<ApiResponse<Invitation>> {
-  return api.post<Invitation>("/invitations", body);
+export async function createInvitation(
+  workspaceId: string,
+  body: { email: string },
+): Promise<ApiResponse<Invitation>> {
+  return api.post<Invitation>("/invitations", body, inWorkspace(workspaceId));
 }
 
 export async function acceptInvitation(body: {

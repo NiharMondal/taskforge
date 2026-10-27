@@ -1,4 +1,4 @@
-import { api } from "@/lib/axios";
+import { api, inWorkspace } from "@/lib/axios";
 
 import type { ApiResponse } from "@/types/api";
 
@@ -16,21 +16,29 @@ import type { Member, UpdateMembershipDto } from "../types/membership-types";
  * The per-member routes are keyed by `userId` (BACK_END_API → Memberships:
  * `:userId(GET, UPDATE, DELETE)`); the workspace stays implicit in the header.
  */
-export async function getMemberships(): Promise<ApiResponse<Member[]>> {
-  return api.get<Member[]>("/memberships");
+export async function getMemberships(
+  workspaceId: string,
+): Promise<ApiResponse<Member[]>> {
+  return api.get<Member[]>("/memberships", inWorkspace(workspaceId));
 }
 
 /** Change a member's role within the active workspace (`PATCH /memberships/:userId`). */
 export async function updateMembership(
+  workspaceId: string,
   userId: string,
   dto: UpdateMembershipDto,
 ): Promise<ApiResponse<Member>> {
-  return api.patch<Member>(`/memberships/${userId}`, dto);
+  return api.patch<Member>(
+    `/memberships/${userId}`,
+    dto,
+    inWorkspace(workspaceId),
+  );
 }
 
 /** Remove a member from the active workspace (`DELETE /memberships/:userId`). */
 export async function removeMembership(
+  workspaceId: string,
   userId: string,
 ): Promise<ApiResponse<Member>> {
-  return api.delete<Member>(`/memberships/${userId}`);
+  return api.delete<Member>(`/memberships/${userId}`, inWorkspace(workspaceId));
 }

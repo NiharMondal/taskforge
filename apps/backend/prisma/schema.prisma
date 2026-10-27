@@ -236,6 +236,8 @@ model Issue {
   // two neighbors without renumbering siblings — generated client-side via the
   // `fractional-indexing` lib. Nullable so it can be added over existing rows;
   // backfill then sort lanes by `rank ASC` (NULLS LAST as a safety net).
+  // The column is COLLATE "C" (byte order, set in the issue_rank_byte_order
+  // migration) — locale collations sort these keys wrongly.
   rank     String?
 
   workspaceId String

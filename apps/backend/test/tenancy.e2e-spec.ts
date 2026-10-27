@@ -296,4 +296,27 @@ describe("Tenancy (e2e)", () => {
         .expect(403);
     });
   });
+
+  it("appends a new card after the lane's last card in byte order (H6)", async () => {
+    // A card dragged above the first one gets a key like "Zz" (uppercase sorts
+    // before "a0" in byte order). A locale collation sorts "Zz" *after* "a0",
+    // so the server took "Zz" for the last card and handed the new one "a0"
+    // again — a duplicate the board can't place anything between.
+    const lane = "IN_REVIEW";
+    const create = (title: string) =>
+      api()
+        .post(`/api/v1/projects/${projectId}/issues`)
+        .set(as(aliceToken, aliceWs))
+        .send({ title, status: lane })
+        .expect(201);
+
+    const first = data<{ id: string }>(await create("Upper")).id;
+    const second = data<{ id: string }>(await create("Lower")).id;
+    await prisma.issue.update({ where: { id: first }, data: { rank: "Zz" } });
+    await prisma.issue.update({ where: { id: second }, data: { rank: "a0" } });
+
+    const appended = data<{ rank: string }>(await create("Appended"));
+
+    expect(appended.rank > "a0").toBe(true);
+  });
 });

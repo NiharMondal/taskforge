@@ -1,9 +1,10 @@
 import { IsOptionalNonNull } from "@/common/decorators/is-optional-non-null.decorator";
-import { IsOptional, IsString, MaxLength } from "class-validator";
+import { IsOptional, IsString, MaxLength, MinLength } from "class-validator";
 
 export class UpdateWorkspaceDto {
-  @IsString()
   @IsOptionalNonNull()
+  @IsString()
+  @MinLength(3) // as on create; an empty PATCH used to blank the name
   name?: string;
 
   @IsOptional()

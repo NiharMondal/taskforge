@@ -18,6 +18,7 @@ import { IssueStatus } from "generated/prisma/enums";
 import { CreateIssueDto } from "./dto/create-issue.dto";
 import { QueryIssuesDto } from "./dto/query-issues.dto";
 import { UpdateIssueDto } from "./dto/update-issue.dto";
+import { isAllowedTransition } from "./status-transitions";
 
 /** The Prisma client, or a transaction client from `$transaction`. */
 type Db = Pick<Prisma.TransactionClient, "issue">;
@@ -138,6 +139,12 @@ export class IssueService {
 
     const issue = await this.findOne(workspaceId, projectId, issueId);
     assertCanUpdateIssue(access, issue, dto);
+
+    if (dto.status && !isAllowedTransition(issue.status, dto.status)) {
+      throw new BadRequestException(
+        `An issue can't move from ${issue.status} to ${dto.status}`,
+      );
+    }
 
     await this.validateAssignee(workspaceId, dto.assigneeId);
     await this.validateSprint(workspaceId, projectId, dto.sprintId);

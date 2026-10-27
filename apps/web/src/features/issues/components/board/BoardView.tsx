@@ -29,7 +29,7 @@ import ProjectHeader from "@/features/projects/components/ProjectHeader";
 import { useProjects } from "@/features/projects/hooks/use-projects";
 import { useWorkspace } from "@/features/workspace/context/workspace-context";
 
-import { BOARD_STATUSES } from "../../constants";
+import { BOARD_STATUSES, STATUS_TRANSITIONS } from "../../constants";
 import { useIssues, useUpdateIssue } from "../../hooks/use-issues";
 import { compareIssueRank, rankBetween } from "../../lib/rank";
 import type { Issue, IssueStatus } from "../../types/issue-types";
@@ -41,18 +41,15 @@ import { useBoolean } from "ahooks";
 
 type Columns = Record<IssueStatus, Issue[]>;
 
-/** Position of a status in the board's todo→done lane flow. */
-const statusOrder = (status: IssueStatus): number =>
-	BOARD_STATUSES.findIndex((s) => s.value === status);
-
 /**
- * A card may only move one lane at a time — to the immediately preceding or
- * following status. Measured against the lane the drag *started* in (not the
- * card's live mid-drag lane) so it can't be walked across multiple lanes in a
- * single drag.
+ * Whether a drag that started in `from` may end in `to`: back in its own lane,
+ * or one of its legal next statuses ({@link STATUS_TRANSITIONS}) — the same
+ * rule as the status Selects on the list and detail views (and the API).
+ * Measured against the lane the drag *started* in, not the card's live mid-drag
+ * lane, so it can't be walked through several steps in a single drag.
  */
-const isAdjacentStatus = (from: IssueStatus, to: IssueStatus): boolean =>
-	Math.abs(statusOrder(from) - statusOrder(to)) === 1;
+const canDropInto = (from: IssueStatus, to: IssueStatus): boolean =>
+	from === to || STATUS_TRANSITIONS[from].includes(to);
 
 // Stable empty reference for the loading/disabled window. A fresh `[]` literal
 // each render would make the render-time resync below fire every render (it
@@ -190,11 +187,10 @@ export default function BoardView({ projectId }: { projectId: string }) {
 		// so the card never visibly lands somewhere the PATCH would 403.
 		if (!canSetIssueStatus(permissions, to)) return;
 
-		// Allow the origin lane itself (so a card can be dropped back where it
-		// started) plus the immediately adjacent lanes — block any jump two or
-		// more lanes away from where the drag began.
+		// Only the origin lane (to drop it back where it started) and the
+		// workflow's next statuses from there.
 		const origin = draggedFrom.current ?? from;
-		if (to !== origin && !isAdjacentStatus(origin, to)) return;
+		if (!canDropInto(origin, to)) return;
 
 		setColumns((prev) => {
 			const fromItems = prev[from];

@@ -1,7 +1,11 @@
 import { accessAs } from "@/common/permissions/test-access";
 import { WorkspaceAccess } from "@/common/permissions/workspace-access";
 import { PrismaService } from "@/prisma/prisma.service";
-import { ForbiddenException, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from "@nestjs/common";
 import { IssueStatus, WorkspaceRole } from "generated/prisma/enums";
 import { IssueService } from "./issue.service";
 
@@ -12,7 +16,11 @@ describe("IssueService.update permission rules", () => {
   const me = "user-me";
 
   /** The issue as stored; nobody involved is `me` unless a test says so. */
-  let stored: { reporterId: string; assigneeId: string | null };
+  let stored: {
+    status: IssueStatus;
+    reporterId: string;
+    assigneeId: string | null;
+  };
   let prisma: {
     issue: { findFirst: jest.Mock; update: jest.Mock };
     $transaction: jest.Mock;
@@ -21,16 +29,14 @@ describe("IssueService.update permission rules", () => {
   let service: IssueService;
 
   beforeEach(() => {
-    stored = { reporterId: "user-other", assigneeId: null };
+    stored = {
+      status: IssueStatus.TODO,
+      reporterId: "user-other",
+      assigneeId: null,
+    };
     prisma = {
       issue: {
-        findFirst: jest.fn(() =>
-          Promise.resolve({
-            id: issueId,
-            status: IssueStatus.BACKLOG,
-            ...stored,
-          }),
-        ),
+        findFirst: jest.fn(() => Promise.resolve({ id: issueId, ...stored })),
         update: jest.fn().mockResolvedValue({ id: issueId }),
       },
       $transaction: jest.fn(),
@@ -130,11 +136,41 @@ describe("IssueService.update permission rules", () => {
 
   describe.each([WorkspaceRole.ADMIN, WorkspaceRole.OWNER])("%s", (role) => {
     it("may update any field on any issue, including DONE", async () => {
+      stored.status = IssueStatus.DEPLOYED;
       await update(as(role), {
         title: "Renamed",
         description: "Rewritten",
         status: IssueStatus.DONE,
       });
+
+      expect(prisma.issue.update).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("status changes follow the workflow", () => {
+    it.each([
+      [IssueStatus.TODO, IssueStatus.DONE],
+      [IssueStatus.TODO, IssueStatus.IN_REVIEW],
+      [IssueStatus.IN_PROGRESS, IssueStatus.TODO],
+      [IssueStatus.DONE, IssueStatus.DEPLOYED],
+    ])("refuses %s → %s, even for the OWNER", async (from, to) => {
+      stored.status = from;
+
+      await expect(
+        update(as(WorkspaceRole.OWNER), { status: to }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.issue.update).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [IssueStatus.QA_REQUESTED, IssueStatus.DEPLOYED],
+      [IssueStatus.QA_REQUESTED, IssueStatus.QA_FAILED],
+      [IssueStatus.QA_FAILED, IssueStatus.IN_PROGRESS],
+      [IssueStatus.IN_REVIEW, IssueStatus.IN_REVIEW],
+    ])("allows %s → %s", async (from, to) => {
+      stored.status = from;
+
+      await update(as(WorkspaceRole.OWNER), { status: to, rank: "a1" });
 
       expect(prisma.issue.update).toHaveBeenCalledTimes(1);
     });

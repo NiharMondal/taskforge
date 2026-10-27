@@ -116,7 +116,7 @@ Mutations use `.message` from the envelope for toast feedback. Every rejection i
 
 - Lane order comes from `BOARD_STATUSES` (all statuses except `BACKLOG`; backlog is triage and appears on the list view only).
 - Card position persists as `Issue.rank`, a fractional index (`fractional-indexing`) computed by `features/issues/lib/rank.ts`. `rankBetween(prev, next)` returns `undefined` on invalid bounds so the caller can fall back to a status-only PATCH; `compareIssueRank` sorts un-ranked rows last. Moving a card is a single-row PATCH — no renumbering.
-- A drag may only cross to an **adjacent** lane, measured from the lane the drag started in.
+- A drag may only land back in its starting lane or in one of that lane's `STATUS_TRANSITIONS` (`features/issues/constants.ts`) — the same rule as the status Selects. The backend enforces the same map (`apps/backend/src/modules/issues/status-transitions.ts`) on every `PATCH` that changes `status`, so change both together.
 - `BoardView` mirrors server data into local column state and resyncs by reference comparison during render (not an effect), so an in-progress drag is never clobbered. The stable `EMPTY_ISSUES` constant exists to keep that comparison from looping.
 
 ### Roles and permissions

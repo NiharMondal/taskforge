@@ -42,9 +42,13 @@ export const GRANTABLE_PERMISSIONS = [
 
 /**
  * Held by the workspace OWNER alone and never stored on a role, so no role can
- * be edited into it.
+ * be edited into it — and adding one needs no migration.
  */
-export const OWNER_ONLY_PERMISSIONS = ["workspace:delete"] as const;
+export const OWNER_ONLY_PERMISSIONS = [
+  "workspace:delete",
+  /** Hand the workspace to another member (`POST /memberships/transfer-ownership`). */
+  "workspace:transfer",
+] as const;
 
 export type GrantablePermission = (typeof GRANTABLE_PERMISSIONS)[number];
 export type Permission =

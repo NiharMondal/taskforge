@@ -24,12 +24,14 @@ import type { TWorkspaceFormValues } from "@/features/workspace/schema/workspace
 import { getApiErrorMessage } from "@/lib/api-error";
 
 import DeleteWorkspaceCard from "./DeleteWorkspaceCard";
+import LeaveWorkspaceCard from "./LeaveWorkspaceCard";
+import TransferOwnershipCard from "./TransferOwnershipCard";
 
 /**
  * Settings → General. Lets OWNER/ADMIN rename / re-describe the active
- * workspace (`PATCH /workspaces/:id`), and the OWNER delete it. Both are gated
- * by the viewer's role derived from the roster; the backend enforces the real
- * boundary.
+ * workspace (`PATCH /workspaces/:id`); the OWNER transfer or delete it; anyone
+ * else leave it. All gated by the viewer's role derived from the roster; the
+ * backend enforces the real boundary.
  */
 export default function GeneralSettings() {
 	const {
@@ -49,8 +51,13 @@ export default function GeneralSettings() {
 	// roster would wrongly read as "you are not an admin".
 	const isError = isWorkspaceError || isMembersError;
 
-	const { isManager: canManage, canDeleteWorkspace } =
-		useWorkspacePermissions();
+	const {
+		isManager: canManage,
+		canDeleteWorkspace,
+		canTransferOwnership,
+		canLeaveWorkspace,
+		userId,
+	} = useWorkspacePermissions();
 
 	const { mutateAsync: updateWorkspace, isPending } = useUpdateWorkspace();
 
@@ -137,9 +144,26 @@ export default function GeneralSettings() {
 				</CardContent>
 			</Card>
 
+			{/* Each card is keyed by the workspace so it resets on a switch;
+			    the prefixes keep sibling keys unique. */}
+			{canTransferOwnership && !isLoading && activeWorkspace && (
+				<TransferOwnershipCard
+					key={`transfer-${activeWorkspace.id}`}
+					workspace={activeWorkspace}
+					currentUserId={userId}
+				/>
+			)}
+
 			{canDeleteWorkspace && !isLoading && activeWorkspace && (
 				<DeleteWorkspaceCard
-					key={activeWorkspace.id}
+					key={`delete-${activeWorkspace.id}`}
+					workspace={activeWorkspace}
+				/>
+			)}
+
+			{canLeaveWorkspace && !isLoading && activeWorkspace && (
+				<LeaveWorkspaceCard
+					key={`leave-${activeWorkspace.id}`}
 					workspace={activeWorkspace}
 				/>
 			)}

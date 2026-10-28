@@ -776,4 +776,83 @@ describe("Tenancy (e2e)", () => {
       }),
     ).resolves.toBe(1);
   });
+
+  describe("ownership transfer and leaving", () => {
+    const transfer = "/api/v1/memberships/transfer-ownership";
+    const me = "/api/v1/memberships/me";
+    const idOf = async (email: string) =>
+      (await prisma.user.findUniqueOrThrow({ where: { email } })).id;
+    const roleIn = async (token: string) =>
+      data<{ role: string }>(
+        await api().get(me).set(as(token, aliceWs)).expect(200),
+      ).role;
+
+    it("lets only the owner hand the workspace over, swapping OWNER and ADMIN", async () => {
+      const aliceId = await idOf(alice.email);
+      const bobId = await idOf(bob.email);
+
+      // Bob isn't the owner, so he can't give it to himself.
+      await api()
+        .post(transfer)
+        .set(as(bobToken, aliceWs))
+        .send({ userId: bobId })
+        .expect(403);
+
+      await api()
+        .post(transfer)
+        .set(as(aliceToken, aliceWs))
+        .send({ userId: bobId })
+        .expect(200);
+      await expect(roleIn(bobToken)).resolves.toBe("OWNER");
+      await expect(roleIn(aliceToken)).resolves.toBe("ADMIN");
+      await expect(
+        prisma.membership.count({
+          where: { workspaceId: aliceWs, role: "OWNER" },
+        }),
+      ).resolves.toBe(1);
+
+      // Alice is an ADMIN now: she can't take it back herself.
+      await api()
+        .post(transfer)
+        .set(as(aliceToken, aliceWs))
+        .send({ userId: aliceId })
+        .expect(403);
+
+      // Bob hands it back, and is left an ADMIN.
+      await api()
+        .post(transfer)
+        .set(as(bobToken, aliceWs))
+        .send({ userId: aliceId })
+        .expect(200);
+      await expect(roleIn(aliceToken)).resolves.toBe("OWNER");
+      await expect(roleIn(bobToken)).resolves.toBe("ADMIN");
+    });
+
+    it("refuses a transfer to someone outside the workspace", async () => {
+      const outsider = await prisma.user.create({
+        data: { name: "Outsider", email: `outsider-${run}@e2e.test` },
+      });
+      try {
+        await api()
+          .post(transfer)
+          .set(as(aliceToken, aliceWs))
+          .send({ userId: outsider.id })
+          .expect(404);
+        // The failed transfer didn't demote Alice.
+        await expect(roleIn(aliceToken)).resolves.toBe("OWNER");
+      } finally {
+        await prisma.user.delete({ where: { id: outsider.id } });
+      }
+    });
+
+    it("lets a member leave, but not the owner", async () => {
+      await api().delete(me).set(as(aliceToken, aliceWs)).expect(403);
+
+      await api().delete(me).set(as(bobToken, aliceWs)).expect(200);
+      await api()
+        .get("/api/v1/projects")
+        .set(as(bobToken, aliceWs))
+        .expect(403);
+    });
+  });
 });

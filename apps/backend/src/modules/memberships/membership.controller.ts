@@ -10,11 +10,14 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
   HttpStatus,
   Param,
   Patch,
+  Post,
   UseGuards,
 } from "@nestjs/common";
+import { TransferOwnershipDto } from "./dto/transfer-ownership.dto";
 import { UpdateRoleDto } from "./dto/update-role.dto";
 import { MembershipService } from "./membership.service";
 
@@ -43,6 +46,38 @@ export class MembershipController {
     return sendResponse({
       statusCode: HttpStatus.OK,
       message: "Membership fetched successfully",
+      data: membership,
+    });
+  }
+
+  // Hand the workspace to another member (the OWNER only).
+  @Post("transfer-ownership")
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission("workspace:transfer")
+  async transferOwnership(
+    @WorkspaceId() workspaceId: string,
+    @Access() access: WorkspaceAccess,
+    @Body() dto: TransferOwnershipDto,
+  ) {
+    const member = await this.membershipService.transferOwnership(
+      workspaceId,
+      access,
+      dto.userId,
+    );
+    return sendResponse({
+      statusCode: HttpStatus.OK,
+      message: "Ownership transferred",
+      data: member,
+    });
+  }
+
+  // Leave the workspace yourself. Declared before `:userId`, like `GET me`.
+  @Delete("me")
+  async leave(@Access() access: WorkspaceAccess) {
+    const membership = await this.membershipService.leave(access);
+    return sendResponse({
+      statusCode: HttpStatus.OK,
+      message: "You left the workspace",
       data: membership,
     });
   }

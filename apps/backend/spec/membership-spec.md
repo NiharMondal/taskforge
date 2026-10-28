@@ -8,6 +8,7 @@ A workspace's roster: who is in it and with which role. Members are added throug
 
 - **One owner.** Every workspace has exactly one `OWNER`. The owner holds every permission in code, can't be assigned, invited, demoted or removed, and stops being the owner only by **transferring** ownership (or deleting the workspace).
 - **No escalation.** An actor can't change or remove a member, or hand out a role, holding permissions the actor lacks (`assertActorHolds`).
+- **Roles** are the workspace's built-ins or its custom roles (`spec/role-spec.md`). Roster rows carry `assignedRole { id, name, systemKey }`; the enum `role` reads `MEMBER` for a custom role.
 - **Tenant.** Every route goes through `WorkspaceGuard`; the workspace comes from `x-workspace-id`, and `:userId` is looked up in that workspace only.
 
 ## API Endpoints
@@ -19,7 +20,7 @@ Base path: `/memberships`
 | `GET` | `/` | Any member | The roster, each row with `user { id, name, avatarUrl, email }` and its role |
 | `GET` | `/me` | Any member | The caller's role and the permissions it grants |
 | `GET` | `/:userId` | Any member | One membership |
-| `PATCH` | `/:userId` | `member:manage` | Change a member's role (`{ role }`; never `OWNER`, never yourself) |
+| `PATCH` | `/:userId` | `member:manage` | Change a member's role (`{ roleId }`, custom roles included, or a built-in's `{ role }`; never the owner's, never yourself) |
 | `DELETE` | `/:userId` | `member:manage` | Remove a member (never the owner) |
 | `POST` | `/transfer-ownership` | The owner (`workspace:transfer`) | Make another member the owner |
 | `DELETE` | `/me` | Anyone but the owner | Leave the workspace |

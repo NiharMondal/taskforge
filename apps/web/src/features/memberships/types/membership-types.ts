@@ -1,3 +1,5 @@
+import type { Permission } from "@/features/roles/constants";
+import type { RoleSummary } from "@/features/roles/types/role-types";
 import type { WorkspaceRole } from "@/features/workspace/types/workspace-types";
 import { ICommonUserEntity } from "@/types/common";
 
@@ -18,12 +20,30 @@ export interface Member {
 	id: string;
 	userId: string;
 	workspaceId: string;
+	/**
+	 * Legacy enum: the built-in's key, or MEMBER for a custom role. Show
+	 * `assignedRole` instead; it is null only for rows predating roles.
+	 */
 	role: WorkspaceRole;
+	assignedRole: RoleSummary | null;
 	createdAt: string;
 	user: MemberUser | null;
 }
 
 /** Payload for `PATCH /memberships/:userId` — the only mutable field is the role. */
 export interface UpdateMembershipDto {
+	roleId: string;
+}
+
+/**
+ * `GET /memberships/me`: the caller's role in the workspace and every
+ * permission it grants, resolved by the backend (the owner's includes the
+ * owner-only keys). The web derives its permission flags from this.
+ */
+export interface MyMembership {
+	userId: string;
+	workspaceId: string;
 	role: WorkspaceRole;
+	assignedRole: RoleSummary | null;
+	permissions: Permission[];
 }

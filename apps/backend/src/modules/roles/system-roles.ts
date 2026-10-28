@@ -4,6 +4,11 @@ import {
   isGrantablePermission,
   SYSTEM_ROLE_NAMES,
 } from "@/common/permissions/permissions";
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from "@nestjs/common";
 import type { Prisma } from "generated/prisma/client";
 import { WorkspaceRole } from "generated/prisma/enums";
 
@@ -55,4 +60,59 @@ export async function findSystemRole(
         permissions: role.permissions.filter(isGrantablePermission),
       }
     : { id: null, permissions: DEFAULT_ROLE_PERMISSIONS[systemKey] };
+}
+
+/** How a write names the role to hand out: a Role row, or a built-in by key. */
+export type RoleChoice = { roleId?: string; role?: WorkspaceRole };
+
+/**
+ * The role a membership change or invitation hands out, from either a
+ * `roleId` (any role of this workspace, custom ones included) or the enum of
+ * a built-in. Never the owner's: ownership moves only by transfer.
+ *
+ * `enumRole` is what to write in the legacy `role` column: the built-in's key,
+ * or MEMBER for a custom role (permissions always come from the Role row).
+ */
+export async function resolveAssignableRole(
+  db: Db,
+  workspaceId: string,
+  choice: RoleChoice,
+): Promise<{
+  id: string | null;
+  enumRole: WorkspaceRole;
+  permissions: readonly GrantablePermission[];
+}> {
+  if (choice.roleId !== undefined && choice.role !== undefined) {
+    throw new BadRequestException("Send either roleId or role, not both");
+  }
+  if (choice.roleId === undefined && choice.role === undefined) {
+    throw new BadRequestException("Send the role to assign (roleId)");
+  }
+
+  if (choice.roleId !== undefined) {
+    const role = await db.role.findFirst({
+      where: { id: choice.roleId, workspaceId },
+      select: { id: true, systemKey: true, permissions: true },
+    });
+    if (!role) throw new NotFoundException("Role not found");
+    assertNotOwnerRole(role.systemKey);
+    return {
+      id: role.id,
+      enumRole: role.systemKey ?? WorkspaceRole.MEMBER,
+      permissions: role.permissions.filter(isGrantablePermission),
+    };
+  }
+
+  const key = choice.role as WorkspaceRole;
+  assertNotOwnerRole(key);
+  const role = await findSystemRole(db, workspaceId, key);
+  return { ...role, enumRole: key };
+}
+
+function assertNotOwnerRole(systemKey: WorkspaceRole | null) {
+  if (systemKey === WorkspaceRole.OWNER) {
+    throw new ForbiddenException(
+      "The owner role can't be assigned; the owner transfers it with POST /memberships/transfer-ownership",
+    );
+  }
 }

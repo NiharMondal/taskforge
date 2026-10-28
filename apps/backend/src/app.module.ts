@@ -15,6 +15,7 @@ import { IssueModule } from "./modules/issues/issue.module";
 import { LabelModule } from "./modules/labels/label.module";
 import { MembershipModule } from "./modules/memberships/membership.module";
 import { ProjectModule } from "./modules/projects/project.module";
+import { RoleModule } from "./modules/roles/role.module";
 import { SprintModule } from "./modules/sprints/sprint.module";
 import { WorkspaceModule } from "./modules/workspace/workspace.module";
 
@@ -32,6 +33,7 @@ import { WorkspaceModule } from "./modules/workspace/workspace.module";
     IssueModule,
     CommentModule,
     LabelModule,
+    RoleModule,
     ActivityModule,
     SprintModule,
   ],

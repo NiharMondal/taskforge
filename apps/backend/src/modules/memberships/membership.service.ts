@@ -13,7 +13,11 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { WorkspaceRole } from "generated/prisma/enums";
-import { findSystemRole } from "../roles/system-roles";
+import {
+  findSystemRole,
+  resolveAssignableRole,
+  type RoleChoice,
+} from "../roles/system-roles";
 
 /** The role a roster row or `/memberships/me` shows next to the enum. */
 const ASSIGNED_ROLE_SUMMARY = {
@@ -86,13 +90,14 @@ export class MembershipService {
   /**
    * `member:manage` is checked on the route. On top of it: nobody changes their
    * own role, the OWNER is untouchable, and an actor may neither act on a
-   * member nor hand out a role that holds permissions the actor lacks.
+   * member nor hand out a role that holds permissions the actor lacks. The
+   * role may be custom (`roleId`); the enum column then reads MEMBER.
    */
   async updateRole(
     workspaceId: string,
     targetUserId: string,
     actor: WorkspaceAccess,
-    role: WorkspaceRole,
+    choice: RoleChoice,
   ) {
     if (targetUserId === actor.userId) {
       throw new ForbiddenException("You cannot change your own role");
@@ -100,13 +105,11 @@ export class MembershipService {
 
     const target = await this.getTarget(workspaceId, targetUserId, actor);
 
-    if (role === WorkspaceRole.OWNER) {
-      throw new ForbiddenException(
-        "The owner role can't be assigned; the owner transfers it with POST /memberships/transfer-ownership",
-      );
-    }
-
-    const newRole = await findSystemRole(this.prisma, workspaceId, role);
+    const newRole = await resolveAssignableRole(
+      this.prisma,
+      workspaceId,
+      choice,
+    );
     assertActorHolds(
       actor,
       newRole.permissions,
@@ -120,7 +123,8 @@ export class MembershipService {
           workspaceId,
         },
       },
-      data: { role, roleId: newRole.id },
+      data: { role: newRole.enumRole, roleId: newRole.id },
+      include: ASSIGNED_ROLE_SUMMARY,
     });
   }
 

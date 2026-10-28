@@ -43,6 +43,8 @@ type Props = {
 	reporter?: ICommonUserEntity;
 	/** Which of the controls below the viewer's role may actually change. */
 	permissions: Permissions;
+	/** Whether the viewer may edit this issue's fields (`canEditIssue`). */
+	canEditFields: boolean;
 };
 
 /**
@@ -59,6 +61,7 @@ export default function IssueDetailsPanel({
 	labels,
 	reporter,
 	permissions,
+	canEditFields,
 }: Props) {
 	const methods = useForm<TIssueDetailsValues>({
 		resolver: zodResolver(issueDetailsSchema),
@@ -76,7 +79,6 @@ export default function IssueDetailsPanel({
 			s.value === defaultValues.status ||
 			canSetIssueStatus(permissions, s.value),
 	);
-	const canEditFields = permissions.canEditIssueFields;
 	const canSave = canEditFields || permissions.canChangeIssueStatus;
 	// A sub-issue's type is SUBTASK for good, so its Select is display only.
 	const typeOptions = typeOptionsFor(defaultValues.type);

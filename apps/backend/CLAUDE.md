@@ -109,8 +109,14 @@ add up to `DEFAULT_ROLE_PERMISSIONS`.
   the map are refused. DONE needs `issue:status:done`, on create too.
 - **No escalation:** `assertActorHolds` refuses a role change, removal or invitation that involves
   a permission the actor doesn't hold.
-- `Membership.role` / `Invitation.role` (enum) are still written next to `roleId` for older code and
-  the web app; read permissions from `request.access`, never from the enum.
+- **Custom roles** (`src/modules/roles/`, `spec/role-spec.md`): `GET /roles` for any member;
+  `role:manage` creates, edits and deletes custom roles. The built-ins are read-only (grant
+  migrations extend them by `systemKey`), names are unique ignoring case, and a role still held by a
+  member or a live invitation can't be deleted (409). Members and invitations get a role by
+  `roleId` (or a built-in's `role`), resolved by `resolveAssignableRole` in `system-roles.ts`, which
+  refuses the owner's.
+- `Membership.role` / `Invitation.role` (enum) are still written next to `roleId` — the built-in's
+  key, or MEMBER for a custom role; read permissions from `request.access`, never from the enum.
 
 ### Accounts and sign-in methods
 
@@ -328,13 +334,14 @@ means extending `IssueSnapshot`/`issueChanges` and the web's `describeChange` to
 they need no database. Current coverage: `WorkspaceGuard`, `JwtAuthGuard`, `PermissionsGuard`, `IssueService`
 permission rules and tenant isolation, `MembershipService` role changes/removal, `UserController`/`UserService`,
 `InvitationService`/controller, register/verify/login/Google sign-in/refresh (`AuthService`,
-`RefreshTokenService`, `GoogleTokenVerifier`, throttling), `WorkspaceService`, `SprintService.endSprint`, `CommentService`, `LabelService`, `ActivityService`, `issueChanges`, the history rows `IssueService` writes, and the issue, comment and label DTOs.
+`RefreshTokenService`, `GoogleTokenVerifier`, throttling), `WorkspaceService`, `SprintService.endSprint`, `CommentService`, `LabelService`, `ActivityService`, `RoleService` and the role DTOs, `issueChanges`, the history rows `IssueService` writes, and the issue, comment and label DTOs.
 `jest` maps `@/` and `generated/` in `package.json` and transforms the ESM-only `fractional-indexing`.
 
 `pnpm run test:e2e` (`test/*.e2e-spec.ts`) boots the real `AppModule` through `configureApp()` and
 drives it with supertest against Postgres: sign-up through the emailed link (read from the
 mocked `MailService`), refresh-token rotation and sign-out, unknown body keys, cross-workspace isolation, the header/path-param
-check, invite → accept, MEMBER limits, comments (isolation, authorship, cascade on issue delete), labels (isolation, MEMBER limits, cascade on label delete), and an issue's history. `MailService` is overridden; other boot-time secrets get
+check, invite → accept, MEMBER limits, comments (isolation, authorship, cascade on issue delete), labels (isolation, MEMBER limits, cascade on label delete), custom roles (create, assign by
+`roleId`, enforcement, built-ins locked, delete refused while in use), and an issue's history. `MailService` is overridden; other boot-time secrets get
 placeholders in `test/setup-e2e.ts`. Rules:
 
 - `DATABASE_URL` must point at a **migrated** database whose name has `e2e` or `test` as a whole word, e.g. `taskforge_e2e` (`latest` doesn't count)

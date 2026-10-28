@@ -109,7 +109,7 @@ export class MembershipController {
       workspaceId,
       userId,
       access,
-      dto.role,
+      dto,
     );
     return sendResponse({
       statusCode: HttpStatus.OK,

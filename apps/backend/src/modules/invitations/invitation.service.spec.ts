@@ -93,8 +93,11 @@ describe("InvitationService", () => {
   });
 
   describe("sendInvitation", () => {
-    const send = (dto: { email: string; role?: WorkspaceRole }) =>
-      service.sendInvitation(workspaceId, adminAccess, dto);
+    const send = (dto: {
+      email: string;
+      role?: WorkspaceRole;
+      roleId?: string;
+    }) => service.sendInvitation(workspaceId, adminAccess, dto);
 
     it("checks membership for the user who owns that email", async () => {
       prisma.user.findFirst.mockResolvedValue({
@@ -169,6 +172,35 @@ describe("InvitationService", () => {
       expect(prisma.invitation.upsert).toHaveBeenCalledWith(
         expect.objectContaining({ create }),
       );
+    });
+
+    it("invites to a custom role by roleId, scoped to this workspace", async () => {
+      prisma.role.findFirst.mockResolvedValue({
+        id: "role-triage",
+        systemKey: null,
+        permissions: ["issue:status"],
+      });
+
+      await send({ email: "bob@example.com", roleId: "role-triage" });
+
+      expect(prisma.role.findFirst).toHaveBeenCalledWith({
+        where: { id: "role-triage", workspaceId },
+        select: { id: true, systemKey: true, permissions: true },
+      });
+      const create: unknown = expect.objectContaining({
+        role: WorkspaceRole.MEMBER,
+        roleId: "role-triage",
+      });
+      expect(prisma.invitation.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ create }),
+      );
+    });
+
+    it("404s a roleId that isn't one of this workspace's roles", async () => {
+      await expect(
+        send({ email: "bob@example.com", roleId: "role-of-B" }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.invitation.upsert).not.toHaveBeenCalled();
     });
 
     it("stores and emails the lowercase address", async () => {

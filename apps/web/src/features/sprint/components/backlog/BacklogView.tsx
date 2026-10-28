@@ -24,6 +24,7 @@ import { useIssues, useUpdateIssue } from "@/features/issues/hooks/use-issues";
 import type { Issue } from "@/features/issues/types/issue-types";
 import { useMemberships } from "@/features/memberships/hooks/use-memberships";
 import { useWorkspacePermissions } from "@/features/memberships/hooks/use-workspace-permissions";
+import { canEditIssue } from "@/features/memberships/lib/permissions";
 import { getMemberName } from "@/features/memberships/lib/member";
 import ProjectHeader from "@/features/projects/components/ProjectHeader";
 import { useProjects } from "@/features/projects/hooks/use-projects";
@@ -96,7 +97,11 @@ export default function BacklogView({ projectId }: { projectId: string }) {
 	const { activeWorkspaceId } = useWorkspace();
 	const workspaceId = activeWorkspaceId ?? "";
 	const permissions = useWorkspacePermissions();
-	const { canManageSprints, canEditIssueFields } = permissions;
+	const { canManageSprints } = permissions;
+	// Moving an issue between sprints writes its `sprintId`, a content field:
+	// whether the viewer may is decided per issue (`canEditIssue`).
+	const canPlanAnyIssue =
+		permissions.canEditAnyIssue || permissions.canEditOwnIssues;
 
 	const { data: projects } = useProjects(workspaceId);
 	const project = projects?.find((p) => p.id === projectId);
@@ -313,7 +318,7 @@ export default function BacklogView({ projectId }: { projectId: string }) {
 										</Button>
 									),
 								};
-						const moveTargets: MoveTarget[] = canEditIssueFields
+						const moveTargets: MoveTarget[] = canPlanAnyIssue
 							? sections
 									.filter((s) => s.id !== section.id)
 									.map((s) => ({ id: s.id, label: s.title }))
@@ -329,7 +334,7 @@ export default function BacklogView({ projectId }: { projectId: string }) {
 								issues={section.issues}
 								emptyText={
 									section.sprint
-										? canEditIssueFields
+										? canPlanAnyIssue
 											? "Drag issues here from the backlog, or use an issue’s ⋯ menu."
 											: "No issues in this sprint yet."
 										: "Nothing unscheduled. New issues without a sprint land here."
@@ -341,7 +346,9 @@ export default function BacklogView({ projectId }: { projectId: string }) {
 										issue={issue}
 										sectionId={section.id}
 										assigneeName={assigneeOf(issue)}
-										moveTargets={moveTargets}
+										moveTargets={
+											canEditIssue(permissions, issue) ? moveTargets : []
+										}
 										onMove={handleMove}
 									/>
 								))}

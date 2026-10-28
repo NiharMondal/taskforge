@@ -11,6 +11,7 @@ import IssueActivityPanel from "@/features/activity/components/IssueActivityPane
 import { useLabels } from "@/features/labels/hooks/use-labels";
 import { useMemberships } from "@/features/memberships/hooks/use-memberships";
 import { useWorkspacePermissions } from "@/features/memberships/hooks/use-workspace-permissions";
+import { canEditIssue } from "@/features/memberships/lib/permissions";
 import { useSprints } from "@/features/sprint/hooks/use-sprints";
 import { useWorkspace } from "@/features/workspace/context/workspace-context";
 import { getApiErrorMessage } from "@/lib/api-error";
@@ -130,7 +131,7 @@ export default function IssueDetailComponent({ projectId, issueId }: Props) {
 					defaultValues={contentValues}
 					onSubmit={handleSaveContent}
 					isSubmitting={isSavingContent}
-					canEdit={permissions.canEditIssueFields}
+					canEdit={canEditIssue(permissions, issue)}
 				/>
 				<SubIssuesPanel
 					issue={issue}
@@ -153,6 +154,7 @@ export default function IssueDetailComponent({ projectId, issueId }: Props) {
 					labels={labels}
 					reporter={issue.reporter}
 					permissions={permissions}
+					canEditFields={canEditIssue(permissions, issue)}
 				/>
 				{permissions.canDeleteIssue && (
 					<DeleteIssueButton

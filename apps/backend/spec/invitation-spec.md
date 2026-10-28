@@ -56,7 +56,7 @@ enum InvitationStatus {
 
 **Auth:** Required. Requester must be an `ADMIN` or `OWNER` of the workspace.
 
-**What it receives:** The email address to invite and the role to assign (`MEMBER`, `ADMIN`, etc.).
+**What it receives:** The email address to invite and the role to assign: `roleId` (any role of the workspace but the owner's, custom ones included — see `spec/role-spec.md`), or for older clients a built-in's `role` (`ADMIN`, `MEMBER`, `VIEWER`). Neither means Member. Invitations embed `assignedRole { id, name, systemKey }`.
 
 **What the backend does:**
 1. Validates the email and role.
@@ -108,7 +108,7 @@ enum InvitationStatus {
 
 **Auth:** None.
 
-**What it does:** Returns basic invitation metadata — the target email, workspace name, role, and expiry date — so the frontend can show a preview page before the user logs in or registers. Also useful to detect expired/invalid tokens early and show a friendly error instead of letting the user log in first.
+**What it does:** Returns basic invitation metadata — the target email, workspace name, role (`role`, and `roleName` for display), and expiry date — so the frontend can show a preview page before the user logs in or registers. Also useful to detect expired/invalid tokens early and show a friendly error instead of letting the user log in first.
 
 **Errors:** `404` if token not found, `400` if already used or expired.
 

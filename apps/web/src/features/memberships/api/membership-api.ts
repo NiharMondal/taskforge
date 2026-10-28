@@ -2,7 +2,11 @@ import { api, inWorkspace } from "@/lib/axios";
 
 import type { ApiResponse } from "@/types/api";
 
-import type { Member, UpdateMembershipDto } from "../types/membership-types";
+import type {
+	Member,
+	MyMembership,
+	UpdateMembershipDto,
+} from "../types/membership-types";
 
 /**
  * Membership API layer. All membership network calls belong here.
@@ -23,7 +27,17 @@ export async function getMemberships(
   return api.get<Member[]>("/memberships", inWorkspace(workspaceId));
 }
 
-/** Change a member's role within the active workspace (`PATCH /memberships/:userId`). */
+/** The caller's own role and permissions in the workspace. */
+export async function getMyMembership(
+	workspaceId: string,
+): Promise<ApiResponse<MyMembership>> {
+	return api.get<MyMembership>("/memberships/me", inWorkspace(workspaceId));
+}
+
+/**
+ * Give a member another role (`PATCH /memberships/:userId`, `{ roleId }`),
+ * custom roles included.
+ */
 export async function updateMembership(
   workspaceId: string,
   userId: string,

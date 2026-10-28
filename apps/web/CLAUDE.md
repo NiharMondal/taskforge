@@ -64,7 +64,7 @@ Issues are project-scoped: pages live under `/projects/[projectId]/` (`active-sp
 
 ### Feature structure
 
-Each domain lives in `src/features/<name>/` (`auth`, `dashboard`, `invitations`, `issues`, `memberships`, `profile`, `projects`, `settings`, `sprint`, `workspace`):
+Each domain lives in `src/features/<name>/` (`auth`, `comments`, `dashboard`, `invitations`, `issues`, `memberships`, `profile`, `projects`, `settings`, `sprint`, `workspace`):
 
 ```
 api/          — async functions calling `api.*` from lib/axios
@@ -120,11 +120,11 @@ Mutations use `.message` from the envelope for toast feedback. Every rejection i
 
 ### Roles and permissions
 
-The JWT has no role — it comes from the membership roster. `useWorkspacePermissions()` (`features/memberships/hooks/`) returns the viewer's flags (`canCreateIssue`, `canEditIssueFields`, `canChangeIssueStatus`, `canMarkIssueDone`, `canDeleteIssue`, `canManageProjects`, `canManageSprints`, `canDeleteWorkspace`), computed by `getPermissions` in `features/memberships/lib/permissions.ts`. That file mirrors the backend rules (create/delete and project/sprint writes are OWNER/ADMIN; a MEMBER may change `status` — never to `DONE` — and board `rank`; a VIEWER is read-only), so **change both together**. Which roster row is "me" comes from the access token's `sub` (what the backend authorizes as), not the cached session id. Flags are all `false` *while loading*; if the role still can't be determined afterwards (roster failed, user not on it) the hook **fails open** (`UNRESTRICTED_PERMISSIONS`, `isRoleKnown: false`, plus a dev-only `[permissions]` console warning) so a lookup problem never locks an owner out. Hide or disable controls with these flags rather than letting users hit a 403 toast — but they are UX only; the backend is the authority.
+The JWT has no role — it comes from the membership roster. `useWorkspacePermissions()` (`features/memberships/hooks/`) returns the viewer's flags (`canCreateIssue`, `canEditIssueFields`, `canChangeIssueStatus`, `canMarkIssueDone`, `canDeleteIssue`, `canManageProjects`, `canManageSprints`, `canComment`, `canDeleteAnyComment`, `canDeleteWorkspace`) and `userId` (the same "me", for authorship checks such as editing your own comment), computed by `getPermissions` in `features/memberships/lib/permissions.ts`. That file mirrors the backend rules (create/delete and project/sprint writes are OWNER/ADMIN; a MEMBER may change `status` — never to `DONE` — and board `rank`; a VIEWER is read-only), so **change both together**. Which roster row is "me" comes from the access token's `sub` (what the backend authorizes as), not the cached session id. Flags are all `false` *while loading*; if the role still can't be determined afterwards (roster failed, user not on it) the hook **fails open** (`UNRESTRICTED_PERMISSIONS`, `isRoleKnown: false`, plus a dev-only `[permissions]` console warning) so a lookup problem never locks an owner out. Hide or disable controls with these flags rather than letting users hit a 403 toast — but they are UX only; the backend is the authority.
 
 ### Rendering user HTML
 
-Issue descriptions are stored as HTML and the backend does not sanitize them. Pass anything bound for `dangerouslySetInnerHTML` through `sanitizeHtml` (`src/lib/sanitize-html.ts`, DOMPurify with an allowlist matching what the TipTap editor can emit). It returns `""` when there is no DOM (server render) rather than passing input through.
+Issue descriptions and comments are stored as HTML and the backend does not sanitize them. Pass anything bound for `dangerouslySetInnerHTML` through `sanitizeHtml` (`src/lib/sanitize-html.ts`, DOMPurify with an allowlist matching what the TipTap editor can emit). It returns `""` when there is no DOM (server render) rather than passing input through.
 
 ### Error and loading UI
 

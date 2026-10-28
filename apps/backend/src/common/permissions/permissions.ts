@@ -26,6 +26,10 @@ export const GRANTABLE_PERMISSIONS = [
   "issue:status",
   /** Setting status DONE (on create or update). */
   "issue:status:done",
+  /** Comment on issues, and edit or delete your own comments. */
+  "comment:create",
+  /** Delete anyone's comment (moderation). */
+  "comment:delete:any",
   /** Change members' roles and remove members. */
   "member:manage",
   /** List, send and revoke invitations. */
@@ -59,8 +63,10 @@ export function isGrantablePermission(key: string): key is GrantablePermission {
 /**
  * What each built-in role is seeded with — in new workspaces by
  * `seedSystemRoles`, and in existing ones by the `add_workspace_roles`
- * migration (keep the two in step). OWNER's list is stored empty because the
- * owner is granted ALL_PERMISSIONS in code (see `resolveWorkspaceAccess`).
+ * migration plus the migrations that granted later keys
+ * (`comment_permissions`); keep them in step. OWNER's list is stored empty
+ * because the owner is granted ALL_PERMISSIONS in code (see
+ * `resolveWorkspaceAccess`).
  */
 export const DEFAULT_ROLE_PERMISSIONS: Record<
   WorkspaceRole,
@@ -68,7 +74,12 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<
 > = {
   [WorkspaceRole.OWNER]: [],
   [WorkspaceRole.ADMIN]: GRANTABLE_PERMISSIONS,
-  [WorkspaceRole.MEMBER]: ["issue:create", "issue:edit:own", "issue:status"],
+  [WorkspaceRole.MEMBER]: [
+    "issue:create",
+    "issue:edit:own",
+    "issue:status",
+    "comment:create",
+  ],
   [WorkspaceRole.VIEWER]: [],
 };
 

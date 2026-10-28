@@ -26,10 +26,14 @@ import { useMemberships } from "./use-memberships";
  * Flags are all `false` while loading. If the role still can't be determined
  * afterwards, the controls are shown rather than hidden (see
  * {@link UNRESTRICTED_PERMISSIONS}) and `isRoleKnown` is `false`.
+ *
+ * `userId` is that same "me", for rules about your own rows (e.g. editing your
+ * own comments).
  */
 export function useWorkspacePermissions(): Permissions & {
 	isLoading: boolean;
 	isRoleKnown: boolean;
+	userId: string | undefined;
 } {
 	const { activeWorkspaceId, isLoading: isWorkspacesLoading } = useWorkspace();
 	const { data: session, status } = useSession();
@@ -79,6 +83,6 @@ export function useWorkspacePermissions(): Permissions & {
 			: isUnresolved
 				? UNRESTRICTED_PERMISSIONS
 				: getPermissions(undefined);
-		return { ...base, isLoading, isRoleKnown: !!role };
-	}, [role, isUnresolved, isLoading]);
+		return { ...base, isLoading, isRoleKnown: !!role, userId };
+	}, [role, isUnresolved, isLoading, userId]);
 }

@@ -42,6 +42,8 @@ describe("Tenancy (e2e)", () => {
   let bobWs: string;
   let projectId: string;
   let issueId: string;
+  /** Alice's comment on `issueId`. */
+  let commentId: string;
 
   const api = () => request(app.getHttpServer());
   /** The payload inside the `sendResponse()` envelope. */
@@ -97,6 +99,13 @@ describe("Tenancy (e2e)", () => {
       .send({ title: "Launch", status: "TODO" })
       .expect(201);
     issueId = data<{ id: string }>(issue).id;
+
+    const comment = await api()
+      .post(`/api/v1/projects/${projectId}/issues/${issueId}/comments`)
+      .set(as(aliceToken, aliceWs))
+      .send({ content: "<p>Kick-off is Monday</p>" })
+      .expect(201);
+    commentId = data<{ id: string }>(comment).id;
   });
 
   afterAll(async () => {
@@ -196,6 +205,30 @@ describe("Tenancy (e2e)", () => {
         prisma.workspace.findUnique({ where: { id: aliceWs } }),
       ).resolves.not.toBeNull();
     });
+
+    it("keeps Alice's comments out of Bob's own workspace", async () => {
+      const comments = `/api/v1/projects/${projectId}/issues/${issueId}/comments`;
+
+      await api().get(comments).set(as(bobToken, bobWs)).expect(404);
+      await api()
+        .post(comments)
+        .set(as(bobToken, bobWs))
+        .send({ content: "<p>Injected</p>" })
+        .expect(404);
+      await api()
+        .patch(`${comments}/${commentId}`)
+        .set(as(bobToken, bobWs))
+        .send({ content: "<p>Hijacked</p>" })
+        .expect(404);
+      await api()
+        .delete(`${comments}/${commentId}`)
+        .set(as(bobToken, bobWs))
+        .expect(404);
+
+      await expect(
+        prisma.comment.findUniqueOrThrow({ where: { id: commentId } }),
+      ).resolves.toMatchObject({ content: "<p>Kick-off is Monday</p>" });
+    });
   });
 
   describe("after Bob accepts an invitation as MEMBER", () => {
@@ -269,6 +302,7 @@ describe("Tenancy (e2e)", () => {
         assignedRole: { name: "Member", systemKey: "MEMBER" },
       });
       expect(data<{ permissions: string[] }>(me).permissions.sort()).toEqual([
+        "comment:create",
         "issue:create",
         "issue:edit:own",
         "issue:status",
@@ -301,6 +335,51 @@ describe("Tenancy (e2e)", () => {
         .set(as(bobToken, aliceWs))
         .send({ status: "DONE" })
         .expect(403);
+    });
+
+    it("lets Bob comment and edit his own comment, but not touch Alice's", async () => {
+      const comments = `/api/v1/projects/${projectId}/issues/${issueId}/comments`;
+
+      const created = await api()
+        .post(comments)
+        .set(as(bobToken, aliceWs))
+        .send({ content: "<p>On it</p>" })
+        .expect(201);
+      const bobCommentId = data<{ id: string }>(created).id;
+
+      await api()
+        .patch(`${comments}/${bobCommentId}`)
+        .set(as(bobToken, aliceWs))
+        .send({ content: "<p>On it, done by Friday</p>" })
+        .expect(200);
+      await api()
+        .patch(`${comments}/${commentId}`)
+        .set(as(bobToken, aliceWs))
+        .send({ content: "<p>Hijacked</p>" })
+        .expect(403);
+      await api()
+        .delete(`${comments}/${commentId}`)
+        .set(as(bobToken, aliceWs))
+        .expect(403);
+
+      const thread = await api()
+        .get(comments)
+        .set(as(bobToken, aliceWs))
+        .expect(200);
+      expect(
+        data<{ id: string; content: string; user: { name: string } }[]>(
+          thread,
+        ).map((c) => [c.user.name, c.content]),
+      ).toEqual([
+        ["Alice", "<p>Kick-off is Monday</p>"],
+        ["Bob", "<p>On it, done by Friday</p>"],
+      ]);
+
+      // The owner moderates: she may delete Bob's comment.
+      await api()
+        .delete(`${comments}/${bobCommentId}`)
+        .set(as(aliceToken, aliceWs))
+        .expect(200);
     });
   });
 
@@ -455,6 +534,29 @@ describe("Tenancy (e2e)", () => {
         .expect(200),
     );
     expect(unplanned).toMatchObject({ status: "TODO", sprintId: null });
+  });
+
+  it("deletes an issue's comments with the issue", async () => {
+    const issue = await api()
+      .post(`/api/v1/projects/${projectId}/issues`)
+      .set(as(aliceToken, aliceWs))
+      .send({ title: "Short-lived" })
+      .expect(201);
+    const doomedId = data<{ id: string }>(issue).id;
+    await api()
+      .post(`/api/v1/projects/${projectId}/issues/${doomedId}/comments`)
+      .set(as(aliceToken, aliceWs))
+      .send({ content: "<p>Soon gone</p>" })
+      .expect(201);
+
+    await api()
+      .delete(`/api/v1/projects/${projectId}/issues/${doomedId}`)
+      .set(as(aliceToken, aliceWs))
+      .expect(200);
+
+    await expect(
+      prisma.comment.count({ where: { issueId: doomedId } }),
+    ).resolves.toBe(0);
   });
 
   describe("errors keep the envelope", () => {

@@ -82,6 +82,8 @@ export interface Issue {
   assigneeId?: string | null;
   reporter?: IssueUser;
   assignee?: IssueUser | null;
+  /** List route only. The thread itself comes from the comments route. */
+  _count?: { comments: number };
   createdAt: string;
   updatedAt: string;
 }

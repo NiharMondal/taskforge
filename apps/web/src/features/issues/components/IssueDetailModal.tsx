@@ -1,6 +1,7 @@
 "use client";
 
 import MyModal from "@/components/ui/my-modal";
+import CommentsPanel from "@/features/comments/components/CommentsPanel";
 import type { Permissions } from "@/features/memberships/lib/permissions";
 import type { Member } from "@/features/memberships/types/membership-types";
 import { useSprints } from "@/features/sprint/hooks/use-sprints";
@@ -57,7 +58,7 @@ export default function IssueDetailModal({
 					key={issue.id}
 					className="grid grid-cols-1 gap-5 xl:grid-cols-6 "
 				>
-					<div className="xl:col-span-4">
+					<div className="flex flex-col gap-4 xl:col-span-4">
 						<IssueContentForm
 							defaultValues={{
 								title: issue.title,
@@ -66,6 +67,11 @@ export default function IssueDetailModal({
 							onSubmit={handleSaveContent}
 							isSubmitting={isSavingContent}
 							canEdit={permissions.canEditIssueFields}
+						/>
+						<CommentsPanel
+							workspaceId={workspaceId}
+							projectId={projectId}
+							issueId={issue.id}
 						/>
 					</div>
 					<div className="xl:col-span-2 flex flex-col gap-3 border-0 xl:border-l pl-4">

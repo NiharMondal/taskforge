@@ -127,6 +127,8 @@ export class IssueService {
         sprint: { select: { id: true, name: true } },
         // For the "↳ WA-3" tag on sub-issue rows and cards.
         parentIssue: { select: { id: true, number: true, title: true } },
+        // The comment count on board cards; the thread itself is its own route.
+        _count: { select: { comments: true } },
       });
 
     const { data, metaData } = await qb.execute(this.prisma.issue);

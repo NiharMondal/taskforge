@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import ErrorAlert from "@/components/ui/error-alert";
+import CommentsPanel from "@/features/comments/components/CommentsPanel";
 import { useMemberships } from "@/features/memberships/hooks/use-memberships";
 import { useWorkspacePermissions } from "@/features/memberships/hooks/use-workspace-permissions";
 import { useSprints } from "@/features/sprint/hooks/use-sprints";
@@ -132,6 +133,11 @@ export default function IssueDetailComponent({ projectId, issueId }: Props) {
 					issue={issue}
 					workspaceId={workspaceId}
 					canCreate={permissions.canCreateIssue}
+				/>
+				<CommentsPanel
+					workspaceId={workspaceId}
+					projectId={projectId}
+					issueId={issue.id}
 				/>
 			</div>
 			<div className="xl:col-span-2 flex flex-col gap-3">

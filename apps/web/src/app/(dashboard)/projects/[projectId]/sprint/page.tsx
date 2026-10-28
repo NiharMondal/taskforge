@@ -3,13 +3,14 @@
 import { use } from "react";
 
 import ProjectHeader from "@/features/projects/components/ProjectHeader";
-import SprintsView from "@/features/sprint/components/SprintsView";
+import CurrentSprintView from "@/features/sprint/components/CurrentSprintView";
 import { useProjects } from "@/features/projects/hooks/use-projects";
 import { useWorkspace } from "@/features/workspace/context/workspace-context";
 
-export default function ProjectSprintsPage({
+/** The project's active sprint and its issues: `/projects/[projectId]/sprint`. */
+export default function ProjectCurrentSprintPage({
 	params,
-}: PageProps<"/projects/[projectId]/sprints">) {
+}: PageProps<"/projects/[projectId]/sprint">) {
 	const { projectId } = use(params);
 	const { activeWorkspaceId } = useWorkspace();
 	const workspaceId = activeWorkspaceId ?? "";
@@ -18,8 +19,8 @@ export default function ProjectSprintsPage({
 
 	return (
 		<div className="flex flex-col gap-6">
-			<ProjectHeader projectId={projectId} project={project} active="sprints" />
-			<SprintsView projectId={projectId} />
+			<ProjectHeader projectId={projectId} project={project} active="sprint" />
+			<CurrentSprintView projectId={projectId} />
 		</div>
 	);
 }

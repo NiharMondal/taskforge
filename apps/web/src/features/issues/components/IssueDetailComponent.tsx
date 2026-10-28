@@ -15,6 +15,7 @@ import { getApiErrorMessage } from "@/lib/api-error";
 
 import { useIssueEditor } from "../hooks/use-issue-editor";
 import { useSingleIssue } from "../hooks/use-issues";
+import { formatEstimate } from "../lib/estimate";
 import {
 	TIssueContentValues,
 	TIssueDetailsValues,
@@ -66,6 +67,8 @@ export default function IssueDetailComponent({ projectId, issueId }: Props) {
 			issue && {
 				status: issue.status,
 				priority: issue.priority,
+				type: issue.type,
+				timeEstimate: formatEstimate(issue.timeEstimate),
 				assigneeId: issue.assigneeId ?? UNASSIGNED,
 				sprintId: issue.sprintId ?? NO_SPRINT,
 			},

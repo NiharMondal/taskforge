@@ -67,6 +67,9 @@ export class IssueService {
       projectId,
       dto.parentIssueId,
     );
+    if (parent && dto.type) {
+      throw new BadRequestException("A sub-issue's type is always SUBTASK");
+    }
 
     // A sub-issue is part of its parent's work, so it starts in the parent's
     // sprint unless one was chosen.
@@ -83,8 +86,10 @@ export class IssueService {
           description: dto.description,
           status,
           priority: dto.priority,
+          timeEstimate: dto.timeEstimate,
           sprintId,
           assigneeId: dto.assigneeId,
+          ...(dto.type && { type: dto.type }),
           ...(parent && {
             parentIssueId: parent.id,
             type: IssueType.SUBTASK,
@@ -218,6 +223,13 @@ export class IssueService {
       );
     }
 
+    // SUBTASK isn't a type anyone can pick (the DTO refuses it), so any type
+    // sent for a sub-issue would turn it into a top-level type while it keeps
+    // its parent.
+    if (dto.type && issue.type === IssueType.SUBTASK) {
+      throw new BadRequestException("A sub-issue's type can't be changed");
+    }
+
     await this.validateAssignee(workspaceId, dto.assigneeId);
     await this.validateSprint(workspaceId, projectId, dto.sprintId);
 
@@ -229,6 +241,8 @@ export class IssueService {
           description: dto.description,
           status,
           priority: dto.priority,
+          type: dto.type,
+          timeEstimate: dto.timeEstimate,
           sprintId: dto.sprintId,
           assigneeId: dto.assigneeId,
           rank,

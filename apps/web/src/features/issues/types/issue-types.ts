@@ -76,7 +76,7 @@ export interface Issue {
   parentIssue?: ParentIssueRef | null;
   /** Detail route only (`useSingleIssue`), ordered by number. */
   subIssues?: SubIssue[];
-  /** Not editable yet: the create/update DTOs don't accept it. */
+  /** Story points (0–100), despite the name; `null` when not estimated. */
   timeEstimate?: number | null;
   reporterId: string;
   assigneeId?: string | null;
@@ -91,6 +91,13 @@ export interface CreateIssueDto {
   description?: string;
   status?: IssueStatus;
   priority?: IssuePriority;
+  /**
+   * Never SUBTASK — the backend refuses it, and refuses any type sent with
+   * `parentIssueId` or for an existing sub-issue.
+   */
+  type?: IssueType;
+  /** Story points; `null` clears the estimate. */
+  timeEstimate?: number | null;
   assigneeId?: string | null;
   sprintId?: string | null;
   /**

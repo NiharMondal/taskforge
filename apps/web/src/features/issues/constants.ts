@@ -133,6 +133,23 @@ export const ISSUE_TYPE_META: Record<IssueType, IconMeta> = {
 	SUBTASK: { label: "Subtask", icon: CornerDownRight, className: "text-muted" },
 };
 
+/**
+ * The types a user can pick. SUBTASK isn't one: creating a sub-issue sets it,
+ * and a sub-issue's type can't be changed.
+ */
+export const SELECTABLE_ISSUE_TYPES: IssueType[] = [
+	"EPIC",
+	"STORY",
+	"TASK",
+	"BUG",
+];
+
+/** Options for an issue's type Select: just SUBTASK for a sub-issue. */
+export const typeOptionsFor = (type: IssueType) =>
+	(type === "SUBTASK" ? ["SUBTASK" as const] : SELECTABLE_ISSUE_TYPES).map(
+		(value) => ({ value, label: ISSUE_TYPE_META[value].label }),
+	);
+
 /** Compact icon per priority — the dense-row alternative to `PriorityChip`. */
 export const PRIORITY_ICON_META: Record<IssuePriority, IconMeta> = {
 	URGENT: { label: "Urgent", icon: ChevronsUp, className: "text-danger" },

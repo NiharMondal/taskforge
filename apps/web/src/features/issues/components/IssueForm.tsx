@@ -11,7 +11,11 @@ import {
 	FormWrapper,
 } from "@/components/form-element";
 import { issueSchema, TIssueFormValues } from "../schema/issue-schema";
-import { ISSUE_PRIORITIES, ISSUE_STATUSES } from "../constants";
+import {
+	ISSUE_PRIORITIES,
+	ISSUE_STATUSES,
+	typeOptionsFor,
+} from "../constants";
 import { Member } from "@/features/memberships/types/membership-types";
 import { IssueStatus, Sprint } from "../types/issue-types";
 
@@ -58,6 +62,8 @@ export default function IssueForm({
 			assigneeId: null,
 			status: initialStatus,
 			priority: "LOW",
+			type: "TASK",
+			timeEstimate: "",
 			sprintId: initialSprintId ?? null,
 		},
 		// `defaultValues` is only read once on mount. When editing, the issue is
@@ -112,6 +118,19 @@ export default function IssueForm({
 						value: p.value,
 						label: p.label,
 					}))}
+				/>
+			</div>
+			<div className="flex items-center justify-between gap-5 min-w-full">
+				<FormSelect
+					name="type"
+					label="Type"
+					placeholder="Select type"
+					options={typeOptionsFor("TASK")}
+				/>
+				<FormTextField
+					name="timeEstimate"
+					label="Story points"
+					placeholder="Not estimated"
 				/>
 			</div>
 			<FormSelect

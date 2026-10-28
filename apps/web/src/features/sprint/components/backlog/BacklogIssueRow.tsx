@@ -39,7 +39,7 @@ interface Props {
 }
 
 /**
- * One backlog line: type, key, title, status, estimate, priority, assignee.
+ * One backlog line: type, key, title, status, story points, priority, assignee.
  * Draggable onto another section; the ⋯ menu does the same move for keyboard
  * and touch users.
  */
@@ -134,7 +134,7 @@ export function BacklogIssueRowBody({
 			<StatusChip status={issue.status} />
 			<span
 				className="hidden w-8 shrink-0 rounded bg-surface-tertiary px-1.5 py-0.5 text-center text-xs text-muted tabular-nums sm:block"
-				title="Estimate"
+				title="Story points"
 			>
 				{issue.timeEstimate ?? "–"}
 			</span>

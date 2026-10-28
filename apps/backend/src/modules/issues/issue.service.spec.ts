@@ -18,6 +18,7 @@ describe("IssueService.update permission rules", () => {
   /** The issue as stored; nobody involved is `me` unless a test says so. */
   let stored: {
     status: IssueStatus;
+    type: IssueType;
     reporterId: string;
     assigneeId: string | null;
   };
@@ -31,6 +32,7 @@ describe("IssueService.update permission rules", () => {
   beforeEach(() => {
     stored = {
       status: IssueStatus.TODO,
+      type: IssueType.TASK,
       reporterId: "user-other",
       assigneeId: null,
     };
@@ -97,6 +99,8 @@ describe("IssueService.update permission rules", () => {
       ["priority", { priority: "HIGH" }],
       ["sprintId", { sprintId: "sprint-1" }],
       ["assigneeId", { assigneeId: "user-x" }],
+      ["type", { type: IssueType.BUG }],
+      ["timeEstimate", { timeEstimate: 5 }],
     ])("may not change %s", async (_label, dto) => {
       await refused(as(WorkspaceRole.MEMBER), dto);
     });
@@ -124,6 +128,8 @@ describe("IssueService.update permission rules", () => {
         title: "Renamed",
         description: "Rewritten",
         priority: "HIGH",
+        type: IssueType.BUG,
+        timeEstimate: 5,
       });
 
       expect(prisma.issue.update).toHaveBeenCalledTimes(1);
@@ -178,6 +184,41 @@ describe("IssueService.update permission rules", () => {
 
   it("refuses a field nobody has been allowed to write", async () => {
     await refused(as(WorkspaceRole.OWNER), { reporterId: "user-x" });
+  });
+
+  describe("type and estimate", () => {
+    it("writes both, and clears the estimate with null", async () => {
+      await update(as(WorkspaceRole.ADMIN), {
+        type: IssueType.STORY,
+        timeEstimate: null,
+      });
+
+      expect(prisma.issue.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            type: IssueType.STORY,
+            timeEstimate: null,
+          }) as unknown,
+        }),
+      );
+    });
+
+    it("refuses changing a sub-issue's type, even for the OWNER", async () => {
+      stored.type = IssueType.SUBTASK;
+
+      await expect(
+        update(as(WorkspaceRole.OWNER), { type: IssueType.TASK }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.issue.update).not.toHaveBeenCalled();
+    });
+
+    it("still lets a sub-issue be estimated", async () => {
+      stored.type = IssueType.SUBTASK;
+
+      await update(as(WorkspaceRole.OWNER), { timeEstimate: 3 });
+
+      expect(prisma.issue.update).toHaveBeenCalledTimes(1);
+    });
   });
 });
 
@@ -251,7 +292,7 @@ describe("IssueService.create permission rules", () => {
     expect(prisma.issue.create).toHaveBeenCalledTimes(1);
   });
 
-  describe("sub-issues", () => {
+  describe("type, estimate and sub-issues", () => {
     const createdData = () =>
       (
         prisma.issue.create.mock.calls[0] as [{ data: Record<string, unknown> }]
@@ -307,6 +348,34 @@ describe("IssueService.create permission rules", () => {
 
       expect(createdData()).not.toHaveProperty("parentIssueId");
       expect(createdData()).not.toHaveProperty("type");
+    });
+
+    it("refuses a type sent for a sub-issue", async () => {
+      prisma.issue.findFirst.mockResolvedValueOnce({
+        id: "parent-1",
+        sprintId: null,
+        parentIssueId: null,
+      });
+
+      await expect(
+        create(WorkspaceRole.ADMIN, {
+          parentIssueId: "parent-1",
+          type: IssueType.BUG,
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.issue.create).not.toHaveBeenCalled();
+    });
+
+    it("stores the chosen type and estimate for a top-level issue", async () => {
+      await create(WorkspaceRole.MEMBER, {
+        type: IssueType.BUG,
+        timeEstimate: 8,
+      });
+
+      expect(createdData()).toMatchObject({
+        type: IssueType.BUG,
+        timeEstimate: 8,
+      });
     });
   });
 });

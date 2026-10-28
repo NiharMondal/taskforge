@@ -8,6 +8,7 @@ import { toast } from "@heroui/react";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { useSprints } from "@/features/sprint/hooks/use-sprints";
 import type { IssueStatus } from "../types/issue-types";
+import { parseEstimate } from "../lib/estimate";
 type TProps = {
 	isOpen: boolean;
 	onOpenChange: () => void;
@@ -38,7 +39,10 @@ export default function CreateIssueModal({
 
 	const handleCreateIssue = async (values: TIssueFormValues) => {
 		try {
-			const res = await createIssue(values);
+			const res = await createIssue({
+				...values,
+				timeEstimate: parseEstimate(values.timeEstimate),
+			});
 			toast.success(res.message || "Issue created successfully");
 			return true;
 		} catch (error) {

@@ -260,7 +260,9 @@ The `sprint_issues_leave_backlog_status` migration converted existing rows (rank
 `POST /projects/:projectId/issues` with `parentIssueId` creates a sub-issue. `validateParent`
 requires the parent in the same workspace *and* project (else 403) and refuses a parent that is
 itself a sub-issue (400) — nesting is one level deep. The child is typed `SUBTASK` and, without a
-`sprintId`, takes the parent's sprint. The parent can't be changed after create (`UpdateIssueDto` has
+`sprintId`, takes the parent's sprint. `SUBTASK` comes only from this: the DTOs accept `type` as
+`EPIC`/`STORY`/`TASK`/`BUG`, sending one with `parentIssueId` is a 400, and so is changing a
+sub-issue's type. (`timeEstimate` holds story points, 0–100 or `null`, despite its name.) The parent can't be changed after create (`UpdateIssueDto` has
 no `parentIssueId`). The list route embeds `parentIssue { id, number, title }`; the single-issue route
 (`findDetail`, kept apart from the `findOne` that writes start with) also embeds `subIssues`.
 Deleting a parent cascades to its sub-issues.

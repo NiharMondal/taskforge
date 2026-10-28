@@ -45,6 +45,9 @@ export default function BacklogSection({
 
 	const counts = { todo: 0, inProgress: 0, done: 0 };
 	for (const issue of issues) counts[statusCategory(issue.status)]++;
+	// Every row counts, sub-issues included, so estimate a parent or its
+	// sub-issues — not both — or the total counts the work twice.
+	const points = issues.reduce((sum, i) => sum + (i.timeEstimate ?? 0), 0);
 
 	return (
 		<section
@@ -71,7 +74,11 @@ export default function BacklogSection({
 				<span className="flex items-center gap-2 text-xs text-muted">
 					{meta}
 					<span>
-						({issues.length} {issues.length === 1 ? "issue" : "issues"})
+						({issues.length} {issues.length === 1 ? "issue" : "issues"} ·{" "}
+						<span title="Total story points">
+							{points} {points === 1 ? "point" : "points"}
+						</span>
+						)
 					</span>
 				</span>
 

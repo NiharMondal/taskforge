@@ -6,6 +6,7 @@ import type { Member } from "@/features/memberships/types/membership-types";
 import { useSprints } from "@/features/sprint/hooks/use-sprints";
 
 import { useIssueEditor } from "../hooks/use-issue-editor";
+import { formatEstimate } from "../lib/estimate";
 import type { Issue } from "../types/issue-types";
 import DeleteIssueButton from "./DeleteIssueButton";
 import IssueContentForm from "./IssueContentForm";
@@ -72,6 +73,8 @@ export default function IssueDetailModal({
 							defaultValues={{
 								status: issue.status,
 								priority: issue.priority,
+								type: issue.type,
+								timeEstimate: formatEstimate(issue.timeEstimate),
 								assigneeId: issue.assigneeId ?? UNASSIGNED,
 								sprintId: issue.sprintId ?? NO_SPRINT,
 							}}

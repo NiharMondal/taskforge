@@ -1,14 +1,35 @@
 import { IsOptionalNonNull } from "@/common/decorators/is-optional-non-null.decorator";
 import {
   IsEnum,
+  IsIn,
+  IsInt,
   IsNotEmpty,
   IsOptional,
   IsString,
   IsUUID,
+  Max,
   MaxLength,
+  Min,
   MinLength,
 } from "class-validator";
-import { IssuePriority, IssueStatus } from "generated/prisma/enums";
+import { IssuePriority, IssueStatus, IssueType } from "generated/prisma/enums";
+
+/**
+ * The types a client may pick. SUBTASK isn't one: creating with
+ * `parentIssueId` is what makes a sub-issue, and its type never changes.
+ */
+export const SELECTABLE_ISSUE_TYPES = [
+  IssueType.EPIC,
+  IssueType.STORY,
+  IssueType.TASK,
+  IssueType.BUG,
+] as const;
+
+export const ISSUE_TYPE_MESSAGE =
+  "type must be EPIC, STORY, TASK or BUG (a sub-issue is created with parentIssueId)";
+
+/** Upper bound for `timeEstimate`, which holds story points. */
+export const MAX_STORY_POINTS = 100;
 
 export class CreateIssueDto {
   @IsString()
@@ -29,6 +50,18 @@ export class CreateIssueDto {
   @IsOptionalNonNull()
   @IsEnum(IssuePriority)
   priority?: IssuePriority;
+
+  /** Defaults to TASK (the schema default). Not allowed with `parentIssueId`. */
+  @IsOptionalNonNull()
+  @IsIn(SELECTABLE_ISSUE_TYPES, { message: ISSUE_TYPE_MESSAGE })
+  type?: IssueType;
+
+  /** Story points, despite the column name. `null` means not estimated. */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(MAX_STORY_POINTS)
+  timeEstimate?: number | null;
 
   @IsOptional()
   @IsUUID()

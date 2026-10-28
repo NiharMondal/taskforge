@@ -179,6 +179,7 @@ A suggested order, each as its own PR:
 Still open from the gap audit, small enough to pick up alongside any of these:
 
 - Pagination on the projects, sprints, memberships, invitations and workspaces lists.
+  > **Status: done (2026-10-29) on branch `feat/paginate-list-endpoints`, stacked on `feat/custom-workspace-roles-and-server-driven-permissions`. Not committed yet.** The five list routes take `?page=` and `?limit=` (`PaginationQueryDto`: default 20, max 100, shared with `QueryIssuesDto`) and return `metaData`, through `PrismaQueryBuilder`. The builder now ends every sort with `id`, so rows sharing a `createdAt` can't repeat or go missing between pages. The roster gains an order (oldest member first; it had none). The web reads every page through the new `getAllPages` (`src/lib/get-all-pages.ts`), which `getIssues` now uses too, so no screen changes. Not done: paging controls in the UI (the Projects page, Members and Invitations could page for real instead of loading everything). Not checked: the e2e run (left to CI) and the UI in a browser.
 - Whether ADMINs may demote or remove other ADMINs, and whether `GET /workspaces/:id` should stay OWNER/ADMIN only.
 - Two people dropping a card into the same gap can still get the same rank (H7's remainder).
 - Moving shared code (rank helpers, enums, API types) into `packages/`.

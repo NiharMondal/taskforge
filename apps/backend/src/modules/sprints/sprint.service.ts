@@ -1,3 +1,5 @@
+import { PaginationQueryDto } from "@/common/dto/pagination-query.dto";
+import PrismaQueryBuilder from "@/lib/PrismQueryBuilder";
 import { PrismaService } from "@/prisma/prisma.service";
 import {
   BadRequestException,
@@ -43,11 +45,19 @@ export class SprintService {
   }
 
   // GET ALL
-  async findAll(workspaceId: string, projectId: string) {
-    return this.prisma.sprint.findMany({
-      where: { workspaceId, projectId },
-      orderBy: { createdAt: "desc" },
-    });
+  async findAll(
+    workspaceId: string,
+    projectId: string,
+    query: PaginationQueryDto,
+  ) {
+    return new PrismaQueryBuilder(query, {
+      defaultField: "createdAt",
+      defaultOrder: "desc",
+    })
+      .withDefaultFilter({ workspaceId, projectId })
+      .paginate()
+      .sort()
+      .execute(this.prisma.sprint);
   }
 
   // Update sprint

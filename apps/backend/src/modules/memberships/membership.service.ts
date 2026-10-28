@@ -4,6 +4,8 @@ import {
   ASSIGNED_ROLE_INCLUDE,
   WorkspaceAccess,
 } from "@/common/permissions/workspace-access";
+import { PaginationQueryDto } from "@/common/dto/pagination-query.dto";
+import PrismaQueryBuilder from "@/lib/PrismQueryBuilder";
 import { PrismaService } from "@/prisma/prisma.service";
 import {
   BadRequestException,
@@ -27,10 +29,16 @@ const ASSIGNED_ROLE_SUMMARY = {
 @Injectable()
 export class MembershipService {
   constructor(private prisma: PrismaService) {}
-  async findAllByWorkspaceId(workspaceId: string) {
-    return this.prisma.membership.findMany({
-      where: { workspaceId },
-      include: {
+  /** The roster, longest-standing members first. */
+  async findAllByWorkspaceId(workspaceId: string, query: PaginationQueryDto) {
+    return new PrismaQueryBuilder(query, {
+      defaultField: "createdAt",
+      defaultOrder: "asc",
+    })
+      .withDefaultFilter({ workspaceId })
+      .paginate()
+      .sort()
+      .include({
         user: {
           select: {
             id: true,
@@ -40,8 +48,8 @@ export class MembershipService {
           },
         },
         ...ASSIGNED_ROLE_SUMMARY,
-      },
-    });
+      })
+      .execute(this.prisma.membership);
   }
 
   /** The caller's own role and the permissions it grants in this workspace. */

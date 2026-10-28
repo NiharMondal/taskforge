@@ -1,4 +1,5 @@
 import { api, inWorkspace } from "@/lib/axios";
+import { getAllPages } from "@/lib/get-all-pages";
 
 import type { ApiResponse } from "@/types/api";
 
@@ -18,10 +19,11 @@ import type { TWorkspaceFormValues } from "../schema/workspace-schema";
  *
  * The backend derives the user from the bearer token (the token has no
  * workspace), so this needs no parameters — it returns every tenant the caller
- * can switch into. See AI_GUIDE → "Backend endpoint": `GET /workspaces`.
+ * can switch into, reading every page. See AI_GUIDE → "Backend endpoint":
+ * `GET /workspaces`.
  */
 export async function getWorkspaces(): Promise<ApiResponse<Workspace[]>> {
-  return api.get<Workspace[]>("/workspaces");
+  return getAllPages<Workspace>("/workspaces");
 }
 
 /**

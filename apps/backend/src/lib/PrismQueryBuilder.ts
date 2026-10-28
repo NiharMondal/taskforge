@@ -59,7 +59,7 @@ class PrismaQueryBuilder<TWhereInput = any, TModel = any> {
 
   private orderByCondition: Record<string, "asc" | "desc"> = {};
   private includeFields: Record<string, any> = {};
-  private selectFields: Record<string, boolean> = {};
+  private selectFields: Record<string, any> = {};
 
   constructor(
     private readonly query: Record<string, any>,
@@ -117,10 +117,10 @@ class PrismaQueryBuilder<TWhereInput = any, TModel = any> {
   }
 
   /**
-   * Merge select fields
-   * @example select({ id: true, name: true })
+   * Merge select fields (nested relation selects included)
+   * @example select({ id: true, user: { select: { name: true } } })
    */
-  select(fields: Record<string, boolean>): this {
+  select(fields: Record<string, any>): this {
     this.selectFields = { ...this.selectFields, ...fields };
     return this;
   }
@@ -301,7 +301,14 @@ class PrismaQueryBuilder<TWhereInput = any, TModel = any> {
     };
 
     if (Object.keys(this.orderByCondition).length > 0) {
-      args.orderBy = this.orderByCondition;
+      // Rows tied on the sort field come back in any order, so a page
+      // boundary between them could repeat one row and skip another. `id`
+      // makes the order total.
+      const [[field, order]] = Object.entries(this.orderByCondition);
+      args.orderBy =
+        field === "id"
+          ? this.orderByCondition
+          : [this.orderByCondition, { id: order }];
     }
 
     if (Object.keys(this.includeFields).length > 0) {

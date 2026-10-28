@@ -126,11 +126,11 @@ enum InvitationStatus {
 
 ### 5. List Invitations (optional)
 
-**`GET /invitations?workspaceId=...`**
+**`GET /invitations?page=1&limit=20`**
 
-**Auth:** Required. Workspace member.
+**Auth:** Required. `invitation:manage` in the workspace named by `x-workspace-id`.
 
-**What it does:** Returns all invitations (pending, accepted, expired, revoked) for a workspace. Useful for an admin UI that shows who has been invited and what the status is.
+**What it does:** Returns the workspace's invitations (pending, accepted, expired, revoked), newest first, one page at a time: `page` (default 1) and `limit` (default 20, max 100), with `metaData` saying how many there are. The token is never included. Useful for an admin UI that shows who has been invited and what the status is.
 
 ---
 

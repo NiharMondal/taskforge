@@ -1,4 +1,5 @@
 import { api, inWorkspace } from "@/lib/axios";
+import { getAllPages } from "@/lib/get-all-pages";
 
 import type { ApiResponse } from "@/types/api";
 
@@ -18,11 +19,12 @@ import type {
  * `GET /invitations` and `POST /invitations` are scoped to the *active*
  * workspace via the `x-workspace-id` header — no id is passed in the route.
  * `POST /invitations/accept` resolves the workspace from the token itself.
+ * `GET /invitations` is paginated; `getInvitations` reads every page.
  */
 export async function getInvitations(
   workspaceId: string,
 ): Promise<ApiResponse<Invitation[]>> {
-  return api.get<Invitation[]>("/invitations", inWorkspace(workspaceId));
+  return getAllPages<Invitation>("/invitations", inWorkspace(workspaceId));
 }
 
 export async function createInvitation(

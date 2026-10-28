@@ -1,3 +1,4 @@
+import { PaginationQueryDto } from "@/common/dto/pagination-query.dto";
 import { RequirePermission } from "@/common/decorators/require-permission.decorator";
 import { WorkspaceId } from "@/common/decorators/workspaceId.decorator";
 import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
@@ -13,6 +14,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from "@nestjs/common";
 import { CreateProjectDto } from "./dto/create-project.dto";
@@ -41,12 +43,19 @@ export class ProjectController {
 
   @Get()
   @HttpCode(HttpStatus.OK)
-  async findAll(@WorkspaceId() workspaceId: string) {
-    const projects = await this.projectService.findAll(workspaceId);
+  async findAll(
+    @WorkspaceId() workspaceId: string,
+    @Query() query: PaginationQueryDto,
+  ) {
+    const { data, metaData } = await this.projectService.findAll(
+      workspaceId,
+      query,
+    );
     return sendResponse({
       statusCode: HttpStatus.OK,
       message: "Projects fetched successfully",
-      data: projects,
+      data,
+      metaData,
     });
   }
 

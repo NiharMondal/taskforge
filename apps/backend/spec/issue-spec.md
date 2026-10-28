@@ -164,10 +164,12 @@ Base path: `/projects/:projectId/issues`
   "message": "Issues fetched successfully",
   "data": [ /* Issue[] */ ],
   "metaData": {
-    "page": 1,
-    "limit": 20,
-    "total": 42,
-    "totalPages": 3
+    "currentPage": 1,
+    "totalPages": 3,
+    "totalData": 42,
+    "pageSize": 20,
+    "hasNextPage": true,
+    "hasPreviousPage": false
   }
 }
 ```

@@ -1,3 +1,5 @@
+import { PaginationQueryDto } from "@/common/dto/pagination-query.dto";
+import PrismaQueryBuilder from "@/lib/PrismQueryBuilder";
 import { PrismaService } from "@/prisma/prisma.service";
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "generated/prisma/client";
@@ -41,19 +43,23 @@ export class ProjectService {
     }
   }
 
-  async findAll(workspaceId: string) {
-    return this.prisma.project.findMany({
-      where: { workspaceId },
-      orderBy: { createdAt: "desc" },
-      include: {
+  async findAll(workspaceId: string, query: PaginationQueryDto) {
+    return new PrismaQueryBuilder(query, {
+      defaultField: "createdAt",
+      defaultOrder: "desc",
+    })
+      .withDefaultFilter({ workspaceId })
+      .paginate()
+      .sort()
+      .include({
         _count: {
           select: {
             issues: true,
             sprints: true,
           },
         },
-      },
-    });
+      })
+      .execute(this.prisma.project);
   }
 
   async findOne(workspaceId: string, projectId: string) {

@@ -8,6 +8,8 @@ import {
   assertActorHolds,
   WorkspaceAccess,
 } from "@/common/permissions/workspace-access";
+import { PaginationQueryDto } from "@/common/dto/pagination-query.dto";
+import PrismaQueryBuilder from "@/lib/PrismQueryBuilder";
 import { PrismaService } from "@/prisma/prisma.service";
 import {
   BadRequestException,
@@ -158,12 +160,16 @@ export class InvitationService {
     return invitation;
   }
 
-  async listInvitations(workspaceId: string) {
-    return this.prisma.invitation.findMany({
-      where: { workspaceId },
-      select: PUBLIC_INVITATION_SELECT,
-      orderBy: { createdAt: "desc" },
-    });
+  async listInvitations(workspaceId: string, query: PaginationQueryDto) {
+    return new PrismaQueryBuilder(query, {
+      defaultField: "createdAt",
+      defaultOrder: "desc",
+    })
+      .withDefaultFilter({ workspaceId })
+      .paginate()
+      .sort()
+      .select(PUBLIC_INVITATION_SELECT)
+      .execute(this.prisma.invitation);
   }
 
   async validateToken(token: string) {

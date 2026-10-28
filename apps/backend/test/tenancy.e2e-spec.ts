@@ -419,6 +419,44 @@ describe("Tenancy (e2e)", () => {
       .expect(403);
   });
 
+  it("commits a Backlog issue to To Do when it joins a sprint, and leaves it alone going back", async () => {
+    const issues = `/api/v1/projects/${projectId}/issues`;
+    const sprint = data<{ id: string }>(
+      await api()
+        .post(`/api/v1/projects/${projectId}/sprints`)
+        .set(as(aliceToken, aliceWs))
+        .send({ name: "Commitment" })
+        .expect(201),
+    );
+    const issue = data<{ id: string; status: string }>(
+      await api()
+        .post(issues)
+        .set(as(aliceToken, aliceWs))
+        .send({ title: "Groomed" })
+        .expect(201),
+    );
+    expect(issue.status).toBe("BACKLOG");
+
+    const planned = data<{ status: string; rank: string }>(
+      await api()
+        .patch(`${issues}/${issue.id}`)
+        .set(as(aliceToken, aliceWs))
+        .send({ sprintId: sprint.id })
+        .expect(200),
+    );
+    expect(planned.status).toBe("TODO");
+    expect(planned.rank).toBeTruthy();
+
+    const unplanned = data<{ status: string; sprintId: string | null }>(
+      await api()
+        .patch(`${issues}/${issue.id}`)
+        .set(as(aliceToken, aliceWs))
+        .send({ sprintId: null })
+        .expect(200),
+    );
+    expect(unplanned).toMatchObject({ status: "TODO", sprintId: null });
+  });
+
   describe("errors keep the envelope", () => {
     it("reports a duplicate from the database as Prisma P2002", async () => {
       // The filter maps P2002 to 409; this checks the driver adapter really

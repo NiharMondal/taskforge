@@ -570,3 +570,123 @@ describe("IssueService tenant isolation", () => {
     });
   });
 });
+
+describe("IssueService sprint commitment (BACKLOG → TODO)", () => {
+  const owner = accessAs(WorkspaceRole.OWNER, { workspaceId: "ws-1" });
+  let prisma: {
+    issue: { findFirst: jest.Mock; create: jest.Mock; update: jest.Mock };
+    project: { findFirst: jest.Mock; update: jest.Mock };
+    sprint: { findFirst: jest.Mock };
+    membership: { findUnique: jest.Mock };
+    $transaction: jest.Mock;
+    $executeRaw: jest.Mock;
+  };
+  let service: IssueService;
+
+  beforeEach(() => {
+    prisma = {
+      issue: {
+        // Lane-max lookups find an empty lane.
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: "issue-new" }),
+        update: jest.fn().mockResolvedValue({ id: "issue-1" }),
+      },
+      project: {
+        findFirst: jest.fn().mockResolvedValue({ id: "proj-1" }),
+        update: jest.fn().mockResolvedValue({ issueCounter: 1 }),
+      },
+      sprint: { findFirst: jest.fn().mockResolvedValue({ id: "sprint-1" }) },
+      membership: { findUnique: jest.fn() },
+      $transaction: jest.fn(),
+      $executeRaw: jest.fn().mockResolvedValue(1),
+    };
+    prisma.$transaction.mockImplementation((cb: (tx: unknown) => unknown) =>
+      cb(prisma),
+    );
+    service = new IssueService(prisma as unknown as PrismaService);
+  });
+
+  const written = (mock: jest.Mock) =>
+    (mock.mock.calls[0] as [{ data: { status?: IssueStatus } }])[0].data;
+  const stored = (status: IssueStatus) =>
+    prisma.issue.findFirst.mockResolvedValueOnce({
+      id: "issue-1",
+      status,
+      reporterId: "u",
+      assigneeId: null,
+    });
+
+  it("creates an issue planned into a sprint as To Do, not Backlog", async () => {
+    await service.create("ws-1", "proj-1", "u", owner, {
+      title: "Planned",
+      sprintId: "sprint-1",
+    });
+
+    expect(written(prisma.issue.create).status).toBe(IssueStatus.TODO);
+  });
+
+  it("keeps any other status a sprint issue is created with", async () => {
+    await service.create("ws-1", "proj-1", "u", owner, {
+      title: "Started",
+      status: IssueStatus.IN_PROGRESS,
+      sprintId: "sprint-1",
+    });
+
+    expect(written(prisma.issue.create).status).toBe(IssueStatus.IN_PROGRESS);
+  });
+
+  it("keeps Backlog for an issue created outside a sprint", async () => {
+    await service.create("ws-1", "proj-1", "u", owner, { title: "Later" });
+
+    expect(written(prisma.issue.create).status).toBe(IssueStatus.BACKLOG);
+  });
+
+  it("moves a Backlog issue to To Do when it is put into a sprint, appending to that lane", async () => {
+    stored(IssueStatus.BACKLOG);
+
+    await service.update("ws-1", "proj-1", "issue-1", owner, {
+      sprintId: "sprint-1",
+    });
+
+    expect(written(prisma.issue.update).status).toBe(IssueStatus.TODO);
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(1); // the TODO lane lock
+  });
+
+  it("leaves the status of an in-flight issue alone when its sprint changes", async () => {
+    stored(IssueStatus.IN_PROGRESS);
+
+    await service.update("ws-1", "proj-1", "issue-1", owner, {
+      sprintId: "sprint-1",
+    });
+
+    expect(written(prisma.issue.update).status).toBeUndefined();
+  });
+
+  it("leaves the status alone when an issue goes back to the backlog", async () => {
+    stored(IssueStatus.TODO);
+
+    await service.update("ws-1", "proj-1", "issue-1", owner, {
+      sprintId: null as unknown as string,
+    });
+
+    expect(written(prisma.issue.update).status).toBeUndefined();
+  });
+
+  it("refuses the implied status change to a role without issue:status", async () => {
+    stored(IssueStatus.BACKLOG);
+    // A custom role that may edit issues but not move them between statuses.
+    const editorOnly: WorkspaceAccess = {
+      ...owner,
+      isOwner: false,
+      systemKey: null,
+      permissions: new Set(["issue:edit:any"] as const),
+    };
+
+    await expect(
+      service.update("ws-1", "proj-1", "issue-1", editorOnly, {
+        sprintId: "sprint-1",
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.issue.update).not.toHaveBeenCalled();
+  });
+});

@@ -33,6 +33,19 @@ function isValidRank(rank: string): boolean {
   }
 }
 
+/**
+ * "Backlog" means *not in a sprint* — the backlog view, Jira's sense. An issue
+ * planned into a sprint is committed work, so the BACKLOG status becomes TODO
+ * there; otherwise it would sit in the sprint invisible, since the board has no
+ * BACKLOG lane. Any other status is kept.
+ */
+function committedStatus(
+  status: IssueStatus,
+  sprintId: string | null | undefined,
+): IssueStatus {
+  return sprintId && status === IssueStatus.BACKLOG ? IssueStatus.TODO : status;
+}
+
 @Injectable()
 export class IssueService {
   constructor(private prisma: PrismaService) {}
@@ -55,9 +68,13 @@ export class IssueService {
       dto.parentIssueId,
     );
 
+    // A sub-issue is part of its parent's work, so it starts in the parent's
+    // sprint unless one was chosen.
+    const sprintId = dto.sprintId ?? parent?.sprintId;
     // Mirror the schema default explicitly: the lane a new card lands in decides
-    // which ranks it has to sort after.
-    const status = dto.status ?? IssueStatus.BACKLOG;
+    // which ranks it has to sort after. Work planned into a sprint starts as
+    // To Do (see `committedStatus`).
+    const status = committedStatus(dto.status ?? IssueStatus.BACKLOG, sprintId);
 
     return this.inLockedLane(projectId, status, async (tx) =>
       tx.issue.create({
@@ -66,9 +83,7 @@ export class IssueService {
           description: dto.description,
           status,
           priority: dto.priority,
-          // A sub-issue is part of its parent's work, so it starts in the
-          // parent's sprint unless one was chosen.
-          sprintId: dto.sprintId ?? parent?.sprintId,
+          sprintId,
           assigneeId: dto.assigneeId,
           ...(parent && {
             parentIssueId: parent.id,
@@ -185,11 +200,21 @@ export class IssueService {
     assertCanUpdateSomeIssue(access);
 
     const issue = await this.findOne(workspaceId, projectId, issueId);
-    assertCanUpdateIssue(access, issue, dto);
 
-    if (dto.status && !isAllowedTransition(issue.status, dto.status)) {
+    // Moving a BACKLOG-status issue into a sprint commits it to To Do — a legal
+    // transition — appended to that lane below like any rank-less status
+    // change. It is checked as if the caller had sent the status themselves.
+    const status =
+      dto.status ??
+      (dto.sprintId &&
+      committedStatus(issue.status, dto.sprintId) !== issue.status
+        ? IssueStatus.TODO
+        : undefined);
+    assertCanUpdateIssue(access, issue, { ...dto, status });
+
+    if (status && !isAllowedTransition(issue.status, status)) {
       throw new BadRequestException(
-        `An issue can't move from ${issue.status} to ${dto.status}`,
+        `An issue can't move from ${issue.status} to ${status}`,
       );
     }
 
@@ -202,7 +227,7 @@ export class IssueService {
         data: {
           title: dto.title,
           description: dto.description,
-          status: dto.status,
+          status,
           priority: dto.priority,
           sprintId: dto.sprintId,
           assigneeId: dto.assigneeId,
@@ -221,7 +246,7 @@ export class IssueService {
     // PATCH when it can't compute a key) would keep the rank the card had in
     // the lane it left and sort arbitrarily in the new one, so append it to the
     // end of the target lane — the same way a create does.
-    const targetLane = dto.status;
+    const targetLane = status;
     if (targetLane && targetLane !== issue.status) {
       return this.inLockedLane(projectId, targetLane, async (tx) =>
         write(

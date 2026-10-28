@@ -9,7 +9,7 @@ import Breadcrumbs from "@/components/ui/breadcrumbs";
 
 import type { Project } from "../types/project-types";
 
-type ProjectTab = "issues" | "board" | "sprint" | "backlog";
+type ProjectTab = "issues" | "board" | "backlog";
 
 interface ProjectHeaderProps {
 	projectId: string;
@@ -21,7 +21,8 @@ interface ProjectHeaderProps {
 
 /**
  * Shared chrome for project-scoped pages: breadcrumbs, project identity, and
- * the Board/Issues/Current Sprint/Backlog tab bar. Lives here (not in a route layout) so each page keeps
+ * the Board/Backlog/List tab bar (Jira's Scrum layout: the board is the active
+ * sprint, the backlog plans sprints, the list is every issue). Lives here (not in a route layout) so each page keeps
  * ownership of its own action button while sharing identical navigation.
  */
 export default function ProjectHeader({
@@ -33,20 +34,12 @@ export default function ProjectHeader({
 	const tabs: { key: ProjectTab; label: string; href: string }[] = [
 		{ key: "board", label: "Board", href: `/projects/${projectId}/board` },
 		{
-			key: "issues",
-			label: "Issues",
-			href: `/projects/${projectId}/issues`,
-		},
-		{
-			key: "sprint",
-			label: "Current Sprint",
-			href: `/projects/${projectId}/sprint`,
-		},
-		{
 			key: "backlog",
 			label: "Backlog",
 			href: `/projects/${projectId}/backlog`,
 		},
+		// Route stays `/issues` — issue pages live under it.
+		{ key: "issues", label: "List", href: `/projects/${projectId}/issues` },
 	];
 	const activeTab = tabs.find((tab) => tab.key === active);
 

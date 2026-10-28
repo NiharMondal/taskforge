@@ -16,7 +16,8 @@ import {
 } from "@dnd-kit/core";
 import { arrayMove, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { Button, Spinner, toast } from "@heroui/react";
-import { Plus } from "lucide-react";
+import { ArrowRight, Plus, Rocket } from "lucide-react";
+import Link from "next/link";
 
 import ErrorAlert from "@/components/ui/error-alert";
 import { getApiErrorMessage } from "@/lib/api-error";
@@ -27,6 +28,10 @@ import { getMemberName } from "@/features/memberships/lib/member";
 import { canSetIssueStatus } from "@/features/memberships/lib/permissions";
 import ProjectHeader from "@/features/projects/components/ProjectHeader";
 import { useProjects } from "@/features/projects/hooks/use-projects";
+import EndSprintModal from "@/features/sprint/components/EndSprintModal";
+import SprintSummaryCard from "@/features/sprint/components/SprintSummaryCard";
+import { useSprints } from "@/features/sprint/hooks/use-sprints";
+import type { Sprint } from "@/features/sprint/types/sprint-types";
 import { useWorkspace } from "@/features/workspace/context/workspace-context";
 
 import { BOARD_STATUSES, STATUS_TRANSITIONS } from "../../constants";
@@ -89,7 +94,12 @@ function rankForPosition(ordered: Issue[], idx: number): string | undefined {
 }
 
 /**
- * Kanban board. Columns are status lanes; dragging a card persists its new
+ * The active sprint's board (Jira's "Active sprint"): only issues in the
+ * project's running sprint get a card, under a strip with the sprint's dates,
+ * progress and Complete action. Issues outside it are planned on the backlog;
+ * with no sprint running the board says so and points there.
+ *
+ * Columns are status lanes; dragging a card persists its new
  * status *and* position via an optimistic PATCH ({@link useUpdateIssue}).
  *
  * Position is durable: the drop computes a fractional `rank` from the card's
@@ -108,11 +118,24 @@ export default function BoardView({ projectId }: { projectId: string }) {
 	const { data: members = [] } = useMemberships(workspaceId);
 	const permissions = useWorkspacePermissions();
 
+	const sprintsQuery = useSprints(workspaceId, projectId);
+	const activeSprint = sprintsQuery.data?.find((s) => s.isActive);
+	const activeSprintId = activeSprint?.id;
+	const [endingSprint, setEndingSprint] = useState<Sprint | null>(null);
+
 	const { data, isLoading, isError, refetch } = useIssues(
 		workspaceId,
 		projectId,
 	);
-	const issues = data ?? EMPTY_ISSUES;
+	// Memoized: the render-time resync below compares this by reference, so a
+	// freshly filtered array every render would loop.
+	const issues = useMemo(
+		() =>
+			data && activeSprintId
+				? data.filter((i) => i.sprintId === activeSprintId)
+				: EMPTY_ISSUES,
+		[data, activeSprintId],
+	);
 	const { mutate: updateIssue } = useUpdateIssue(workspaceId, projectId);
 
 	// Local mirror of the columns so cards can move live during a drag. Resynced
@@ -308,18 +331,48 @@ export default function BoardView({ projectId }: { projectId: string }) {
 				}
 			/>
 
-			{isError ? (
+			{isError || sprintsQuery.isError ? (
 				<ErrorAlert
 					title="Couldn’t load the board"
 					description="Check your connection and try again."
-					onRetry={() => refetch()}
+					onRetry={() => {
+						refetch();
+						sprintsQuery.refetch();
+					}}
 				/>
-			) : isLoading ? (
+			) : isLoading || sprintsQuery.isLoading ? (
 				<div className="flex items-center gap-2 py-12 text-muted">
 					<Spinner size="sm" />
 					Loading board…
 				</div>
+			) : !activeSprint ? (
+				<div className="flex flex-col items-center justify-center gap-4 py-24 text-center">
+					<Rocket className="h-12 w-12 text-muted/40" />
+					<div className="flex flex-col gap-1">
+						<p className="font-medium">No active sprint</p>
+						<p className="text-sm text-muted">
+							{permissions.canManageSprints
+								? "Plan issues into a sprint and start it from the backlog."
+								: "The board fills up once an admin starts a sprint."}
+						</p>
+					</div>
+					<Link
+						href={`/projects/${projectId}/backlog`}
+						className="flex items-center gap-1 text-sm text-accent hover:underline"
+					>
+						Go to backlog
+						<ArrowRight className="h-4 w-4" />
+					</Link>
+				</div>
 			) : (
+				<>
+				<SprintSummaryCard
+					sprint={activeSprint}
+					doneCount={issues.filter((i) => i.status === "DONE").length}
+					totalCount={issues.length}
+					canManage={permissions.canManageSprints}
+					onEnd={() => setEndingSprint(activeSprint)}
+				/>
 				<DndContext
 					sensors={sensors}
 					collisionDetection={closestCorners}
@@ -356,6 +409,7 @@ export default function BoardView({ projectId }: { projectId: string }) {
 						) : null}
 					</DragOverlay>
 				</DndContext>
+				</>
 			)}
 
 			<CreateIssueModal
@@ -363,8 +417,17 @@ export default function BoardView({ projectId }: { projectId: string }) {
 				onOpenChange={closeModal}
 				members={members}
 				projectId={projectId}
-				// The board has no BACKLOG lane, so a new issue would vanish from it.
+				// Created from the board, an issue joins the sprint on screen, in
+				// To Do (there is no BACKLOG lane, so it would vanish otherwise).
 				defaultStatus="TODO"
+				defaultSprintId={activeSprintId}
+			/>
+
+			<EndSprintModal
+				workspaceId={workspaceId}
+				projectId={projectId}
+				sprint={endingSprint}
+				onClose={() => setEndingSprint(null)}
 			/>
 
 			<IssueDetailModal

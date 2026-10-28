@@ -17,6 +17,8 @@ type TProps = {
 	isLoading?: boolean;
 	/** Status the form starts on (the board has no BACKLOG lane, so it passes TODO). */
 	defaultStatus?: IssueStatus;
+	/** Sprint the form starts on (the board passes the active sprint). */
+	defaultSprintId?: string;
 };
 export default function CreateIssueModal({
 	isOpen,
@@ -24,6 +26,7 @@ export default function CreateIssueModal({
 	members,
 	projectId,
 	defaultStatus,
+	defaultSprintId,
 }: TProps) {
 	const { activeWorkspaceId } = useWorkspace();
 	const workspaceId = activeWorkspaceId ?? "";
@@ -61,6 +64,7 @@ export default function CreateIssueModal({
 					onCancel={onOpenChange}
 					onSuccess={onOpenChange}
 					initialStatus={defaultStatus}
+					initialSprintId={defaultSprintId}
 				/>
 			)}
 		</MyModal>

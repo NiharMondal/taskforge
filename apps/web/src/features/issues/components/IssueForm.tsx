@@ -27,6 +27,8 @@ type Props = {
 	sprints: Sprint[];
 	/** Status a new issue starts in. Defaults to BACKLOG. */
 	initialStatus?: IssueStatus;
+	/** Sprint a new issue starts in. Defaults to none (the backlog). */
+	initialSprintId?: string;
 };
 
 /** Sentinel ListBox key for "no assignee" (react-aria keys can't be empty). */
@@ -44,6 +46,7 @@ export default function IssueForm({
 	members,
 	sprints,
 	initialStatus = "BACKLOG",
+	initialSprintId,
 }: Props) {
 	const isEditing = !!defaultValues;
 
@@ -55,7 +58,7 @@ export default function IssueForm({
 			assigneeId: null,
 			status: initialStatus,
 			priority: "LOW",
-			sprintId: null,
+			sprintId: initialSprintId ?? null,
 		},
 		// `defaultValues` is only read once on mount. When editing, the issue is
 		// fetched async, so feed it through `values` to keep the form in sync once

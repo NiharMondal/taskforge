@@ -51,11 +51,10 @@ app/
     dashboard/
     projects/
       [projectId]/
-        board/      — kanban
-        issues/
-          [slug]/   — issue detail page ([slug] is the issue id)
-        sprint/     — current (active) sprint + its issues
+        board/      — the active sprint's kanban (no active sprint → empty state)
         backlog/    — sprint planning: sprint sections + unscheduled backlog, move issues between them
+        issues/     — "List" tab: every issue as a filterable table, sub-issues nested
+          [slug]/   — issue detail page ([slug] is the issue id)
     settings/       — general, members, profile
     issues/         — redirect → /projects (no workspace-wide issues endpoint)
   invitations/accept/
@@ -113,6 +112,7 @@ Mutations use `.message` from the envelope for toast feedback. Every rejection i
 
 `src/features/issues/components/board/` — `@dnd-kit/core` + `@dnd-kit/sortable`.
 
+- The board is the **active sprint's**: `BoardView` filters the project issue list to `sprintId === activeSprint.id` (memoized — the resync below compares by reference) and shows `SprintSummaryCard` above the lanes. With no active sprint it renders an empty state linking to the backlog. Issues outside the sprint live on the backlog and the List tab.
 - Lane order comes from `BOARD_STATUSES` (all statuses except `BACKLOG`; backlog is triage and appears on the list view only).
 - Card position persists as `Issue.rank`, a fractional index (`fractional-indexing`) computed by `features/issues/lib/rank.ts`. `rankBetween(prev, next)` returns `undefined` on invalid bounds so the caller can fall back to a status-only PATCH; `compareIssueRank` sorts un-ranked rows last. Moving a card is a single-row PATCH — no renumbering.
 - A drag may only land back in its starting lane or in one of that lane's `STATUS_TRANSITIONS` (`features/issues/constants.ts`) — the same rule as the status Selects. The backend enforces the same map (`apps/backend/src/modules/issues/status-transitions.ts`) on every `PATCH` that changes `status`, so change both together.

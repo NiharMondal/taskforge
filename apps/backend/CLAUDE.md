@@ -246,6 +246,15 @@ the create transaction — the row lock on the project serializes concurrent cre
 `@@unique([projectId, number])` backs it. The `project_keys_and_issue_numbers` migration backfilled
 existing rows with the same key rule, so change both together.
 
+## Sprint commitment
+
+"Backlog" means *not in a sprint*. `committedStatus` in `IssueService` moves a `BACKLOG`-status issue
+to `TODO` when it joins a sprint — on create (including a sub-issue inheriting its parent's sprint)
+and on a PATCH that sets `sprintId` without a `status` — because the web board shows the active
+sprint and has no BACKLOG lane. The implied status goes through `assertCanUpdateIssue` and the
+transition check like a sent one, and appends to the TODO lane. Leaving a sprint keeps the status.
+The `sprint_issues_leave_backlog_status` migration converted existing rows (rank cleared).
+
 ## Sub-issues
 
 `POST /projects/:projectId/issues` with `parentIssueId` creates a sub-issue. `validateParent`

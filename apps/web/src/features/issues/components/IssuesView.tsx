@@ -3,7 +3,8 @@
 import { useMemo, useState } from "react";
 
 import { Button, Spinner, toast } from "@heroui/react";
-import { Plus } from "lucide-react";
+import { useBoolean } from "ahooks";
+import { ListTodo, Plus } from "lucide-react";
 
 import ErrorAlert from "@/components/ui/error-alert";
 import { useMemberships } from "@/features/memberships/hooks/use-memberships";
@@ -11,33 +12,37 @@ import { useWorkspacePermissions } from "@/features/memberships/hooks/use-worksp
 import { getMemberName } from "@/features/memberships/lib/member";
 import ProjectHeader from "@/features/projects/components/ProjectHeader";
 import { useProjects } from "@/features/projects/hooks/use-projects";
+import { useSprints } from "@/features/sprint/hooks/use-sprints";
 import { useWorkspace } from "@/features/workspace/context/workspace-context";
 import { getApiErrorMessage } from "@/lib/api-error";
 
 import { useIssues, useUpdateIssue } from "../hooks/use-issues";
 import type { IssueStatus } from "../types/issue-types";
 import CreateIssueModal from "./CreateIssueModal";
-import IssueDetailModal from "./IssueDetailModal";
-import IssueList from "./IssueList";
-import { useBoolean } from "ahooks";
+import IssueListToolbar, {
+	ALL,
+	EMPTY_FILTERS,
+	NO_SPRINT,
+	type IssueFilters,
+} from "./list/IssueListToolbar";
+import IssueTable from "./list/IssueTable";
 
 /**
- * Orchestrates the project-scoped issues page: resolves project + members,
- * loads issues, and wires create / inline-status mutations. Kept out of the
- * route file so the same view can back a future tab layout without change.
+ * The List tab: every issue in the project as a filterable table, whatever
+ * its sprint — the board shows only the active sprint, the backlog plans.
+ * Filtering is client-side over the cached project list the board and backlog
+ * share.
  */
 export default function IssuesView({ projectId }: { projectId: string }) {
 	const [isOpen, { setTrue: openModal, setFalse: closeModal }] = useBoolean();
-	const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
+	const [filters, setFilters] = useState<IssueFilters>(EMPTY_FILTERS);
 	const { activeWorkspaceId } = useWorkspace();
 	const workspaceId = activeWorkspaceId ?? "";
 
-	// The project header reuses the cached workspace projects list — no extra
-	// request, and it stays correct after a workspace switch invalidates caches.
 	const { data: projects } = useProjects(workspaceId);
 	const project = projects?.find((p) => p.id === projectId);
-
 	const { data: members = [] } = useMemberships(workspaceId);
+	const { data: sprints = [] } = useSprints(workspaceId, projectId);
 	const permissions = useWorkspacePermissions();
 	const {
 		data: issues = [],
@@ -45,24 +50,36 @@ export default function IssuesView({ projectId }: { projectId: string }) {
 		isError,
 		refetch,
 	} = useIssues(workspaceId, projectId);
-	// Only the id is stored: the modal reads the issue from the live list, so
-	// it shows saves and refetches, and closes if the issue is deleted.
-	const selectedIssue = issues.find((i) => i.id === selectedIssueId) ?? null;
-
 	const {
 		mutate: updateIssue,
 		variables: updatingVars,
 		isPending: isUpdatingIssue,
 	} = useUpdateIssue(workspaceId, projectId);
 
-	// userId → display name, for resolving issue assignees in the list.
-	const assigneeNames = useMemo(() => {
+	const memberNames = useMemo(() => {
 		const map = new Map<string, string>();
 		for (const m of members) {
 			if (m.user) map.set(m.userId, getMemberName(m));
 		}
 		return map;
 	}, [members]);
+
+	const visible = useMemo(() => {
+		const q = filters.search.trim().toLowerCase();
+		return issues.filter(
+			(i) =>
+				(!q ||
+					i.title.toLowerCase().includes(q) ||
+					`${project?.key ?? ""}-${i.number}`.toLowerCase().includes(q)) &&
+				(filters.assigneeIds.length === 0 ||
+					(!!i.assigneeId && filters.assigneeIds.includes(i.assigneeId))) &&
+				(filters.status === ALL || i.status === filters.status) &&
+				(filters.sprint === ALL ||
+					(filters.sprint === NO_SPRINT
+						? !i.sprintId
+						: i.sprintId === filters.sprint)),
+		);
+	}, [issues, filters, project?.key]);
 
 	const handleStatusChange = (issueId: string, status: IssueStatus) => {
 		// Toast on the outcome, not on the click: the PATCH can still be
@@ -73,9 +90,7 @@ export default function IssuesView({ projectId }: { projectId: string }) {
 				onSuccess: ({ message }) =>
 					toast.success(message || "Status updated successfully"),
 				onError: (error) =>
-					toast.danger(
-						getApiErrorMessage(error, "Failed to update status"),
-					),
+					toast.danger(getApiErrorMessage(error, "Failed to update status")),
 			},
 		);
 	};
@@ -107,18 +122,51 @@ export default function IssuesView({ projectId }: { projectId: string }) {
 					<Spinner size="sm" />
 					Loading issues…
 				</div>
+			) : issues.length === 0 ? (
+				<div className="flex flex-col items-center justify-center gap-4 py-24 text-center">
+					<ListTodo className="h-12 w-12 text-muted/40" />
+					<div className="flex flex-col gap-1">
+						<p className="font-medium">No issues yet</p>
+						<p className="text-sm text-muted">
+							{permissions.canCreateIssue
+								? "Create the first issue to start tracking work in this project."
+								: "Issues will appear here once someone creates them."}
+						</p>
+					</div>
+					{permissions.canCreateIssue && (
+						<Button variant="outline" onPress={openModal}>
+							Create your first issue
+						</Button>
+					)}
+				</div>
 			) : (
-				<IssueList
-					issues={issues}
-					assigneeNames={assigneeNames}
-					permissions={permissions}
-					onStatusChange={handleStatusChange}
-					onOpenIssue={(issue) => setSelectedIssueId(issue.id)}
-					onCreateClick={openModal}
-					updatingIssueId={
-						isUpdatingIssue ? updatingVars?.issueId : undefined
-					}
-				/>
+				<div className="flex flex-col gap-4">
+					<IssueListToolbar
+						filters={filters}
+						onChange={setFilters}
+						members={members}
+						sprints={sprints}
+					/>
+					{visible.length === 0 ? (
+						<p className="rounded-lg border border-dashed border-border py-12 text-center text-sm text-muted">
+							No issues match these filters.
+						</p>
+					) : (
+						<IssueTable
+							issues={visible}
+							memberNames={memberNames}
+							permissions={permissions}
+							onStatusChange={handleStatusChange}
+							updatingIssueId={
+								isUpdatingIssue ? updatingVars?.issueId : undefined
+							}
+						/>
+					)}
+					<p className="text-xs text-muted">
+						{visible.length} of {issues.length}{" "}
+						{issues.length === 1 ? "issue" : "issues"}
+					</p>
+				</div>
 			)}
 
 			<CreateIssueModal
@@ -126,15 +174,6 @@ export default function IssuesView({ projectId }: { projectId: string }) {
 				onOpenChange={closeModal}
 				members={members}
 				projectId={projectId}
-			/>
-
-			<IssueDetailModal
-				issue={selectedIssue}
-				onClose={() => setSelectedIssueId(null)}
-				members={members}
-				workspaceId={workspaceId}
-				projectId={projectId}
-				permissions={permissions}
 			/>
 		</div>
 	);

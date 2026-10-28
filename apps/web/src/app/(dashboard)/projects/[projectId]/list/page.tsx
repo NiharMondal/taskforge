@@ -12,7 +12,7 @@ import IssuesView from "@/features/issues/components/IssuesView";
  */
 export default function ProjectIssuesPage({
   params,
-}: PageProps<"/projects/[projectId]/issues">) {
+}: PageProps<"/projects/[projectId]/list">) {
   const { projectId } = use(params);
   return <IssuesView projectId={projectId} />;
 }

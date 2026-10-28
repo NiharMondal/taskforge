@@ -9,7 +9,7 @@ import Breadcrumbs from "@/components/ui/breadcrumbs";
 
 import type { Project } from "../types/project-types";
 
-type ProjectTab = "issues" | "board" | "backlog";
+type ProjectTab = "list" | "backlog" | "activeSprint";
 
 interface ProjectHeaderProps {
 	projectId: string;
@@ -32,14 +32,13 @@ export default function ProjectHeader({
 	actions,
 }: ProjectHeaderProps) {
 	const tabs: { key: ProjectTab; label: string; href: string }[] = [
-		{ key: "board", label: "Board", href: `/projects/${projectId}/board` },
+		{ key: "activeSprint", label: "Active Sprint", href: `/projects/${projectId}/active-sprint` },
 		{
 			key: "backlog",
 			label: "Backlog",
 			href: `/projects/${projectId}/backlog`,
 		},
-		// Route stays `/issues` — issue pages live under it.
-		{ key: "issues", label: "List", href: `/projects/${projectId}/issues` },
+		{ key: "list", label: "List", href: `/projects/${projectId}/list` },
 	];
 	const activeTab = tabs.find((tab) => tab.key === active);
 

@@ -100,7 +100,7 @@ export default function IssuesView({ projectId }: { projectId: string }) {
 			<ProjectHeader
 				projectId={projectId}
 				project={project}
-				active="issues"
+				active="list"
 				actions={
 					permissions.canCreateIssue && (
 						<Button onPress={openModal}>

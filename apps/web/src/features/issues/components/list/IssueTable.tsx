@@ -102,7 +102,7 @@ export default function IssueTable({
 						<IssueKey issue={issue} />
 						{depth === 0 && <ParentTag issue={issue} />}
 						<Link
-							href={`/projects/${issue.projectId}/issues/${issue.id}`}
+							href={`/projects/${issue.projectId}/list/${issue.id}`}
 							className="min-w-0 truncate text-sm hover:underline"
 						>
 							{issue.title}
@@ -160,7 +160,7 @@ export default function IssueTable({
 
 	return (
 		<div className="overflow-x-auto rounded-lg border border-border bg-surface">
-			<table className="w-full min-w-[960px] table-fixed border-collapse text-left">
+			<table className="w-full min-w-240 table-fixed border-collapse text-left">
 				<colgroup>
 					<col />
 					<col className="w-44" />

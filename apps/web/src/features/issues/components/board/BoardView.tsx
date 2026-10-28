@@ -320,7 +320,7 @@ export default function BoardView({ projectId }: { projectId: string }) {
 			<ProjectHeader
 				projectId={projectId}
 				project={project}
-				active="board"
+				active="activeSprint"
 				actions={
 					permissions.canCreateIssue && (
 						<Button onPress={openModal}>

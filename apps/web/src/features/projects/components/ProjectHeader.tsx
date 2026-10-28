@@ -3,8 +3,9 @@
 import type { ReactNode } from "react";
 
 import { cn } from "@heroui/react";
-import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
+
+import Breadcrumbs from "@/components/ui/breadcrumbs";
 
 import type { Project } from "../types/project-types";
 
@@ -19,8 +20,8 @@ interface ProjectHeaderProps {
 }
 
 /**
- * Shared chrome for project-scoped pages: back link, project identity, and the
- * Issues/Board tab bar. Lives here (not in a route layout) so each page keeps
+ * Shared chrome for project-scoped pages: breadcrumbs, project identity, and
+ * the Board/Issues/Sprints tab bar. Lives here (not in a route layout) so each page keeps
  * ownership of its own action button while sharing identical navigation.
  */
 export default function ProjectHeader({
@@ -42,16 +43,20 @@ export default function ProjectHeader({
 			href: `/projects/${projectId}/sprints`,
 		},
 	];
+	const activeTab = tabs.find((tab) => tab.key === active);
 
 	return (
 		<div className="flex flex-col gap-4">
-			<Link
-				href="/projects"
-				className="flex w-fit items-center gap-1 text-sm text-muted transition-colors hover:text-foreground"
-			>
-				<ArrowLeft className="h-4 w-4" />
-				Projects
-			</Link>
+			<Breadcrumbs
+				items={[
+					{ label: "Projects", href: "/projects" },
+					{
+						label: project?.name ?? "Project",
+						href: `/projects/${projectId}/board`,
+					},
+					{ label: activeTab?.label ?? "" },
+				]}
+			/>
 
 			<div className="flex items-center justify-between gap-4">
 				<h1 className="text-2xl font-semibold">

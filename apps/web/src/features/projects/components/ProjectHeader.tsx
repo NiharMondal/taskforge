@@ -49,7 +49,7 @@ export default function ProjectHeader({
 					{ label: "Projects", href: "/projects" },
 					{
 						label: project?.name ?? "Project",
-						href: `/projects/${projectId}/board`,
+						href: `/projects/${projectId}/active-sprint`,
 					},
 					{ label: activeTab?.label ?? "" },
 				]}

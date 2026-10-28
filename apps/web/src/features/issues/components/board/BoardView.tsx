@@ -36,10 +36,17 @@ import { useWorkspace } from "@/features/workspace/context/workspace-context";
 
 import { BOARD_STATUSES, STATUS_TRANSITIONS } from "../../constants";
 import { useIssues, useUpdateIssue } from "../../hooks/use-issues";
+import {
+	EMPTY_FILTERS,
+	filterIssues,
+	isFiltered,
+	type IssueFilters,
+} from "../../lib/issue-filters";
 import { compareIssueRank, rankBetween } from "../../lib/rank";
 import type { Issue, IssueStatus } from "../../types/issue-types";
 import CreateIssueModal from "../CreateIssueModal";
 import IssueDetailModal from "../IssueDetailModal";
+import IssueFilterBar from "../IssueFilterBar";
 import BoardColumn from "./BoardColumn";
 import IssueCardBody from "./IssueCardBody";
 import { useBoolean } from "ahooks";
@@ -81,14 +88,46 @@ function groupByStatus(issues: Issue[]): Columns {
 }
 
 /**
- * The rank for the card at `idx` in a lane's final order, from its neighbors.
- * Undefined when it can't be computed — including when a neighbor exists but
- * has no rank yet: treating that neighbor as "no bound" would send the card to
- * the top or bottom of the lane instead of where it was dropped.
+ * The rank for the card dropped at `idx` of the lane as *shown* (`ordered`).
+ *
+ * The bounds come from the full lane (`lane`: every card of the sprint in that
+ * status except the dragged one, by rank), not just the visible cards: with a
+ * filter on, a hidden card can sit between two visible neighbours, and the key
+ * halfway between those neighbours may be exactly its key — two equal keys
+ * leave no room between them for any later drop. So the card goes right after
+ * its visible predecessor (or right before its visible successor) in the full
+ * lane. Unfiltered, both lanes are the same and this is the plain midpoint.
+ *
+ * Undefined when it can't be computed — including when a bound exists but has
+ * no rank yet: treating it as "no bound" would send the card to the top or
+ * bottom of the lane instead of where it was dropped.
  */
-function rankForPosition(ordered: Issue[], idx: number): string | undefined {
-	const prev = idx > 0 ? ordered[idx - 1] : null;
-	const next = idx < ordered.length - 1 ? ordered[idx + 1] : null;
+function rankForPosition(
+	ordered: Issue[],
+	idx: number,
+	lane: Issue[],
+): string | undefined {
+	const shownPrev = idx > 0 ? ordered[idx - 1] : null;
+	const shownNext = idx < ordered.length - 1 ? ordered[idx + 1] : null;
+
+	let prev: Issue | null;
+	let next: Issue | null;
+	if (shownPrev) {
+		const at = lane.findIndex((i) => i.id === shownPrev.id);
+		if (at === -1) return undefined;
+		prev = shownPrev;
+		next = lane[at + 1] ?? null;
+	} else if (shownNext) {
+		const at = lane.findIndex((i) => i.id === shownNext.id);
+		if (at === -1) return undefined;
+		prev = at > 0 ? lane[at - 1] : null;
+		next = shownNext;
+	} else {
+		// Alone in the lane as shown: after everything hidden in it.
+		prev = lane.at(-1) ?? null;
+		next = null;
+	}
+
 	if ((prev && !prev.rank) || (next && !next.rank)) return undefined;
 	return rankBetween(prev?.rank, next?.rank);
 }
@@ -138,15 +177,23 @@ export default function BoardView({ projectId }: { projectId: string }) {
 	);
 	const { mutate: updateIssue } = useUpdateIssue(workspaceId, projectId);
 
+	// Search / assignee filters narrow the cards shown; the sprint strip still
+	// counts the whole sprint. Memoized for the same reference check as above.
+	const [filters, setFilters] = useState<IssueFilters>(EMPTY_FILTERS);
+	const visibleIssues = useMemo(
+		() => filterIssues(issues, filters, project?.key),
+		[issues, filters, project?.key],
+	);
+
 	// Local mirror of the columns so cards can move live during a drag. Resynced
 	// by comparing against the previous server list *during render* (React's
 	// recommended alternative to a sync effect): when the query data changes
 	// — including the optimistic write on drop — regroup. Drags don't trigger a
 	// refetch, so an in-progress drag is never clobbered mid-move.
 	const [columns, setColumns] = useState<Columns>(() =>
-		groupByStatus(issues),
+		groupByStatus(visibleIssues),
 	);
-	const [syncedIssues, setSyncedIssues] = useState(issues);
+	const [syncedIssues, setSyncedIssues] = useState(visibleIssues);
 	const [activeId, setActiveId] = useState<string | null>(null);
 	// Only the id: the modal reads the issue from the live list, so it shows
 	// saves and refetches, and closes if the issue is deleted.
@@ -154,9 +201,9 @@ export default function BoardView({ projectId }: { projectId: string }) {
 	const selectedIssue = issues.find((i) => i.id === selectedIssueId) ?? null;
 	const draggedFrom = useRef<IssueStatus | null>(null);
 
-	if (issues !== syncedIssues) {
-		setSyncedIssues(issues);
-		setColumns(groupByStatus(issues));
+	if (visibleIssues !== syncedIssues) {
+		setSyncedIssues(visibleIssues);
+		setColumns(groupByStatus(visibleIssues));
 	}
 
 	const assigneeNames = useMemo(() => {
@@ -266,7 +313,10 @@ export default function BoardView({ projectId }: { projectId: string }) {
 			: items;
 
 		const idx = ordered.findIndex((i) => i.id === activeId);
-		const newRank = rankForPosition(ordered, idx);
+		const fullLane = groupByStatus(issues)[container].filter(
+			(i) => i.id !== activeId,
+		);
+		const newRank = rankForPosition(ordered, idx, fullLane);
 
 		if (positionChanged) {
 			setColumns((prev) => ({ ...prev, [container]: ordered }));
@@ -280,7 +330,7 @@ export default function BoardView({ projectId }: { projectId: string }) {
 		// changes nothing), so put the lane back rather than show an order that
 		// will vanish on the next refetch.
 		if (!laneChanged && positionChanged && !newRank) {
-			setColumns(groupByStatus(issues));
+			setColumns(groupByStatus(visibleIssues));
 			toast.danger(
 				"Couldn’t save this card’s position. Try dropping it somewhere else.",
 			);
@@ -373,6 +423,19 @@ export default function BoardView({ projectId }: { projectId: string }) {
 					canManage={permissions.canManageSprints}
 					onEnd={() => setEndingSprint(activeSprint)}
 				/>
+				<div className="flex flex-wrap items-center justify-between gap-3">
+					<IssueFilterBar
+						filters={filters}
+						onChange={setFilters}
+						members={members}
+					/>
+					{isFiltered(filters) && (
+						<span className="text-xs text-muted">
+							Showing {visibleIssues.length} of {issues.length}{" "}
+							{issues.length === 1 ? "issue" : "issues"}
+						</span>
+					)}
+				</div>
 				<DndContext
 					sensors={sensors}
 					collisionDetection={closestCorners}

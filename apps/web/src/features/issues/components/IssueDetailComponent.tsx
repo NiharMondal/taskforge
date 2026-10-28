@@ -101,7 +101,7 @@ export default function IssueDetailComponent({ projectId, issueId }: Props) {
 					{issue.parentIssue && (
 						<>
 							<Link
-								href={`/projects/${projectId}/issues/${issue.parentIssue.id}`}
+								href={`/projects/${projectId}/list/${issue.parentIssue.id}`}
 								className="flex min-w-0 items-center gap-1 text-muted hover:text-foreground hover:underline"
 							>
 								<CornerDownRight className="size-3.5 shrink-0" />
@@ -147,7 +147,7 @@ export default function IssueDetailComponent({ projectId, issueId }: Props) {
 						projectId={projectId}
 						issue={issue}
 						onDeleted={() =>
-							router.replace(`/projects/${projectId}/issues`)
+							router.replace(`/projects/${projectId}/list`)
 						}
 					/>
 				)}

@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 
 /**
- * Issues are project-scoped (`/projects/[projectId]/issues`) — there is no
+ * Issues are project-scoped (`/projects/[projectId]/list`) — there is no
  * workspace-wide issues endpoint. The old flat `/issues` link now sends users
  * to the project list to pick a project first.
  */

@@ -10,40 +10,35 @@ import { getMemberName } from "@/features/memberships/lib/member";
 import type { Sprint } from "@/features/sprint/types/sprint-types";
 import { initialsOf } from "@/util/initials";
 
-import { ISSUE_STATUSES } from "../../constants";
-
-/** Sentinel filter values (react-aria keys can't be empty). */
-export const ALL = "__all__";
-export const NO_SPRINT = "__backlog__";
-
-export interface IssueFilters {
-	search: string;
-	/** Selected assignee user ids; empty means everyone. */
-	assigneeIds: string[];
-	status: string;
-	sprint: string;
-}
-
-export const EMPTY_FILTERS: IssueFilters = {
-	search: "",
-	assigneeIds: [],
-	status: ALL,
-	sprint: ALL,
-};
+import { ISSUE_STATUSES } from "../constants";
+import {
+	ALL,
+	EMPTY_FILTERS,
+	isFiltered,
+	NO_SPRINT,
+	type IssueFilters,
+} from "../lib/issue-filters";
 
 interface Props {
 	filters: IssueFilters;
 	onChange: (filters: IssueFilters) => void;
 	members: Member[];
-	sprints: Sprint[];
+	/** Shows the sprint picker (the List tab); the board is one sprint. */
+	sprints?: Sprint[];
+	/** Shows the status picker (the List tab); the board's lanes are statuses. */
+	showStatus?: boolean;
 }
 
-/** Search, assignee avatars, and status / sprint pickers above the list. */
-export default function IssueListToolbar({
+/**
+ * Search, assignee avatars, and optional status / sprint pickers — the filter
+ * row of the List tab and the active sprint board (see `filterIssues`).
+ */
+export default function IssueFilterBar({
 	filters,
 	onChange,
 	members,
 	sprints,
+	showStatus = false,
 }: Props) {
 	const set = (patch: Partial<IssueFilters>) =>
 		onChange({ ...filters, ...patch });
@@ -53,11 +48,6 @@ export default function IssueListToolbar({
 				? filters.assigneeIds.filter((id) => id !== userId)
 				: [...filters.assigneeIds, userId],
 		});
-	const isFiltered =
-		filters.search !== "" ||
-		filters.assigneeIds.length > 0 ||
-		filters.status !== ALL ||
-		filters.sprint !== ALL;
 
 	return (
 		<div className="flex flex-wrap items-center gap-3">
@@ -103,32 +93,39 @@ export default function IssueListToolbar({
 					})}
 			</div>
 
-			<TFSelect
-				aria-label="Filter by status"
-				value={filters.status}
-				onChange={(status) => set({ status })}
-				className="w-40"
-				options={[
-					{ value: ALL, label: "All statuses" },
-					...ISSUE_STATUSES.map((s) => ({ value: s.value, label: s.label })),
-				]}
-			/>
-			<TFSelect
-				aria-label="Filter by sprint"
-				value={filters.sprint}
-				onChange={(sprint) => set({ sprint })}
-				className="w-40"
-				options={[
-					{ value: ALL, label: "All sprints" },
-					{ value: NO_SPRINT, label: "Backlog (no sprint)" },
-					...sprints.map((s) => ({
-						value: s.id,
-						label: s.isActive ? `${s.name} (active)` : s.name,
-					})),
-				]}
-			/>
+			{showStatus && (
+				<TFSelect
+					aria-label="Filter by status"
+					value={filters.status}
+					onChange={(status) => set({ status })}
+					className="w-40"
+					options={[
+						{ value: ALL, label: "All statuses" },
+						...ISSUE_STATUSES.map((s) => ({
+							value: s.value,
+							label: s.label,
+						})),
+					]}
+				/>
+			)}
+			{sprints && (
+				<TFSelect
+					aria-label="Filter by sprint"
+					value={filters.sprint}
+					onChange={(sprint) => set({ sprint })}
+					className="w-40"
+					options={[
+						{ value: ALL, label: "All sprints" },
+						{ value: NO_SPRINT, label: "Backlog (no sprint)" },
+						...sprints.map((s) => ({
+							value: s.id,
+							label: s.isActive ? `${s.name} (active)` : s.name,
+						})),
+					]}
+				/>
+			)}
 
-			{isFiltered && (
+			{isFiltered(filters) && (
 				<Button size="sm" variant="ghost" onPress={() => onChange(EMPTY_FILTERS)}>
 					<X className="size-4" />
 					Clear

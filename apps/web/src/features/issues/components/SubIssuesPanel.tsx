@@ -89,7 +89,7 @@ export default function SubIssuesPanel({ issue, workspaceId, canCreate }: Props)
 									issue={{ projectId: issue.projectId, number: sub.number }}
 								/>
 								<Link
-									href={`/projects/${issue.projectId}/issues/${sub.id}`}
+									href={`/projects/${issue.projectId}/list/${sub.id}`}
 									className="min-w-0 flex-1 truncate text-sm hover:underline"
 								>
 									{sub.title}

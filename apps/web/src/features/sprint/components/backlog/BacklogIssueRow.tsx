@@ -125,7 +125,7 @@ export function BacklogIssueRowBody({
 			<IssueKey issue={issue} className="w-16" />
 			<ParentTag issue={issue} />
 			<Link
-				href={`/projects/${issue.projectId}/issues/${issue.id}`}
+				href={`/projects/${issue.projectId}/list/${issue.id}`}
 				{...keepOutOfDrag}
 				className="min-w-0 flex-1 truncate text-sm hover:underline"
 			>

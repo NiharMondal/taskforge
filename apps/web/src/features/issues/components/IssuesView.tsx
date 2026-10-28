@@ -19,12 +19,12 @@ import { getApiErrorMessage } from "@/lib/api-error";
 import { useIssues, useUpdateIssue } from "../hooks/use-issues";
 import type { IssueStatus } from "../types/issue-types";
 import CreateIssueModal from "./CreateIssueModal";
-import IssueListToolbar, {
-	ALL,
+import {
 	EMPTY_FILTERS,
-	NO_SPRINT,
+	filterIssues,
 	type IssueFilters,
-} from "./list/IssueListToolbar";
+} from "../lib/issue-filters";
+import IssueFilterBar from "./IssueFilterBar";
 import IssueTable from "./list/IssueTable";
 
 /**
@@ -64,22 +64,10 @@ export default function IssuesView({ projectId }: { projectId: string }) {
 		return map;
 	}, [members]);
 
-	const visible = useMemo(() => {
-		const q = filters.search.trim().toLowerCase();
-		return issues.filter(
-			(i) =>
-				(!q ||
-					i.title.toLowerCase().includes(q) ||
-					`${project?.key ?? ""}-${i.number}`.toLowerCase().includes(q)) &&
-				(filters.assigneeIds.length === 0 ||
-					(!!i.assigneeId && filters.assigneeIds.includes(i.assigneeId))) &&
-				(filters.status === ALL || i.status === filters.status) &&
-				(filters.sprint === ALL ||
-					(filters.sprint === NO_SPRINT
-						? !i.sprintId
-						: i.sprintId === filters.sprint)),
-		);
-	}, [issues, filters, project?.key]);
+	const visible = useMemo(
+		() => filterIssues(issues, filters, project?.key),
+		[issues, filters, project?.key],
+	);
 
 	const handleStatusChange = (issueId: string, status: IssueStatus) => {
 		// Toast on the outcome, not on the click: the PATCH can still be
@@ -141,11 +129,12 @@ export default function IssuesView({ projectId }: { projectId: string }) {
 				</div>
 			) : (
 				<div className="flex flex-col gap-4">
-					<IssueListToolbar
+					<IssueFilterBar
 						filters={filters}
 						onChange={setFilters}
 						members={members}
 						sprints={sprints}
+						showStatus
 					/>
 					{visible.length === 0 ? (
 						<p className="rounded-lg border border-dashed border-border py-12 text-center text-sm text-muted">

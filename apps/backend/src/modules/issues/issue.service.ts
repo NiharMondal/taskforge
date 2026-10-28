@@ -363,10 +363,18 @@ export class IssueService {
     };
 
     if (dto.rank !== undefined) {
-      // The board computed the key on drop from what the user saw; store it
-      // verbatim.
-      this.validateRank(dto.rank);
-      return this.prisma.$transaction((tx) => save(tx, dto.rank));
+      // The board computed the key on drop from what the user saw. Store it
+      // as sent unless another card in the lane already holds it (two people
+      // dropping into the same gap) — then just after that card.
+      const rank = dto.rank;
+      this.validateRank(rank);
+      const lane = status ?? issue.status;
+      return this.inLockedLane(projectId, lane, async (tx) =>
+        save(
+          tx,
+          await this.freeRank(tx, workspaceId, projectId, lane, issueId, rank),
+        ),
+      );
     }
 
     // A status change without a rank (the board falls back to a status-only
@@ -393,10 +401,11 @@ export class IssueService {
 
   /**
    * Run `write` in a transaction holding a lock on one `(project, status)`
-   * lane. Appending reads the lane's last rank and writes the next one; without
-   * the lock, two appends at the same moment read the same last rank and give
-   * both cards the same key, which the board can't place anything between.
-   * The advisory lock is released when the transaction ends.
+   * lane. Every rank write takes it. Appending reads the lane's last rank and
+   * writes the next one, and a drop checks its key isn't taken; without the
+   * lock, two writes at the same moment see the same lane and give both cards
+   * the same key, which the board can't place anything between. The advisory
+   * lock is released when the transaction ends.
    */
   private inLockedLane<T>(
     projectId: string,
@@ -447,6 +456,40 @@ export class IssueService {
           null,
         );
       return generateKeyBetween(highestValid, null);
+    }
+  }
+
+  /**
+   * `rank`, or — when another issue in the lane already holds it — a key
+   * between that issue and the next one, so the two cards stay orderable.
+   * Call it inside `inLockedLane` for that lane: every rank write takes the
+   * lock, so a clash committed by a concurrent drop is visible here.
+   */
+  private async freeRank(
+    db: Db,
+    workspaceId: string,
+    projectId: string,
+    status: IssueStatus,
+    issueId: string,
+    rank: string,
+  ) {
+    const lane = { workspaceId, projectId, status, id: { not: issueId } };
+    const taken = await db.issue.findFirst({
+      where: { ...lane, rank },
+      select: { id: true },
+    });
+    if (!taken) return rank;
+
+    const next = await db.issue.findFirst({
+      where: { ...lane, rank: { gt: rank } },
+      orderBy: { rank: "asc" },
+      select: { rank: true },
+    });
+    try {
+      return generateKeyBetween(rank, next?.rank ?? null);
+    } catch {
+      // The next stored key isn't a valid fractional index: append instead.
+      return this.appendRank(db, workspaceId, projectId, status);
     }
   }
 

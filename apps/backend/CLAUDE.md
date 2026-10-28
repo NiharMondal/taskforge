@@ -262,11 +262,16 @@ asset's URL, Google's picture, or `null` after `avatarPublicId: null` removes th
 - **create** ignores any client-supplied rank and appends: `appendRank()` reads the lane's current
   max rank (filtering `rank: null`, because Postgres sorts NULLs *first* on `DESC`) and generates a
   key after it. The lane is `dto.status ?? BACKLOG`, mirroring the schema default.
-- **update** persists `dto.rank` verbatim — the board computes it on drop from the neighbors the user
-  actually sees, so it is authoritative. `validateRank` rejects a key the library can't build on with
-  a 400 rather than storing junk that would break the next insert.
+- **update** persists `dto.rank` as sent — the board computes it on drop from the neighbors the user
+  actually sees, so it is authoritative — unless another issue in the target lane already holds that
+  exact key (two people dropping into the same gap): `freeRank()` then stores a key between that
+  issue and the next one. `validateRank` rejects a key the library can't build on with a 400 rather
+  than storing junk that would break the next insert.
 - **update without a rank but with a new status** (the frontend's fallback when it can't compute a
   key) appends to the *target* lane, so a card can't carry a stale rank from the lane it left.
+- **Every rank write takes the lane's lock** (`inLockedLane`: `pg_advisory_xact_lock` on
+  `issue-lane:<projectId>:<status>`, released at commit), so concurrent appends and drops into one
+  lane queue and each sees the keys the others committed. A new rank write must go through it too.
 - `rank` is *not* in `update`'s MEMBER-restricted field list: a member allowed to re-status an issue
   is allowed to position it.
 

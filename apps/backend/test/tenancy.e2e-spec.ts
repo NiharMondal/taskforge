@@ -763,6 +763,42 @@ describe("Tenancy (e2e)", () => {
     expect(new Set(ranks).size).toBe(ranks.length);
   });
 
+  it("keeps two cards dropped into the same gap at once apart (H7)", async () => {
+    const lane = "DEPLOYED";
+    const create = async (title: string, rank: string) => {
+      const res = await api()
+        .post(`/api/v1/projects/${projectId}/issues`)
+        .set(as(aliceToken, aliceWs))
+        .send({ title, status: lane })
+        .expect(201);
+      const { id } = data<{ id: string }>(res);
+      await prisma.issue.update({ where: { id }, data: { rank } });
+      return id;
+    };
+    await create("Above the gap", "a0");
+    await create("Below the gap", "a2");
+    const movers = [
+      await create("Mover 1", "a5"),
+      await create("Mover 2", "a6"),
+    ];
+
+    // Both boards computed the same key for the gap between a0 and a2.
+    const dropped = await Promise.all(
+      movers.map((id) =>
+        api()
+          .patch(`/api/v1/projects/${projectId}/issues/${id}`)
+          .set(as(aliceToken, aliceWs))
+          .send({ rank: "a1" })
+          .expect(200),
+      ),
+    );
+
+    const ranks = dropped.map((res) => data<{ rank: string }>(res).rank);
+    expect(ranks).toContain("a1");
+    expect(new Set(ranks).size).toBe(2);
+    for (const rank of ranks) expect(rank > "a0" && rank < "a2").toBe(true);
+  });
+
   it("keys projects from their name and numbers issues per project, even in parallel", async () => {
     const create = (name: string) =>
       api()

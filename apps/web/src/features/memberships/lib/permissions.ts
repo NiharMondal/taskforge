@@ -32,6 +32,10 @@ export interface Permissions {
 	canDeleteIssue: boolean;
 	canManageProjects: boolean;
 	canManageSprints: boolean;
+	/** Write comments, and edit or delete your own (`comment:create`). */
+	canComment: boolean;
+	/** Delete anyone's comment (`comment:delete:any`). */
+	canDeleteAnyComment: boolean;
 	/** OWNER only; the backend never grants `workspace:delete` to a role. */
 	canDeleteWorkspace: boolean;
 }
@@ -50,6 +54,8 @@ export function getPermissions(role: WorkspaceRole | undefined): Permissions {
 		canDeleteIssue: isManager,
 		canManageProjects: isManager,
 		canManageSprints: isManager,
+		canComment: isManager || isMember,
+		canDeleteAnyComment: isManager,
 		canDeleteWorkspace: role === "OWNER",
 	};
 }

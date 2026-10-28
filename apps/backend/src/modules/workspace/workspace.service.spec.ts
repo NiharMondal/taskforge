@@ -56,7 +56,12 @@ describe("WorkspaceService", () => {
         expect.objectContaining({
           name: "Member",
           systemKey: WorkspaceRole.MEMBER,
-          permissions: ["issue:create", "issue:edit:own", "issue:status"],
+          permissions: [
+            "issue:create",
+            "issue:edit:own",
+            "issue:status",
+            "comment:create",
+          ],
         }),
       ]);
       expect(prisma.role.createManyAndReturn).toHaveBeenCalledWith({

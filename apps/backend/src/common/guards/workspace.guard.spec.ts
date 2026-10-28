@@ -150,7 +150,12 @@ describe("WorkspaceGuard", () => {
           roleId: null,
           assignedRole: null,
         }),
-      ).resolves.toEqual(["issue:create", "issue:edit:own", "issue:status"]);
+      ).resolves.toEqual([
+        "comment:create",
+        "issue:create",
+        "issue:edit:own",
+        "issue:status",
+      ]);
     });
 
     it("ignore stored keys that aren't in the catalog", async () => {

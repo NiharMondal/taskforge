@@ -87,8 +87,9 @@ Each workspace has `Role` rows (name + `permissions: String[]`); `Membership.rol
 `Invitation.roleId` point at one. The four built-ins carry a `systemKey` and are created by
 `seedSystemRoles` (`src/modules/roles/system-roles.ts`) in every transaction that creates a
 workspace. The permission catalog and the built-ins' defaults are
-`src/common/permissions/permissions.ts` — a new key needs a migration to reach existing Role rows,
-and the `add_workspace_roles` migration's seed must match `DEFAULT_ROLE_PERMISSIONS`.
+`src/common/permissions/permissions.ts` — a new key needs a migration to reach existing Role rows
+(as `comment_permissions` did), and the `add_workspace_roles` seed plus those grant migrations must
+add up to `DEFAULT_ROLE_PERMISSIONS`.
 
 - **OWNER holds every permission in code** (its stored list is ignored), including
   `workspace:delete`, which no role can be granted. It can't be assigned, invited to or removed.
@@ -267,6 +268,15 @@ no `parentIssueId`). The list route embeds `parentIssue { id, number, title }`; 
 (`findDetail`, kept apart from the `findOne` that writes start with) also embeds `subIssues`.
 Deleting a parent cascades to its sub-issues.
 
+## Comments
+
+`src/modules/comments/` serves `/projects/:projectId/issues/:issueId/comments` (`spec/comment-spec.md`).
+`Comment` has no `workspaceId`, so every query reaches the tenant through its issue
+(`issue: { workspaceId, projectId }`); a comment elsewhere is a 404. Posting and editing need
+`comment:create`; only the author edits; deleting is the author (while they still hold
+`comment:create`) or `comment:delete:any`. `content` is the editor's HTML, stored as sent, and must
+have text once tags are stripped. The issue list embeds `_count.comments` for board cards.
+
 ## Tests
 
 `pnpm run test` runs Jest specs colocated with the code (`*.spec.ts`). They use a hand-rolled fake
@@ -274,12 +284,12 @@ Deleting a parent cascades to its sub-issues.
 they need no database. Current coverage: `WorkspaceGuard`, `JwtAuthGuard`, `PermissionsGuard`, `IssueService`
 permission rules and tenant isolation, `MembershipService` role changes/removal, `UserController`/`UserService`,
 `InvitationService`/controller, register/login/Google sign-in (`AuthService`, `GoogleTokenVerifier`,
-throttling), `WorkspaceService` and `SprintService.endSprint`.
+throttling), `WorkspaceService`, `SprintService.endSprint`, `CommentService` and the issue and comment DTOs.
 `jest` maps `@/` and `generated/` in `package.json` and transforms the ESM-only `fractional-indexing`.
 
 `pnpm run test:e2e` (`test/*.e2e-spec.ts`) boots the real `AppModule` through `configureApp()` and
 drives it with supertest against Postgres: sign-up, cross-workspace isolation, the header/path-param
-check, invite → accept, and MEMBER limits. `MailService` is overridden; other boot-time secrets get
+check, invite → accept, MEMBER limits, and comments (isolation, authorship, cascade on issue delete). `MailService` is overridden; other boot-time secrets get
 placeholders in `test/setup-e2e.ts`. Rules:
 
 - `DATABASE_URL` must point at a **migrated** database whose name has `e2e` or `test` as a whole word, e.g. `taskforge_e2e` (`latest` doesn't count)

@@ -143,6 +143,13 @@ As the comment in `permissions.ts` says, stored roles don't pick up new keys. Sh
 - `pnpm lint:check`, `pnpm typecheck`, `pnpm test` and `pnpm test:e2e` pass, and CI's migration diff is clean.
 - `apps/backend/spec/` has a comment spec, and the web types match the controller.
 
+> **Status: done (2026-10-28) on branch `feat/issue-comments`, stacked on `implement-active-sprint-backlog` (PR #47). Not committed yet.**
+> - Decided: a **VIEWER can't comment** (read-only, as proposed). Nobody, the owner included, can edit someone else's comment. An author who loses `comment:create` (e.g. demoted to Viewer) can no longer edit or delete their own comments.
+> - Backend: `src/modules/comments/` with the four routes; two new permission keys; migration `20261028170000_comment_permissions` grants them to existing Admin and Member roles (applied to the local dev database: 4 workspaces, as expected). The issue list now embeds `_count.comments`. Spec: `apps/backend/spec/comment-spec.md`.
+> - Web: `src/features/comments/` (`CommentsPanel` on the issue page and in the issue modal), `canComment` / `canDeleteAnyComment` flags, `userId` from `useWorkspacePermissions`, and a comment count on board cards.
+> - Tests: `comment.service.spec.ts` and `comment-dto.spec.ts` (unit); the e2e tenancy spec covers isolation, authorship and the cascade on issue delete. 280 unit tests pass.
+> - Not checked: the e2e run (left to CI; no local Postgres for e2e) and the UI in a browser, including the `<img src=x onerror=alert(1)>` check (comments render through the same `sanitizeHtml` as descriptions).
+
 ---
 
 ## After that

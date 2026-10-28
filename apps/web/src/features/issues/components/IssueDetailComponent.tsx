@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import ErrorAlert from "@/components/ui/error-alert";
-import CommentsPanel from "@/features/comments/components/CommentsPanel";
+import IssueActivityPanel from "@/features/activity/components/IssueActivityPanel";
 import { useLabels } from "@/features/labels/hooks/use-labels";
 import { useMemberships } from "@/features/memberships/hooks/use-memberships";
 import { useWorkspacePermissions } from "@/features/memberships/hooks/use-workspace-permissions";
@@ -137,7 +137,7 @@ export default function IssueDetailComponent({ projectId, issueId }: Props) {
 					workspaceId={workspaceId}
 					canCreate={permissions.canCreateIssue}
 				/>
-				<CommentsPanel
+				<IssueActivityPanel
 					workspaceId={workspaceId}
 					projectId={projectId}
 					issueId={issue.id}

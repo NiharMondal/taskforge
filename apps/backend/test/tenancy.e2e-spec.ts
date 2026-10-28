@@ -480,6 +480,72 @@ describe("Tenancy (e2e)", () => {
     });
   });
 
+  it("keeps an issue's history: created, changes, moderated comments", async () => {
+    const issues = `/api/v1/projects/${projectId}/issues`;
+    const created = await api()
+      .post(issues)
+      .set(as(aliceToken, aliceWs))
+      .send({ title: "Tracked", status: "TODO" })
+      .expect(201);
+    const trackedId = data<{ id: string }>(created).id;
+    const activity = `${issues}/${trackedId}/activity`;
+
+    await api()
+      .patch(`${issues}/${trackedId}`)
+      .set(as(aliceToken, aliceWs))
+      .send({ status: "IN_PROGRESS", priority: "HIGH" })
+      .expect(200);
+    // A reorder within the lane isn't history.
+    await api()
+      .patch(`${issues}/${trackedId}`)
+      .set(as(aliceToken, aliceWs))
+      .send({ status: "IN_PROGRESS", rank: "a1" })
+      .expect(200);
+
+    // Bob's comment, removed by Alice as a moderator.
+    const comment = await api()
+      .post(`${issues}/${trackedId}/comments`)
+      .set(as(bobToken, aliceWs))
+      .send({ content: "<p>Off-topic</p>" })
+      .expect(201);
+    await api()
+      .delete(
+        `${issues}/${trackedId}/comments/${data<{ id: string }>(comment).id}`,
+      )
+      .set(as(aliceToken, aliceWs))
+      .expect(200);
+
+    // Any member reads it; Bob is a MEMBER here.
+    const res = await api()
+      .get(activity)
+      .set(as(bobToken, aliceWs))
+      .expect(200);
+    type Row = { action: string; user: { name: string }; metadata: unknown };
+    expect(
+      data<Row[]>(res).map((r) => [r.action, r.user.name, r.metadata]),
+    ).toEqual([
+      ["issue.created", "Alice", null],
+      [
+        "issue.updated",
+        "Alice",
+        {
+          changes: [
+            { field: "status", from: "TODO", to: "IN_PROGRESS" },
+            { field: "priority", from: "MEDIUM", to: "HIGH" },
+          ],
+        },
+      ],
+      [
+        "comment.deleted",
+        "Alice",
+        { author: { id: expect.any(String) as unknown, name: "Bob" } },
+      ],
+    ]);
+
+    // Not from Bob's own workspace.
+    await api().get(activity).set(as(bobToken, bobWs)).expect(404);
+  });
+
   it("appends a new card after the lane's last card in byte order (H6)", async () => {
     // A card dragged above the first one gets a key like "Zz" (uppercase sorts
     // before "a0" in byte order). A locale collation sorts "Zz" *after* "a0",

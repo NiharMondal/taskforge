@@ -27,6 +27,9 @@ export const issueKeys = {
 		["issues", workspaceId, projectId] as const,
 	detail: (workspaceId: string, projectId: string, issueId: string) =>
 		["issues", workspaceId, projectId, issueId] as const,
+	/** Under `detail`, so whatever refreshes the issue refreshes its history. */
+	activity: (workspaceId: string, projectId: string, issueId: string) =>
+		["issues", workspaceId, projectId, issueId, "activity"] as const,
 };
 
 export function useIssues(workspaceId: string, projectId: string) {

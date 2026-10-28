@@ -1,7 +1,7 @@
 "use client";
 
 import MyModal from "@/components/ui/my-modal";
-import CommentsPanel from "@/features/comments/components/CommentsPanel";
+import IssueActivityPanel from "@/features/activity/components/IssueActivityPanel";
 import type { Permissions } from "@/features/memberships/lib/permissions";
 import type { Member } from "@/features/memberships/types/membership-types";
 import { useLabels } from "@/features/labels/hooks/use-labels";
@@ -70,7 +70,7 @@ export default function IssueDetailModal({
 							isSubmitting={isSavingContent}
 							canEdit={permissions.canEditIssueFields}
 						/>
-						<CommentsPanel
+						<IssueActivityPanel
 							workspaceId={workspaceId}
 							projectId={projectId}
 							issueId={issue.id}

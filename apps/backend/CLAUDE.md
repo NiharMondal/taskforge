@@ -286,6 +286,20 @@ create and update — a content field in `issue-access.ts`; `validateLabels` ref
 workspace (403); on update the list replaces the set (`deleteMany` + `create`). Issue reads include
 `LABELS_INCLUDE` and return `labels: [{ id, name, color }]` via `flattenLabels`, not the join rows.
 
+## Issue history (AuditLog)
+
+`src/modules/activity/` (`spec/activity-spec.md`). Issue history is `AuditLog` rows with
+`entityType` "ISSUE" and `entityId` the issue; `GET /projects/:projectId/issues/:issueId/activity`
+reads them for any member. They are written **in the same transaction as the change** with
+`recordIssueActivity(tx, ...)`, never afterwards: `IssueService.create` records `issue.created`;
+`update` diffs the stored issue against what was sent (`issueChanges`, a pure function) and, if
+anything tracked changed, records one `issue.updated` row with `{ changes }` — so every `update`
+path runs in a transaction now, and a rank-only reorder records nothing. `CommentService.remove`
+records `comment.deleted` only when a moderator removes someone else's comment. The validators
+(`validateAssignee`, `validateSprint`, `validateLabels`) return the `{ id, name }` they checked, and
+those names are copied into the row so history survives renames and deletes. Adding a tracked field
+means extending `IssueSnapshot`/`issueChanges` and the web's `describeChange` together.
+
 ## Tests
 
 `pnpm run test` runs Jest specs colocated with the code (`*.spec.ts`). They use a hand-rolled fake
@@ -293,12 +307,12 @@ workspace (403); on update the list replaces the set (`deleteMany` + `create`). 
 they need no database. Current coverage: `WorkspaceGuard`, `JwtAuthGuard`, `PermissionsGuard`, `IssueService`
 permission rules and tenant isolation, `MembershipService` role changes/removal, `UserController`/`UserService`,
 `InvitationService`/controller, register/login/Google sign-in (`AuthService`, `GoogleTokenVerifier`,
-throttling), `WorkspaceService`, `SprintService.endSprint`, `CommentService`, `LabelService` and the issue, comment and label DTOs.
+throttling), `WorkspaceService`, `SprintService.endSprint`, `CommentService`, `LabelService`, `ActivityService`, `issueChanges`, the history rows `IssueService` writes, and the issue, comment and label DTOs.
 `jest` maps `@/` and `generated/` in `package.json` and transforms the ESM-only `fractional-indexing`.
 
 `pnpm run test:e2e` (`test/*.e2e-spec.ts`) boots the real `AppModule` through `configureApp()` and
 drives it with supertest against Postgres: sign-up, cross-workspace isolation, the header/path-param
-check, invite → accept, MEMBER limits, comments (isolation, authorship, cascade on issue delete), and labels (isolation, MEMBER limits, cascade on label delete). `MailService` is overridden; other boot-time secrets get
+check, invite → accept, MEMBER limits, comments (isolation, authorship, cascade on issue delete), labels (isolation, MEMBER limits, cascade on label delete), and an issue's history. `MailService` is overridden; other boot-time secrets get
 placeholders in `test/setup-e2e.ts`. Rules:
 
 - `DATABASE_URL` must point at a **migrated** database whose name has `e2e` or `test` as a whole word, e.g. `taskforge_e2e` (`latest` doesn't count)

@@ -5,6 +5,14 @@ import {
 } from "@/common/permissions/issue-access";
 import type { WorkspaceAccess } from "@/common/permissions/workspace-access";
 import PrismaQueryBuilder from "@/lib/PrismQueryBuilder";
+import {
+  IssueActivity,
+  issueChanges,
+  type IssueSnapshot,
+  type LabelRef,
+  recordIssueActivity,
+  type Ref,
+} from "@/modules/activity/issue-activity";
 import { PrismaService } from "@/prisma/prisma.service";
 import {
   BadRequestException,
@@ -21,7 +29,7 @@ import { UpdateIssueDto } from "./dto/update-issue.dto";
 import { isAllowedTransition } from "./status-transitions";
 
 /** The Prisma client, or a transaction client from `$transaction`. */
-type Db = Pick<Prisma.TransactionClient, "issue" | "project">;
+type Db = Pick<Prisma.TransactionClient, "issue" | "project" | "auditLog">;
 
 /** Every issue read embeds its labels, alphabetically. */
 const LABELS_INCLUDE = {
@@ -37,6 +45,34 @@ function flattenLabels<T extends { labels: { label: unknown }[] }>({
   ...issue
 }: T) {
   return { ...issue, labels: labels.map((l) => l.label) };
+}
+
+/** The stored issue in the shape `issueChanges` compares. */
+function snapshotOf(issue: {
+  title: string;
+  description: string | null;
+  status: string;
+  priority: string;
+  type: string;
+  timeEstimate: number | null;
+  assignee: Ref | null;
+  sprint: Ref | null;
+  labels: { label: LabelRef }[];
+}): IssueSnapshot {
+  return {
+    title: issue.title,
+    description: issue.description,
+    status: issue.status,
+    priority: issue.priority,
+    type: issue.type,
+    timeEstimate: issue.timeEstimate,
+    assignee: issue.assignee && {
+      id: issue.assignee.id,
+      name: issue.assignee.name,
+    },
+    sprint: issue.sprint,
+    labels: issue.labels.map((l) => l.label),
+  };
 }
 
 /** True when the fractional-indexing library can build a key after `rank`. */
@@ -96,8 +132,8 @@ export class IssueService {
     // To Do (see `committedStatus`).
     const status = committedStatus(dto.status ?? IssueStatus.BACKLOG, sprintId);
 
-    return this.inLockedLane(projectId, status, async (tx) =>
-      tx.issue.create({
+    return this.inLockedLane(projectId, status, async (tx) => {
+      const issue = await tx.issue.create({
         data: {
           title: dto.title,
           description: dto.description,
@@ -122,8 +158,15 @@ export class IssueService {
           projectId,
           reporterId,
         },
-      }),
-    );
+      });
+      await recordIssueActivity(tx, {
+        workspaceId,
+        issueId: issue.id,
+        userId: reporterId,
+        action: IssueActivity.created,
+      });
+      return issue;
+    });
   }
 
   async findAll(workspaceId: string, projectId: string, query: QueryIssuesDto) {
@@ -193,10 +236,16 @@ export class IssueService {
     return flattenLabels(issue);
   }
 
+  /**
+   * The stored issue, as writes start from it: with its sprint and labels,
+   * which `update` compares against for the history.
+   */
   async findOne(workspaceId: string, projectId: string, issueId: string) {
     const issue = await this.prisma.issue.findFirst({
       where: { id: issueId, workspaceId, projectId },
       include: {
+        sprint: { select: { id: true, name: true } },
+        ...LABELS_INCLUDE,
         reporter: {
           select: {
             id: true,
@@ -256,9 +305,25 @@ export class IssueService {
       throw new BadRequestException("A sub-issue's type can't be changed");
     }
 
-    await this.validateAssignee(workspaceId, dto.assigneeId);
-    await this.validateSprint(workspaceId, projectId, dto.sprintId);
-    await this.validateLabels(workspaceId, dto.labelIds);
+    const assignee = await this.validateAssignee(workspaceId, dto.assigneeId);
+    const sprint = await this.validateSprint(
+      workspaceId,
+      projectId,
+      dto.sprintId,
+    );
+    const labels = await this.validateLabels(workspaceId, dto.labelIds);
+
+    const changes = issueChanges(snapshotOf(issue), {
+      title: dto.title,
+      description: dto.description,
+      status,
+      priority: dto.priority,
+      type: dto.type,
+      timeEstimate: dto.timeEstimate,
+      assignee,
+      sprint,
+      labels,
+    });
 
     const write = (db: Db, rank: string | undefined) =>
       db.issue.update({
@@ -281,11 +346,27 @@ export class IssueService {
         },
       });
 
+    // The update and its history row commit together. A save that changes
+    // nothing history tracks (e.g. a reorder within a lane) writes no row.
+    const save = async (db: Db, rank: string | undefined) => {
+      const updated = await write(db, rank);
+      if (changes.length > 0) {
+        await recordIssueActivity(db, {
+          workspaceId,
+          issueId,
+          userId: access.userId,
+          action: IssueActivity.updated,
+          metadata: { changes },
+        });
+      }
+      return updated;
+    };
+
     if (dto.rank !== undefined) {
       // The board computed the key on drop from what the user saw; store it
       // verbatim.
       this.validateRank(dto.rank);
-      return write(this.prisma, dto.rank);
+      return this.prisma.$transaction((tx) => save(tx, dto.rank));
     }
 
     // A status change without a rank (the board falls back to a status-only
@@ -295,14 +376,11 @@ export class IssueService {
     const targetLane = status;
     if (targetLane && targetLane !== issue.status) {
       return this.inLockedLane(projectId, targetLane, async (tx) =>
-        write(
-          tx,
-          await this.appendRank(tx, workspaceId, projectId, targetLane),
-        ),
+        save(tx, await this.appendRank(tx, workspaceId, projectId, targetLane)),
       );
     }
 
-    return write(this.prisma, undefined);
+    return this.prisma.$transaction((tx) => save(tx, undefined));
   }
 
   async remove(workspaceId: string, projectId: string, issueId: string) {
@@ -406,8 +484,15 @@ export class IssueService {
     return project;
   }
 
-  private async validateAssignee(workspaceId: string, assigneeId?: string) {
-    if (!assigneeId) return;
+  /**
+   * The assignee as `{ id, name }` after checking they're a member; `null`
+   * when unassigning, `undefined` when not sent.
+   */
+  private async validateAssignee(
+    workspaceId: string,
+    assigneeId?: string | null,
+  ): Promise<Ref | null | undefined> {
+    if (!assigneeId) return assigneeId === null ? null : undefined;
 
     const member = await this.prisma.membership.findUnique({
       where: {
@@ -416,11 +501,14 @@ export class IssueService {
           workspaceId,
         },
       },
+      select: { user: { select: { id: true, name: true } } },
     });
 
     if (!member) {
       throw new ForbiddenException("Assignee must belong to workspace");
     }
+
+    return member.user;
   }
 
   /**
@@ -449,25 +537,37 @@ export class IssueService {
     return parent;
   }
 
-  /** Every label must be this workspace's; one that isn't refuses the write. */
-  private async validateLabels(workspaceId: string, labelIds?: string[]) {
-    if (!labelIds?.length) return;
+  /**
+   * The labels, alphabetically, after checking every one is this workspace's
+   * (one that isn't refuses the write); `undefined` when not sent.
+   */
+  private async validateLabels(
+    workspaceId: string,
+    labelIds?: string[],
+  ): Promise<LabelRef[] | undefined> {
+    if (!labelIds) return undefined;
+    if (labelIds.length === 0) return [];
 
-    const found = await this.prisma.label.count({
+    const labels = await this.prisma.label.findMany({
       where: { id: { in: labelIds }, workspaceId },
+      select: { id: true, name: true, color: true },
+      orderBy: { name: "asc" },
     });
 
-    if (found !== labelIds.length) {
+    if (labels.length !== labelIds.length) {
       throw new ForbiddenException("Invalid label");
     }
+
+    return labels;
   }
 
+  /** Like `validateAssignee`: `{ id, name }`, `null` (backlog) or `undefined`. */
   private async validateSprint(
     workspaceId: string,
     projectId: string,
-    sprintId?: string,
-  ) {
-    if (!sprintId) return;
+    sprintId?: string | null,
+  ): Promise<Ref | null | undefined> {
+    if (!sprintId) return sprintId === null ? null : undefined;
 
     const sprint = await this.prisma.sprint.findFirst({
       where: {
@@ -475,10 +575,13 @@ export class IssueService {
         workspaceId,
         projectId,
       },
+      select: { id: true, name: true },
     });
 
     if (!sprint) {
       throw new ForbiddenException("Invalid sprint assignment");
     }
+
+    return sprint;
   }
 }

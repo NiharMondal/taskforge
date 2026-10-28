@@ -8,6 +8,7 @@ import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { APP_GUARD } from "@nestjs/core";
 import { CloudinaryModule } from "@/cloudinary/cloudinary.module";
+import { ActivityModule } from "./modules/activity/activity.module";
 import { CommentModule } from "./modules/comments/comment.module";
 import { InvitationModule } from "./modules/invitations/invitation.module";
 import { IssueModule } from "./modules/issues/issue.module";
@@ -31,6 +32,7 @@ import { WorkspaceModule } from "./modules/workspace/workspace.module";
     IssueModule,
     CommentModule,
     LabelModule,
+    ActivityModule,
     SprintModule,
   ],
   controllers: [AppController],

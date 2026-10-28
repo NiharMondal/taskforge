@@ -56,6 +56,10 @@ function useCommentMutation<TVars>(
 					queryKey: issueKeys.list(workspaceId, projectId),
 					exact: true,
 				});
+				// A moderator's delete is recorded in the issue's history.
+				queryClient.invalidateQueries({
+					queryKey: issueKeys.activity(workspaceId, projectId, issueId),
+				});
 			}
 		},
 	});

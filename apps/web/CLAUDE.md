@@ -64,7 +64,7 @@ Issues are project-scoped: pages live under `/projects/[projectId]/` (`active-sp
 
 ### Feature structure
 
-Each domain lives in `src/features/<name>/` (`auth`, `comments`, `dashboard`, `invitations`, `issues`, `labels`, `memberships`, `profile`, `projects`, `settings`, `sprint`, `workspace`):
+Each domain lives in `src/features/<name>/` (`activity`, `auth`, `comments`, `dashboard`, `invitations`, `issues`, `labels`, `memberships`, `profile`, `projects`, `settings`, `sprint`, `workspace`):
 
 ```
 api/          — async functions calling `api.*` from lib/axios
@@ -103,7 +103,8 @@ Mutations use `.message` from the envelope for toast feedback. Every rejection i
 ### React Query conventions
 
 - Each feature exports a key registry: `issueKeys`, `projectKeys`, `sprintKeys`, … Use it; don't hand-write key arrays.
-- Keys scope by workspace and project: `["issues", workspaceId, projectId]`. Detail queries get their own key (`[..., issueId]`) — sharing the list key overwrote the cached array with a single object.
+- Keys scope by workspace and project: `["issues", workspaceId, projectId]`. Detail queries get their own key (`[..., issueId]`) — sharing the list key overwrote the cached array with a single object. An issue's history (`issueKeys.activity`, `[..., issueId, "activity"]`) sits under its detail key on purpose, so anything that invalidates the issue refreshes its history too.
+- The issue page's **Activity** section (`features/activity/components/IssueActivityPanel`) merges comments and history into one timeline (All / Comments / History); `ActivityItem.describeChange` turns each recorded change into a sentence.
 - `queryFn` unwraps `.data` — caches hold plain arrays/objects, not envelopes. Optimistic updates depend on this.
 - Optimistic updates follow cancel → snapshot → mutate → rollback-on-error → invalidate-on-settle (see `useUpdateIssue` in `src/features/issues/hooks/use-issues.ts`, which also invalidates the detail key so a detail-page edit reconciles).
 - Defaults live in `src/lib/query-client.ts`: `staleTime` 60s, `retry` 1, no refetch on window focus; SSR-safe client-per-request via `getQueryClient()`.

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, type CSSProperties } from "react";
 import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import {
@@ -26,6 +26,11 @@ type RichTextEditorProps = {
 	onBlur?: () => void;
 	placeholder?: string;
 	isInvalid?: boolean;
+	/**
+	 * Height of the writing area (a number is pixels, or any CSS length).
+	 * Defaults to 400px; longer content scrolls inside it.
+	 */
+	height?: number | string;
 	"aria-label"?: string;
 };
 
@@ -40,6 +45,7 @@ export default function RichTextEditor({
 	onBlur,
 	placeholder,
 	isInvalid,
+	height,
 	"aria-label": ariaLabel,
 }: RichTextEditorProps) {
 	const editor = useEditor({
@@ -73,6 +79,15 @@ export default function RichTextEditor({
 		<div
 			data-invalid={isInvalid || undefined}
 			className="rich-text-editor"
+			// Read by `.tiptap-content` in globals.css; unset keeps its 400px.
+			style={
+				height === undefined
+					? undefined
+					: ({
+							"--rich-text-editor-height":
+								typeof height === "number" ? `${height}px` : height,
+						} as CSSProperties)
+			}
 		>
 			<Toolbar editor={editor} />
 			<EditorBody editor={editor} placeholder={placeholder} />

@@ -10,6 +10,8 @@ type TProps = {
 	label?: string;
 	placeholder?: string;
 	isRequired?: boolean;
+	/** Passed to `RichTextEditor`; 400px when omitted. */
+	height?: number | string;
 };
 
 export default function FormRichTextEditor({
@@ -17,6 +19,7 @@ export default function FormRichTextEditor({
 	label,
 	placeholder,
 	isRequired,
+	height,
 }: TProps) {
 	const { control } = useFormContext();
 	return (
@@ -39,6 +42,7 @@ export default function FormRichTextEditor({
 						onBlur={field.onBlur}
 						isInvalid={!!fieldState.error}
 						placeholder={placeholder}
+						height={height}
 						aria-label={!label ? (placeholder ?? name) : undefined}
 					/>
 					{fieldState.error && (

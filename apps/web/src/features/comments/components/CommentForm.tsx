@@ -45,7 +45,7 @@ export default function CommentForm({
 			<FormRichTextEditor
 				name="content"
 				placeholder={isEditing ? "Edit your comment…" : "Add a comment…"}
-				
+				height={120}
 			/>
 			<div className="flex justify-end gap-2">
 				{onCancel && (

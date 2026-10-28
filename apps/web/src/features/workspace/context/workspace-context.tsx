@@ -2,7 +2,6 @@
 
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
 
-import { useQueryClient } from "@tanstack/react-query";
 import { usePathname, useRouter } from "next/navigation";
 
 import { setActiveWorkspaceId as setWorkspaceHeader } from "@/lib/active-workspace";
@@ -33,7 +32,6 @@ interface WorkspaceContextValue {
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
 
 export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
-  const queryClient = useQueryClient();
   const router = useRouter();
   const pathname = usePathname();
   const { data: workspaces = [], isLoading, isError } = useWorkspaces();
@@ -63,12 +61,13 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       if (typeof window !== "undefined") {
         window.localStorage.setItem(STORAGE_KEY, id);
       }
-      // Tell the HTTP layer to scope subsequent requests to the new tenant...
+      // Default tenant for requests that don't name one. Nothing is
+      // invalidated: every scoped query key includes the workspace id and its
+      // request is pinned to that id (`inWorkspace`), so the new workspace's
+      // queries fetch under their own keys and the old workspace's cache stays
+      // correct. (Invalidating here refetched the still-mounted old-workspace
+      // queries under the *new* header, storing B's data under A's key.)
       setWorkspaceHeader(id);
-      // ...and drop cached server data, which all belonged to the previous
-      // workspace, so every scoped query refetches under the new
-      // `x-workspace-id` header (projects, issues, members, ...).
-      queryClient.invalidateQueries();
 
       // A project belongs to exactly one workspace, so /projects/<id>/... would
       // just 404 under the new tenant. Leave it for the project list; replace
@@ -77,7 +76,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         router.replace("/projects");
       }
     },
-    [activeWorkspaceId, pathname, queryClient, router],
+    [activeWorkspaceId, pathname, router],
   );
 
   // Keep the API client's `x-workspace-id` header in sync with the derived

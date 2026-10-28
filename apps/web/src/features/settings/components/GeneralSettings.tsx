@@ -23,10 +23,13 @@ import {
 import type { TWorkspaceFormValues } from "@/features/workspace/schema/workspace-schema";
 import { getApiErrorMessage } from "@/lib/api-error";
 
+import DeleteWorkspaceCard from "./DeleteWorkspaceCard";
+
 /**
  * Settings → General. Lets OWNER/ADMIN rename / re-describe the active
- * workspace (`PATCH /workspaces/:id`). Editing is gated by the viewer's role
- * derived from the roster; the backend enforces the real boundary.
+ * workspace (`PATCH /workspaces/:id`), and the OWNER delete it. Both are gated
+ * by the viewer's role derived from the roster; the backend enforces the real
+ * boundary.
  */
 export default function GeneralSettings() {
 	const {
@@ -46,7 +49,8 @@ export default function GeneralSettings() {
 	// roster would wrongly read as "you are not an admin".
 	const isError = isWorkspaceError || isMembersError;
 
-	const { isManager: canManage } = useWorkspacePermissions();
+	const { isManager: canManage, canDeleteWorkspace } =
+		useWorkspacePermissions();
 
 	const { mutateAsync: updateWorkspace, isPending } = useUpdateWorkspace();
 
@@ -83,53 +87,62 @@ export default function GeneralSettings() {
 	}
 
 	return (
-		<Card>
-			<CardHeader>
-				<CardTitle>Workspace details</CardTitle>
-				<CardDescription>
-					{canManage
-						? "Update your workspace name and description."
-						: "Only workspace admins can change these settings."}
-				</CardDescription>
-			</CardHeader>
-			<CardContent>
-				{isLoading || !activeWorkspace ? (
-					<div className="flex items-center justify-center py-8">
-						<Spinner />
-					</div>
-				) : canManage ? (
-					<WorkspaceForm
-						// Remount when the active workspace changes so the form
-						// re-seeds its defaults after a switch.
-						key={activeWorkspace.id}
-						defaultValues={{
-							name: activeWorkspace.name,
-							description: activeWorkspace.description ?? "",
-						}}
-						onSubmit={handleSubmit}
-						isSubmitting={isPending}
-					/>
-				) : (
-					<dl className="flex flex-col gap-4">
-						<div>
-							<dt className="text-xs text-muted">Name</dt>
-							<dd className="text-sm font-medium">
-								{activeWorkspace.name}
-							</dd>
+		<div className="flex flex-col gap-6">
+			<Card>
+				<CardHeader>
+					<CardTitle>Workspace details</CardTitle>
+					<CardDescription>
+						{canManage
+							? "Update your workspace name and description."
+							: "Only workspace admins can change these settings."}
+					</CardDescription>
+				</CardHeader>
+				<CardContent>
+					{isLoading || !activeWorkspace ? (
+						<div className="flex items-center justify-center py-8">
+							<Spinner />
 						</div>
-						{activeWorkspace.description && (
+					) : canManage ? (
+						<WorkspaceForm
+							// Remount when the active workspace changes so the form
+							// re-seeds its defaults after a switch.
+							key={activeWorkspace.id}
+							defaultValues={{
+								name: activeWorkspace.name,
+								description: activeWorkspace.description ?? "",
+							}}
+							onSubmit={handleSubmit}
+							isSubmitting={isPending}
+						/>
+					) : (
+						<dl className="flex flex-col gap-4">
 							<div>
-								<dt className="text-xs text-muted">
-									Description
-								</dt>
-								<dd className="text-sm">
-									{activeWorkspace.description}
+								<dt className="text-xs text-muted">Name</dt>
+								<dd className="text-sm font-medium">
+									{activeWorkspace.name}
 								</dd>
 							</div>
-						)}
-					</dl>
-				)}
-			</CardContent>
-		</Card>
+							{activeWorkspace.description && (
+								<div>
+									<dt className="text-xs text-muted">
+										Description
+									</dt>
+									<dd className="text-sm">
+										{activeWorkspace.description}
+									</dd>
+								</div>
+							)}
+						</dl>
+					)}
+				</CardContent>
+			</Card>
+
+			{canDeleteWorkspace && !isLoading && activeWorkspace && (
+				<DeleteWorkspaceCard
+					key={activeWorkspace.id}
+					workspace={activeWorkspace}
+				/>
+			)}
+		</div>
 	);
 }

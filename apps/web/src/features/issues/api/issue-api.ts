@@ -1,4 +1,4 @@
-import { api } from "@/lib/axios";
+import { api, inWorkspace } from "@/lib/axios";
 
 import type { ApiResponse } from "@/types/api";
 
@@ -36,6 +36,7 @@ const ISSUES_PAGE_SIZE = 100;
  * per-lane pagination on the board.
  */
 export async function getIssues(
+	workspaceId: string,
 	projectId: string,
 ): Promise<ApiResponse<Issue[]>> {
 	const seen = new Set<string>();
@@ -43,9 +44,12 @@ export async function getIssues(
 
 	let page = 1;
 	for (;;) {
-		const res = await api.get<Issue[]>(`/projects/${projectId}/issues`, {
-			params: { page, limit: ISSUES_PAGE_SIZE },
-		});
+		const res = await api.get<Issue[]>(
+			`/projects/${projectId}/issues`,
+			inWorkspace(workspaceId, {
+				params: { page, limit: ISSUES_PAGE_SIZE },
+			}),
+		);
 
 		// A write landing between page fetches shifts rows across the boundary,
 		// so the same issue can show up twice — keep the first copy.
@@ -64,18 +68,27 @@ export async function getIssues(
 	}
 }
 export async function getSingleIssue(
+	workspaceId: string,
 	projectId: string,
 	issueId: string,
 ): Promise<ApiResponse<Issue>> {
-	return api.get<Issue>(`/projects/${projectId}/issues/${issueId}`);
+	return api.get<Issue>(
+		`/projects/${projectId}/issues/${issueId}`,
+		inWorkspace(workspaceId),
+	);
 }
 
 /** Create an issue in a project (`POST /projects/:projectId/issues`). */
 export async function createIssue(
+	workspaceId: string,
 	projectId: string,
 	dto: CreateIssueDto,
 ): Promise<ApiResponse<Issue>> {
-	return api.post<Issue>(`/projects/${projectId}/issues`, dto);
+	return api.post<Issue>(
+		`/projects/${projectId}/issues`,
+		dto,
+		inWorkspace(workspaceId),
+	);
 }
 
 /**
@@ -83,9 +96,26 @@ export async function createIssue(
  * use PATCH per AI_GUIDE → "Update always implement PATCH Method".
  */
 export async function updateIssue(
+	workspaceId: string,
 	projectId: string,
 	issueId: string,
 	dto: UpdateIssueDto,
 ): Promise<ApiResponse<Issue>> {
-	return api.patch<Issue>(`/projects/${projectId}/issues/${issueId}`, dto);
+	return api.patch<Issue>(
+		`/projects/${projectId}/issues/${issueId}`,
+		dto,
+		inWorkspace(workspaceId),
+	);
+}
+
+/** Delete an issue (`DELETE /projects/:projectId/issues/:issueId`). */
+export async function deleteIssue(
+	workspaceId: string,
+	projectId: string,
+	issueId: string,
+): Promise<ApiResponse<Issue>> {
+	return api.delete<Issue>(
+		`/projects/${projectId}/issues/${issueId}`,
+		inWorkspace(workspaceId),
+	);
 }

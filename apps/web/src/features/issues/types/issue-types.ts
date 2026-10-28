@@ -1,5 +1,6 @@
 /**
- * Issue domain types. Mirrors the Prisma `Issue` model (.claude/schema.prisma).
+ * Issue domain types. Mirrors the Prisma `Issue` model
+ * (apps/backend/prisma/schema.prisma) and what the issue routes return.
  *
  * Issues are scoped to BOTH a workspace (via the `x-workspace-id` header) and a
  * project (via the route `/projects/:projectId/issues`). The embedded
@@ -20,6 +21,8 @@ export type IssueStatus =
 
 export type IssuePriority = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
 
+export type IssueType = "EPIC" | "STORY" | "TASK" | "BUG" | "SUBTASK";
+
 export interface IssueUser {
   id: string;
   name: string;
@@ -27,8 +30,8 @@ export interface IssueUser {
 }
 
 export interface Sprint {
-  id:string;
-  name:string;
+  id: string;
+  name: string;
 }
 export interface Issue {
   id: string;
@@ -36,12 +39,20 @@ export interface Issue {
   description?: string | null;
   status: IssueStatus;
   priority: IssuePriority;
+  type: IssueType;
   /** Fractional index for board ordering within a lane (see `lib/rank.ts`). */
   rank?: string | null;
   workspaceId: string;
   projectId: string;
   sprintId?: string | null;
-  sprint: Sprint
+  /**
+   * Only the list route embeds the sprint (`null` when unscheduled); the
+   * single-issue route doesn't, so read `sprintId` when you only need the id.
+   */
+  sprint?: Sprint | null;
+  parentIssueId?: string | null;
+  /** Not editable yet: the create/update DTOs don't accept it. */
+  timeEstimate?: number | null;
   reporterId: string;
   assigneeId?: string | null;
   reporter?: IssueUser;

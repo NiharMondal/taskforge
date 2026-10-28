@@ -21,7 +21,7 @@ export function useMemberships(workspaceId: string) {
   return useQuery({
     queryKey: membershipKeys.list(workspaceId),
     // Unwrap the ApiResponse envelope so the cache holds a plain Member[].
-    queryFn: async () => (await getMemberships()).data,
+    queryFn: async () => (await getMemberships(workspaceId)).data,
     enabled: !!workspaceId,
     staleTime: 5 * 60 * 1000,
   });
@@ -44,7 +44,7 @@ export function useUpdateMembershipRole(workspaceId: string) {
 
   return useMutation({
     mutationFn: ({ userId, role }: UpdateRoleVars) =>
-      updateMembership(userId, { role }),
+      updateMembership(workspaceId, userId, { role }),
 
     onMutate: async ({ userId, role }) => {
       await queryClient.cancelQueries({ queryKey: key });
@@ -79,7 +79,7 @@ export function useRemoveMembership(workspaceId: string) {
   const key = membershipKeys.list(workspaceId);
 
   return useMutation({
-    mutationFn: (userId: string) => removeMembership(userId),
+    mutationFn: (userId: string) => removeMembership(workspaceId, userId),
 
     onMutate: async (userId) => {
       await queryClient.cancelQueries({ queryKey: key });

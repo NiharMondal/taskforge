@@ -7,6 +7,7 @@ import { useSprints } from "@/features/sprint/hooks/use-sprints";
 
 import { useIssueEditor } from "../hooks/use-issue-editor";
 import type { Issue } from "../types/issue-types";
+import DeleteIssueButton from "./DeleteIssueButton";
 import IssueContentForm from "./IssueContentForm";
 import IssueDetailsPanel from "./IssueDetailsPanel";
 import { NO_SPRINT, UNASSIGNED } from "./IssueForm";
@@ -66,7 +67,7 @@ export default function IssueDetailModal({
 							canEdit={permissions.canEditIssueFields}
 						/>
 					</div>
-					<div className="xl:col-span-2 border-0 xl:border-l pl-4">
+					<div className="xl:col-span-2 flex flex-col gap-3 border-0 xl:border-l pl-4">
 						<IssueDetailsPanel
 							defaultValues={{
 								status: issue.status,
@@ -81,6 +82,14 @@ export default function IssueDetailModal({
 							reporter={issue.reporter}
 							permissions={permissions}
 						/>
+						{/* Once deleted the issue leaves the list, which closes this modal. */}
+						{permissions.canDeleteIssue && (
+							<DeleteIssueButton
+								workspaceId={workspaceId}
+								projectId={projectId}
+								issue={issue}
+							/>
+						)}
 					</div>
 				</div>
 			)}

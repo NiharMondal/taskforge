@@ -1,0 +1,11 @@
+-- `Issue.rank` is a fractional-indexing key (base-62: 0-9 < A-Z < a-z), which
+-- only sorts correctly by plain byte order. Under a locale collation such as
+-- en_US.UTF-8, "Zz" (a card dragged above the first one) sorts after "a0", so
+-- ORDER BY rank DESC — used to find the end of a lane when appending a card —
+-- took "Zz" for the last card and gave the new card "a0" again: a duplicate
+-- rank. "C" compares bytes, matching the web app's string comparison.
+--
+-- Prisma can't express a column collation in schema.prisma; it lives only here.
+-- Changing collation rebuilds the (projectId, status, rank) index; values are
+-- untouched.
+ALTER TABLE "Issue" ALTER COLUMN "rank" SET DATA TYPE TEXT COLLATE "C";

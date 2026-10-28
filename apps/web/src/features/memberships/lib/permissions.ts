@@ -5,10 +5,15 @@ import type { WorkspaceRole } from "@/features/workspace/types/workspace-types";
  * What a workspace role may do, mirroring the backend's rules so the UI can hide
  * or disable controls the API would answer with a 403.
  *
- * This is UX only — the backend stays the authority. The rules come from:
- *  - projects / sprints / issue create + delete: `@Roles(OWNER, ADMIN)`
- *  - `IssueService.update`: VIEWER rejected outright; MEMBER may change `status`
- *    (never to `DONE`) and `rank` only (apps/backend/spec/issue-spec.md)
+ * This is UX only — the backend stays the authority. Its rules are permissions
+ * on each workspace's roles (`@RequirePermission(...)` on routes, field-level
+ * issue checks in `issue-access.ts`; catalog in
+ * apps/backend/src/common/permissions/permissions.ts).
+ *
+ * Known drift: these flags still encode the *old* MEMBER rules (status/rank
+ * only). The backend now also lets a MEMBER create issues and edit issues they
+ * reported or are assigned to, so the UI hides controls the API would allow.
+ * The fix is to read `GET /memberships/me` instead of mirroring rules here.
  *
  * While the role is still loading every flag is `false` (no controls flicker in
  * and back out). If it can't be determined once loading has *finished* — roster
@@ -24,8 +29,11 @@ export interface Permissions {
 	/** Change an issue's status or its board position. */
 	canChangeIssueStatus: boolean;
 	canMarkIssueDone: boolean;
+	canDeleteIssue: boolean;
 	canManageProjects: boolean;
 	canManageSprints: boolean;
+	/** OWNER only; the backend never grants `workspace:delete` to a role. */
+	canDeleteWorkspace: boolean;
 }
 
 export function getPermissions(role: WorkspaceRole | undefined): Permissions {
@@ -39,8 +47,10 @@ export function getPermissions(role: WorkspaceRole | undefined): Permissions {
 		canEditIssueFields: isManager,
 		canChangeIssueStatus: isManager || isMember,
 		canMarkIssueDone: isManager,
+		canDeleteIssue: isManager,
 		canManageProjects: isManager,
 		canManageSprints: isManager,
+		canDeleteWorkspace: role === "OWNER",
 	};
 }
 

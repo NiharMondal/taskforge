@@ -15,7 +15,7 @@ import { useWorkspace } from "@/features/workspace/context/workspace-context";
 import { getApiErrorMessage } from "@/lib/api-error";
 
 import { useIssues, useUpdateIssue } from "../hooks/use-issues";
-import type { Issue, IssueStatus } from "../types/issue-types";
+import type { IssueStatus } from "../types/issue-types";
 import CreateIssueModal from "./CreateIssueModal";
 import IssueDetailModal from "./IssueDetailModal";
 import IssueList from "./IssueList";
@@ -28,7 +28,7 @@ import { useBoolean } from "ahooks";
  */
 export default function IssuesView({ projectId }: { projectId: string }) {
 	const [isOpen, { setTrue: openModal, setFalse: closeModal }] = useBoolean();
-	const [selectedIssue, setSelectedIssue] = useState<Issue | null>(null);
+	const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
 	const { activeWorkspaceId } = useWorkspace();
 	const workspaceId = activeWorkspaceId ?? "";
 
@@ -45,6 +45,9 @@ export default function IssuesView({ projectId }: { projectId: string }) {
 		isError,
 		refetch,
 	} = useIssues(workspaceId, projectId);
+	// Only the id is stored: the modal reads the issue from the live list, so
+	// it shows saves and refetches, and closes if the issue is deleted.
+	const selectedIssue = issues.find((i) => i.id === selectedIssueId) ?? null;
 
 	const {
 		mutate: updateIssue,
@@ -110,7 +113,7 @@ export default function IssuesView({ projectId }: { projectId: string }) {
 					assigneeNames={assigneeNames}
 					permissions={permissions}
 					onStatusChange={handleStatusChange}
-					onOpenIssue={setSelectedIssue}
+					onOpenIssue={(issue) => setSelectedIssueId(issue.id)}
 					onCreateClick={openModal}
 					updatingIssueId={
 						isUpdatingIssue ? updatingVars?.issueId : undefined
@@ -127,7 +130,7 @@ export default function IssuesView({ projectId }: { projectId: string }) {
 
 			<IssueDetailModal
 				issue={selectedIssue}
-				onClose={() => setSelectedIssue(null)}
+				onClose={() => setSelectedIssueId(null)}
 				members={members}
 				workspaceId={workspaceId}
 				projectId={projectId}

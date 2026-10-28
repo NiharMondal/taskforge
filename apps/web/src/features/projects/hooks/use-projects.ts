@@ -1,6 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { createProject, getProjects, updateProject } from "../api/project-api";
+import { issueKeys } from "@/features/issues/hooks/use-issues";
+import { sprintKeys } from "@/features/sprint/hooks/use-sprints";
+
+import {
+  createProject,
+  deleteProject,
+  getProjects,
+  updateProject,
+} from "../api/project-api";
 import type { Project } from "../types/project-types";
 import type { TProjectFormValues } from "../schema/project-schema";
 
@@ -10,9 +18,9 @@ export const projectKeys = {
 };
 
 /**
- * Projects in a workspace. The request is scoped by the `x-workspace-id` header,
- * but we still key the cache by workspaceId so switching tenants refetches
- * (and never shows the previous workspace's projects from cache).
+ * Projects in a workspace. The request is pinned to the same `workspaceId` the
+ * cache is keyed by, so a response can't be stored under another tenant's key
+ * even if the active workspace changes while it is in flight.
  *
  * The queryFn unwraps the `ApiResponse` envelope so the cache holds a plain
  * `Project[]` — the optimistic update in `useUpdateProject` depends on that.
@@ -20,7 +28,7 @@ export const projectKeys = {
 export function useProjects(workspaceId: string) {
   return useQuery({
     queryKey: projectKeys.list(workspaceId),
-    queryFn: async () => (await getProjects()).data,
+    queryFn: async () => (await getProjects(workspaceId)).data,
     enabled: !!workspaceId,
   });
 }
@@ -29,7 +37,7 @@ export function useCreateProject(workspaceId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: createProject,
+    mutationFn: (dto: TProjectFormValues) => createProject(workspaceId, dto),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: projectKeys.list(workspaceId) });
     },
@@ -52,7 +60,8 @@ export function useUpdateProject(workspaceId: string) {
   const key = projectKeys.list(workspaceId);
 
   return useMutation({
-    mutationFn: ({ id, data }: UpdateProjectVars) => updateProject(id, data),
+    mutationFn: ({ id, data }: UpdateProjectVars) =>
+      updateProject(workspaceId, id, data),
 
     onMutate: async ({ id, data }) => {
       // Cancel in-flight refetches so they don't clobber the optimistic write.
@@ -75,6 +84,31 @@ export function useUpdateProject(workspaceId: string) {
     },
 
     onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: key });
+    },
+  });
+}
+
+/**
+ * Delete a project. The backend cascades its issues and sprints, so their
+ * cache entries are dropped too instead of lingering under a dead project id.
+ */
+export function useDeleteProject(workspaceId: string) {
+  const queryClient = useQueryClient();
+  const key = projectKeys.list(workspaceId);
+
+  return useMutation({
+    mutationFn: (projectId: string) => deleteProject(workspaceId, projectId),
+    onSuccess: (_res, projectId) => {
+      queryClient.setQueryData<Project[]>(key, (old) =>
+        old?.filter((project) => project.id !== projectId),
+      );
+      queryClient.removeQueries({
+        queryKey: issueKeys.list(workspaceId, projectId),
+      });
+      queryClient.removeQueries({
+        queryKey: sprintKeys.list(workspaceId, projectId),
+      });
       queryClient.invalidateQueries({ queryKey: key });
     },
   });

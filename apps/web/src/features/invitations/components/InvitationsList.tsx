@@ -5,6 +5,7 @@ import { Mail } from "lucide-react";
 
 import { useInvitations } from "../hooks/use-invitations";
 import InvitationStatusChip from "./InvitationStatusChip";
+import RevokeInvitationButton from "./RevokeInvitationButton";
 import { formatDate } from "@/util/format-date";
 /**
  * Workspace invitations with their status. Rendered only for OWNER/ADMIN —
@@ -64,7 +65,15 @@ export default function InvitationsList({
 							{formatDate(invitation.createdAt, "dd/MM/yyyy")}
 						</p>
 					</div>
-					<InvitationStatusChip status={invitation.status} />
+					<div className="flex shrink-0 items-center gap-2">
+						<InvitationStatusChip status={invitation.status} />
+						{invitation.status === "PENDING" && (
+							<RevokeInvitationButton
+								workspaceId={workspaceId}
+								invitation={invitation}
+							/>
+						)}
+					</div>
 				</li>
 			))}
 		</ul>

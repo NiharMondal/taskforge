@@ -19,7 +19,7 @@ export const sprintKeys = {
 export function useSprints(workspaceId: string, projectId: string) {
 	return useQuery({
 		queryKey: sprintKeys.list(workspaceId, projectId),
-		queryFn: async () => (await getSprints(projectId)).data,
+		queryFn: async () => (await getSprints(workspaceId, projectId)).data,
 		enabled: !!workspaceId && !!projectId,
 	});
 }
@@ -28,7 +28,8 @@ export function useCreateSprint(workspaceId: string, projectId: string) {
 	const queryClient = useQueryClient();
 
 	return useMutation({
-		mutationFn: (dto: CreateSprintDto) => createSprint(projectId, dto),
+		mutationFn: (dto: CreateSprintDto) =>
+			createSprint(workspaceId, projectId, dto),
 		onSuccess: () => {
 			queryClient.invalidateQueries({
 				queryKey: sprintKeys.list(workspaceId, projectId),
@@ -52,7 +53,7 @@ export function useUpdateSprint(workspaceId: string, projectId: string) {
 
 	return useMutation({
 		mutationFn: ({ sprintId, dto }: UpdateSprintVars) =>
-			updateSprint(projectId, sprintId, dto),
+			updateSprint(workspaceId, projectId, sprintId, dto),
 
 		onMutate: async ({ sprintId, dto }) => {
 			await queryClient.cancelQueries({ queryKey: key });
@@ -85,7 +86,8 @@ export function useStartSprint(workspaceId: string, projectId: string) {
 	const queryClient = useQueryClient();
 
 	return useMutation({
-		mutationFn: (sprintId: string) => startSprint(projectId, sprintId),
+		mutationFn: (sprintId: string) =>
+			startSprint(workspaceId, projectId, sprintId),
 		onSettled: () => {
 			queryClient.invalidateQueries({
 				queryKey: sprintKeys.list(workspaceId, projectId),
@@ -103,7 +105,8 @@ export function useEndSprint(workspaceId: string, projectId: string) {
 	const queryClient = useQueryClient();
 
 	return useMutation({
-		mutationFn: (sprintId: string) => endSprint(projectId, sprintId),
+		mutationFn: (sprintId: string) =>
+			endSprint(workspaceId, projectId, sprintId),
 		onSettled: () => {
 			queryClient.invalidateQueries({
 				queryKey: sprintKeys.list(workspaceId, projectId),

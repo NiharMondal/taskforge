@@ -9,30 +9,54 @@ import {
 	CardDescription,
 	CardHeader,
 	CardTitle,
+	Spinner,
 	toast,
 } from "@heroui/react";
 import { MailCheck } from "lucide-react";
+import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 
+import { ROLE_LABELS } from "@/features/memberships/constants";
 import { useWorkspace } from "@/features/workspace/context/workspace-context";
 import { getApiErrorMessage } from "@/lib/api-error";
 
-import { useAcceptInvitation } from "../hooks/use-invitations";
+import {
+	useAcceptInvitation,
+	useInvitationPreview,
+} from "../hooks/use-invitations";
 
 /**
- * Landing card for `/invite/[token]`. The copy stays generic: there is no
- * token-lookup endpoint, and `GET /invitations` is scoped to a workspace the
- * invitee doesn't belong to yet — so the workspace name can't be shown.
+ * Landing card for `/invitations/accept?token=…`. The token is looked up first
+ * (public `GET /invitations/validate`) to show the workspace, role and invited
+ * email; an unknown, used, revoked or expired token shows the backend's reason
+ * instead of an Accept button.
  *
  * Accepting creates the membership, switches the active workspace to the new
- * tenant, and lands on the dashboard. Expired/revoked/already-accepted tokens
- * surface the backend's error message inline (not just a toast).
+ * tenant, and lands on the dashboard. The backend only accepts it for the
+ * invited email, so a mismatch with the signed-in account is flagged up front.
  */
 export default function AcceptInviteView({ token }: { token: string }) {
 	const router = useRouter();
 	const { setActiveWorkspaceId } = useWorkspace();
 	const { mutateAsync: acceptInvitation, isPending } = useAcceptInvitation();
 	const [error, setError] = useState<string | null>(null);
+	const { data: session } = useSession();
+	const {
+		data: preview,
+		isLoading,
+		error: previewError,
+	} = useInvitationPreview(token);
+
+	const invalidReason = !token
+		? "This invitation link is missing its token."
+		: previewError
+			? getApiErrorMessage(previewError, "This invitation isn’t valid.")
+			: null;
+	const signedInEmail = session?.user?.email;
+	const isOtherAccount =
+		!!preview &&
+		!!signedInEmail &&
+		signedInEmail.toLowerCase() !== preview.email.toLowerCase();
 
 	const handleAccept = async () => {
 		setError(null);
@@ -58,11 +82,38 @@ export default function AcceptInviteView({ token }: { token: string }) {
 					You’ve been invited
 				</CardTitle>
 				<CardDescription>
-					Accept the invitation to join the workspace on TaskForge.
+					{preview ? (
+						<>
+							Join{" "}
+							<span className="font-medium text-foreground">
+								{preview.workspaceName}
+							</span>{" "}
+							on TaskForge as {ROLE_LABELS[preview.role]}.
+						</>
+					) : (
+						"Accept the invitation to join the workspace on TaskForge."
+					)}
 				</CardDescription>
 			</CardHeader>
 
 			<CardContent className="flex flex-col gap-4">
+				{isLoading && (
+					<div className="flex justify-center">
+						<Spinner size="sm" />
+					</div>
+				)}
+				{invalidReason && (
+					<p className="rounded-lg border border-border bg-surface p-3 text-sm text-danger">
+						{invalidReason}
+					</p>
+				)}
+				{isOtherAccount && (
+					<p className="rounded-lg border border-border bg-surface p-3 text-sm text-warning">
+						This invitation is for {preview.email}, but you’re signed
+						in as {signedInEmail}. Sign in with the invited email to
+						accept it.
+					</p>
+				)}
 				{error && (
 					<p className="rounded-lg border border-border bg-surface p-3 text-sm text-danger">
 						{error}
@@ -80,7 +131,7 @@ export default function AcceptInviteView({ token }: { token: string }) {
 					<Button
 						type="button"
 						onClick={handleAccept}
-						isDisabled={isPending}
+						isDisabled={isPending || !preview || isOtherAccount}
 					>
 						{isPending ? "Accepting…" : "Accept Invitation"}
 					</Button>

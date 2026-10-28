@@ -31,7 +31,7 @@ describe("UserService.update avatar handling", () => {
       },
     };
     cloudinary = {
-      isTemp: jest.fn((id: string) => id.includes("/temp/")),
+      isTemp: jest.fn((id: string) => id.startsWith("taskforge/temp/")),
       promoteToPermanent: jest.fn().mockResolvedValue({
         url: "https://cdn.example/user-avatar/fresh.png",
         publicId: "taskforge/user-avatar/fresh",
@@ -64,7 +64,11 @@ describe("UserService.update avatar handling", () => {
   it("promotes a fresh temp upload and removes the old avatar", async () => {
     await service.update(userId, { avatarPublicId: tempPublicId });
 
-    expect(cloudinary.promoteToPermanent).toHaveBeenCalledWith(tempPublicId);
+    // The destination folder is chosen here, per user — never from the client.
+    expect(cloudinary.promoteToPermanent).toHaveBeenCalledWith(
+      tempPublicId,
+      "taskforge/user-avatar/user-1",
+    );
     const data: unknown = expect.objectContaining({
       avatarUrl: "https://cdn.example/user-avatar/fresh.png",
       avatarPublicId: "taskforge/user-avatar/fresh",
@@ -86,6 +90,29 @@ describe("UserService.update avatar handling", () => {
     expect(prisma.user.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: { name: "Renamed" } }),
     );
+  });
+
+  it("removes the avatar on an explicit null and destroys the stored asset", async () => {
+    await service.update(userId, { avatarPublicId: null, avatarUrl: "x" });
+
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: userId },
+      data: { avatarUrl: null, avatarPublicId: null },
+    });
+    expect(cloudinary.delete).toHaveBeenCalledWith(ownPublicId);
+    expect(cloudinary.promoteToPermanent).not.toHaveBeenCalled();
+  });
+
+  it("ignores a client-sent avatarUrl", async () => {
+    await service.update(userId, {
+      name: "Me",
+      avatarUrl: "https://evil.example/x.png",
+    });
+
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: userId },
+      data: { name: "Me" },
+    });
   });
 
   it("updates plain fields without touching Cloudinary", async () => {

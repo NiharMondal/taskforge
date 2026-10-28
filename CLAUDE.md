@@ -29,6 +29,7 @@ Both apps must be up; the web app is useless alone.
 ```bash
 pnpm install          # whole workspace; postinstall runs `prisma generate`
 pnpm dev              # backend :5001 (prefix /api/v1) + web :3000, output prefixed per app
+                      # NOTE: first kills whatever listens on :3000, :5001 and :5002 (`predev` → `free-ports`)
 pnpm dev:backend      # or one at a time
 pnpm dev:web
 pnpm build | lint     # across both apps (`lint` runs eslint --fix in the backend)
@@ -45,23 +46,25 @@ pnpm --filter @taskforge/backend <script>   # any app script from the root
 
 Backend needs a reachable `DATABASE_URL` (`apps/backend/.env`); the web app reads `apps/web/.env.local`. `generated/` (Prisma client) is gitignored and rebuilt by `pnpm install` / `pnpm db:generate`. `prisma/migrations/` **is** committed: `pnpm db:migrate` builds a fresh database from it, and schema changes ship as a new migration folder in the same commit. Backend CORS origins come from `CORS_ORIGINS` (comma-separated; unset = `localhost:3000` / `:3001`). Both `.env.example` files list what the code actually reads.
 
-CI (`.github/workflows/ci.yml`) runs on every PR and push to `main`: frozen install, `lint:check`, `typecheck`, `build`, `test`, then `prisma migrate deploy` + `test:e2e` against a Postgres service.
+CI (`.github/workflows/ci.yml`) runs on every PR and push to `main`: frozen install, `lint:check`, `typecheck`, `build`, `test`, then `prisma migrate deploy`, a `prisma migrate diff --exit-code` check that the migrated database matches `schema.prisma` (a schema edit without its migration fails the build), and `test:e2e` against a Postgres service.
+
+Node is pinned to 24 in `.nvmrc` (CI reads it) and `engines` in the root `package.json`. `fractional-indexing` is pinned to the same exact version in both apps, since both generate board ranks that must stay compatible.
 
 ## The web/backend contract
 
 The backend is the source of truth: `apps/backend/prisma/schema.prisma` for the data model, and the controllers in `apps/backend/src/modules/<name>/` for routes and payloads. Read them directly — they are in the same tree now.
 
-`apps/web/.claude/` still holds hand-maintained copies from the two-repo era (`schema.prisma`, `BACK_END_API.md`). **They drift** — e.g. the schema copy lacks `User.avatarPublicId` — so treat them as convenience summaries, never as the contract. Types in `apps/web/src/features/*/types/` are hand-written to match the backend; when you change the backend schema or a route, update those types (and the copies, if kept) in the same commit.
+There are no copies of the contract to keep in sync (the two-repo era's `apps/web/.claude/schema.prisma` and `BACK_END_API.md` were deleted after they drifted). Types in `apps/web/src/features/*/types/` are hand-written to match the backend; when you change the backend schema or a route, update those types in the same commit.
 
 `apps/web/.claude/migrations/*.md` are historical notes from when frontend work had to hand schema changes to the backend repo (e.g. `add-issue-rank.md`, already applied). New schema changes don't need an outbox: edit `apps/backend/prisma/schema.prisma`, run `pnpm db:migrate`, and change the web code in the same commit.
 
-Feature specs live in `apps/web/spec/*.md` (committed) and `apps/backend/spec/*.md` (gitignored) and are the best statement of intended behavior — consult the relevant one before changing a feature. Never invent an API shape; if a contract is unclear, ask.
+Feature specs live in `apps/web/spec/*.md` (committed) and `apps/backend/spec/*.md` (both committed) and are the best statement of intended behavior — consult the relevant one before changing a feature. Never invent an API shape; if a contract is unclear, ask.
 
 ## Shared invariants
 
 These hold on both sides of the wire — breaking one on either side breaks the other.
 
-**Tenancy travels in a header, never in the token.** `Workspace` is the tenant root. The JWT identifies the *user* (`{ sub, email }`); the `x-workspace-id` header identifies the *tenant*. The frontend attaches it in the axios interceptor (`src/lib/axios.ts`, fed by `lib/active-workspace.ts`); the backend's `WorkspaceGuard` resolves it to a `Membership` row and 403s if absent. A user in workspace A must never see workspace B's rows — on the backend that means every workspace-scoped Prisma query filters on `workspaceId`; on the frontend it means every query key includes `workspaceId` (and `projectId` where relevant) so caches never leak across tenants.
+**Tenancy travels in a header, never in the token.** `Workspace` is the tenant root. The JWT identifies the *user* (`{ sub, email }`); the `x-workspace-id` header identifies the *tenant*. The frontend pins each scoped request to the workspace its query key names (`inWorkspace(workspaceId)` in `src/lib/axios.ts`), falling back in the interceptor to the active one from `lib/active-workspace.ts`; the backend's `WorkspaceGuard` resolves it to a `Membership` row and 403s if absent. A user in workspace A must never see workspace B's rows — on the backend that means every workspace-scoped Prisma query filters on `workspaceId`; on the frontend it means every query key includes `workspaceId` (and `projectId` where relevant) so caches never leak across tenants.
 
 **One response envelope.** Every controller returns `sendResponse()` — `{ success, statusCode, message, metaData?, data }` — and the frontend's `api` wrapper (`src/lib/axios.ts` / `src/types/api.ts`) unwraps `.data` before it reaches the cache. Errors are shaped by `HttpExceptionFilter` into `{ success: false, message, statusCode }` and normalized to `ApiError` on the client.
 
@@ -71,12 +74,12 @@ These hold on both sides of the wire — breaking one on either side breaks the 
 
 **Routes are `/api/v1/...`** and issues are project-scoped: `/projects/:projectId/issues`, `/projects/:projectId/sprints`. There is no workspace-wide issues endpoint (the frontend's `/issues` route just redirects to `/projects`).
 
-**Cloudinary uploads are two-phase.** The browser uploads directly to a `temp/` folder with an unsigned preset and posts back `{ avatarUrl, avatarPublicId }`; the backend *promotes* the asset on successful save, or deletes it. `POST /cloudinary/delete-temp` handles abandoned uploads and refuses any publicId not under `/temp/`. The frontend never holds the API secret.
+**Cloudinary uploads are two-phase.** The browser uploads directly to a `temp/` folder with an unsigned preset and posts back `{ avatarUrl, avatarPublicId }`; the backend *promotes* the asset on successful save, or deletes it. `POST /cloudinary/delete-temp` handles abandoned uploads and only deletes from the caller's own temp folder (`taskforge/temp/<kind>/<userId>/…`), so neither a saved asset nor someone else's pending upload can be destroyed through it. The backend never takes `avatarUrl` from the client; it comes from the promoted asset. The frontend never holds the API secret.
 
 ## Known gaps
 
-- **`RolesGuard` is not usable for MEMBER/VIEWER gating.** It hardcodes an OWNER-or-ADMIN check before consulting `@Roles(...)`. Enforce finer-grained rules in the service layer instead.
+- **Roles are per-workspace rows with permission keys, but there is no UI or API to edit them yet.** Every workspace has the four built-in roles (`Role.systemKey`); the catalog is `apps/backend/src/common/permissions/permissions.ts`. `Membership.role` / `Invitation.role` (the enum) are still written alongside `roleId` until custom roles land. The web app still mirrors the rules in `features/memberships/lib/permissions.ts` instead of reading `GET /memberships/me`, and its MEMBER rules are stricter than the backend's (it hides "create issue" and "edit own issue").
 - **`/users` is self-only.** There is no list or delete route; `GET`/`PATCH /users/me` (or `/users/<your own id>`) is all there is, and any other id is a 403. If you need other users' data, read it through a workspace-scoped route (memberships), not by widening `/users`.
 - **No refresh tokens.** Access tokens last `1d`; on a backend 401 the frontend force-signs-out, because the Auth.js cookie can outlive the backend token. A missing token is also a 401.
 - **Google sign-in needs `GOOGLE_CLIENT_ID` on both sides, with the same value.** The web app forwards Google's `id_token` and the backend verifies it against that client ID; unset on the backend, `POST /auth/google` answers 503.
-- **Test coverage is backend-only.** `pnpm test` runs Jest unit and HTTP specs against mocked Prisma — no database needed. `pnpm test:e2e` boots the real app against Postgres and needs `DATABASE_URL` pointing at a migrated database whose name contains `e2e` or `test` (it refuses anything else). The frontend has no test runner at all (type-check with `pnpm typecheck`).
+- **Test coverage is backend-only.** `pnpm test` runs Jest unit and HTTP specs against mocked Prisma — no database needed. `pnpm test:e2e` boots the real app against Postgres and needs `DATABASE_URL` pointing at a migrated database whose name has `e2e` or `test` as a whole word, e.g. `taskforge_e2e` (it refuses anything else, including names like `latest`). The frontend has no test runner at all (type-check with `pnpm typecheck`).

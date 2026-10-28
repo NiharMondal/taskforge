@@ -9,12 +9,14 @@ import {
 	Chip,
 	Spinner,
 } from "@heroui/react";
+import ErrorAlert from "@/components/ui/error-alert";
 import InvitationsList from "@/features/invitations/components/InvitationsList";
 import InviteMemberButton from "@/features/invitations/components/InviteMemberButton";
 import { ROLE_COLOR, ROLE_LABELS } from "@/features/memberships/constants";
 import MemberRoleSelect from "@/features/memberships/components/MemberRoleSelect";
 import RemoveMemberButton from "@/features/memberships/components/RemoveMemberButton";
 import { useMemberships } from "@/features/memberships/hooks/use-memberships";
+import { useWorkspacePermissions } from "@/features/memberships/hooks/use-workspace-permissions";
 import { getMemberEmail } from "@/features/memberships/lib/member";
 import { useCurrentUserId } from "@/features/auth/hooks/use-current-user-id";
 import { useWorkspace } from "@/features/workspace/context/workspace-context";
@@ -34,11 +36,12 @@ export default function MembersSettings() {
 		data: members = [],
 		isLoading,
 		isError,
+		refetch,
 	} = useMemberships(workspaceId);
 
 	const currentUserId = useCurrentUserId();
-	const currentRole = members.find((m) => m.userId === currentUserId)?.role;
-	const canManage = currentRole === "OWNER" || currentRole === "ADMIN";
+	// Same roster cache entry as above, so no extra request.
+	const { isManager: canManage } = useWorkspacePermissions();
 
 	return (
 		<div className="flex flex-col gap-8">
@@ -58,9 +61,11 @@ export default function MembersSettings() {
 				</CardHeader>
 				<CardContent>
 					{isError ? (
-						<p className="text-sm text-danger">
-							Couldn’t load members. Please try again.
-						</p>
+						<ErrorAlert
+							title="Couldn’t load members"
+							description="Check your connection and try again."
+							onRetry={() => refetch()}
+						/>
 					) : isLoading ? (
 						<div className="flex items-center justify-center py-8">
 							<Spinner />

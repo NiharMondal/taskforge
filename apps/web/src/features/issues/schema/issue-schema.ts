@@ -1,8 +1,20 @@
 import z from "zod";
 
+// Limits mirror the backend's CreateIssueDto / UpdateIssueDto, so a form never
+// submits something the API answers with a 400.
 export const issueSchema = z.object({
-	title: z.string().min(1, "Title is required"),
-	description: z.string().optional(),
+	title: z
+		.string()
+		.trim()
+		.min(1, "Title is required")
+		.min(2, "Title must be at least 2 characters")
+		.max(255, "Title must be at most 255 characters"),
+	// Stored as the editor's HTML, which is what the 2000 limit counts —
+	// formatting markup included.
+	description: z
+		.string()
+		.max(2000, "Description is too long (formatting counts toward the limit)")
+		.optional(),
 	status: z.enum([
 		"BACKLOG",
 		"TODO",

@@ -30,9 +30,10 @@ type Props = {
  * form like any other input.
  *
  * Uploads go straight into a `temp/` folder for an instant preview. An asset is
- * an orphan exactly while its publicId still contains `/temp/` (the backend
- * strips that segment when it promotes the asset on save). Orphans are removed
- * via the backend on replace, on Remove, and on unmount (navigating away unsaved).
+ * an orphan exactly while its publicId is still under `temp/` (on save the
+ * backend promotes it to a permanent id). Orphans are removed via the backend
+ * on replace, on Remove, and on unmount (navigating away unsaved) — including
+ * an upload that only finishes after the form is gone.
  */
 export default function FormImageUpload({
 	urlName,
@@ -61,8 +62,11 @@ export default function FormImageUpload({
 		publicIdRef.current = publicId;
 	}, [publicId]);
 
+	const isMountedRef = useRef(true);
 	useEffect(() => {
+		isMountedRef.current = true;
 		return () => {
+			isMountedRef.current = false;
 			void deleteTempImage(publicIdRef.current);
 		};
 	}, []);
@@ -78,14 +82,21 @@ export default function FormImageUpload({
 			// Replace any previous unsaved upload before adding a new one.
 			await deleteTempImage(getValues(publicIdName));
 			const uploaded = await uploadToCloudinary(file, folder);
+			// Unmounted mid-upload: the unmount cleanup ran before this id
+			// existed, so nothing else will ever delete it.
+			if (!isMountedRef.current) {
+				void deleteTempImage(uploaded.publicId);
+				return;
+			}
 			setBoth(uploaded.url, uploaded.publicId);
 		} catch (error) {
+			if (!isMountedRef.current) return;
 			setBoth("", "");
 			toast.danger(
 				error instanceof Error ? error.message : "Image upload failed",
 			);
 		} finally {
-			setIsUploading(false);
+			if (isMountedRef.current) setIsUploading(false);
 		}
 	};
 

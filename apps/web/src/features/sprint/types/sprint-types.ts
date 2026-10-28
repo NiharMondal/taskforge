@@ -5,6 +5,8 @@ export interface Sprint {
 	startDate?: string | null;
 	endDate?: string | null;
 	isActive: boolean;
+	/** Set once the sprint is ended; the backend refuses to start it again. */
+	completedAt?: string | null;
 	projectId: string;
 	workspaceId: string;
 	createdAt: string;

@@ -1,4 +1,4 @@
-import { api } from "@/lib/axios";
+import { api, inWorkspace } from "@/lib/axios";
 
 import type { ApiResponse } from "@/types/api";
 
@@ -19,15 +19,18 @@ import { TProjectFormValues } from "../schema/project-schema";
  */
 
 /** List the active workspace's projects (`GET /projects`). */
-export async function getProjects(): Promise<ApiResponse<Project[]>> {
-	return api.get<Project[]>("/projects");
+export async function getProjects(
+	workspaceId: string,
+): Promise<ApiResponse<Project[]>> {
+	return api.get<Project[]>("/projects", inWorkspace(workspaceId));
 }
 
 /** Create a project in the active workspace (`POST /projects`). */
 export async function createProject(
+	workspaceId: string,
 	dto: TProjectFormValues,
 ): Promise<ApiResponse<Project>> {
-	return api.post<Project>("/projects", dto);
+	return api.post<Project>("/projects", dto, inWorkspace(workspaceId));
 }
 
 /**
@@ -36,8 +39,21 @@ export async function createProject(
  * route, so only the changed body fields are sent.
  */
 export async function updateProject(
+	workspaceId: string,
 	projectId: string,
 	dto: TProjectFormValues,
 ): Promise<ApiResponse<Project>> {
-	return api.patch<Project>(`/projects/${projectId}`, dto);
+	return api.patch<Project>(
+		`/projects/${projectId}`,
+		dto,
+		inWorkspace(workspaceId),
+	);
+}
+
+/** Delete a project with its issues and sprints (`DELETE /projects/:projectId`). */
+export async function deleteProject(
+	workspaceId: string,
+	projectId: string,
+): Promise<ApiResponse<Project>> {
+	return api.delete<Project>(`/projects/${projectId}`, inWorkspace(workspaceId));
 }

@@ -19,6 +19,7 @@ import {
 } from "../schema/issue-schema";
 import DeleteIssueButton from "./DeleteIssueButton";
 import IssueContentForm from "./IssueContentForm";
+import IssueKey from "./IssueKey";
 import IssueDetailsPanel from "./IssueDetailsPanel";
 import { NO_SPRINT, UNASSIGNED } from "./IssueForm";
 
@@ -92,7 +93,8 @@ export default function IssueDetailComponent({ projectId, issueId }: Props) {
 
 	return (
 		<div className="grid grid-cols-1 gap-5 xl:grid-cols-6">
-			<div className="xl:col-span-4">
+			<div className="flex flex-col gap-2 xl:col-span-4">
+				<IssueKey issue={issue} className="text-sm" />
 				<IssueContentForm
 					defaultValues={contentValues}
 					onSubmit={handleSaveContent}

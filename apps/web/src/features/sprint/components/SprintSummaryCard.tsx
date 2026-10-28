@@ -5,26 +5,18 @@ import { getLocalTimeZone, today } from "@internationalized/date";
 import { CalendarDays, Square } from "lucide-react";
 
 import { fromISO } from "@/util/iso";
-import { formatDate } from "@/util/format-date";
 
+import { formatSprintDay } from "../lib/sprint-dates";
 import type { Sprint } from "../types/sprint-types";
 
 interface Props {
 	sprint: Sprint;
 	doneCount: number;
 	totalCount: number;
-	/** OWNER/ADMIN only: shows the End sprint button. */
+	/** OWNER/ADMIN only: shows the Complete sprint button. */
 	canManage: boolean;
 	onEnd: () => void;
 }
-
-/**
- * Display a sprint date by its calendar day. Planned dates are stored as UTC
- * midnight, so the `yyyy-MM-dd` prefix is the day the user picked; parsing the
- * full ISO string would shift it a day back west of UTC.
- */
-const formatDay = (iso: string | null | undefined) =>
-	iso ? formatDate(iso.slice(0, 10), "MMM dd, yyyy") : null;
 
 /** "6 days left", "Ends today", "2 days overdue" — or nothing without an end date. */
 function timeLeftLabel(endDate: string | null | undefined): string | null {
@@ -45,8 +37,8 @@ export default function SprintSummaryCard({
 	canManage,
 	onEnd,
 }: Props) {
-	const start = formatDay(sprint.startDate);
-	const end = formatDay(sprint.endDate);
+	const start = formatSprintDay(sprint.startDate);
+	const end = formatSprintDay(sprint.endDate);
 	const timeLeft = timeLeftLabel(sprint.endDate);
 	const percent =
 		totalCount === 0 ? 0 : Math.round((doneCount / totalCount) * 100);
@@ -79,7 +71,7 @@ export default function SprintSummaryCard({
 				{canManage && (
 					<Button size="sm" variant="outline" onPress={onEnd}>
 						<Square className="h-3.5 w-3.5" />
-						End sprint
+						Complete sprint
 					</Button>
 				)}
 			</div>

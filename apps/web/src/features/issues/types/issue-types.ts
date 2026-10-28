@@ -40,6 +40,8 @@ export interface Issue {
   status: IssueStatus;
   priority: IssuePriority;
   type: IssueType;
+  /** Per-project sequence; shown with the project key as `WA-12` (see `IssueKey`). */
+  number: number;
   /** Fractional index for board ordering within a lane (see `lib/rank.ts`). */
   rank?: string | null;
   workspaceId: string;

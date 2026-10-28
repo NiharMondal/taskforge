@@ -3,14 +3,13 @@
 import type { ReactNode } from "react";
 
 import { cn } from "@heroui/react";
-import { Settings, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 
 import Breadcrumbs from "@/components/ui/breadcrumbs";
 
 import type { Project } from "../types/project-types";
 
-type ProjectTab = "issues" | "board" | "sprint" | "settings";
+type ProjectTab = "issues" | "board" | "sprint" | "backlog";
 
 interface ProjectHeaderProps {
 	projectId: string;
@@ -22,7 +21,7 @@ interface ProjectHeaderProps {
 
 /**
  * Shared chrome for project-scoped pages: breadcrumbs, project identity, and
- * the Board/Issues/Current Sprint/Settings tab bar. Lives here (not in a route layout) so each page keeps
+ * the Board/Issues/Current Sprint/Backlog tab bar. Lives here (not in a route layout) so each page keeps
  * ownership of its own action button while sharing identical navigation.
  */
 export default function ProjectHeader({
@@ -31,12 +30,7 @@ export default function ProjectHeader({
 	active,
 	actions,
 }: ProjectHeaderProps) {
-	const tabs: {
-		key: ProjectTab;
-		label: string;
-		href: string;
-		icon?: LucideIcon;
-	}[] = [
+	const tabs: { key: ProjectTab; label: string; href: string }[] = [
 		{ key: "board", label: "Board", href: `/projects/${projectId}/board` },
 		{
 			key: "issues",
@@ -48,12 +42,10 @@ export default function ProjectHeader({
 			label: "Current Sprint",
 			href: `/projects/${projectId}/sprint`,
 		},
-		// Pushed to the far right: configuration, not a working view.
 		{
-			key: "settings",
-			label: "Settings",
-			href: `/projects/${projectId}/settings`,
-			icon: Settings,
+			key: "backlog",
+			label: "Backlog",
+			href: `/projects/${projectId}/backlog`,
 		},
 	];
 	const activeTab = tabs.find((tab) => tab.key === active);
@@ -85,16 +77,12 @@ export default function ProjectHeader({
 						href={tab.href}
 						aria-current={tab.key === active ? "page" : undefined}
 						className={cn(
-							"-mb-px flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition-colors",
-							tab.key === "settings" && "ml-auto",
+							"-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors",
 							tab.key === active
 								? "border-accent text-foreground"
 								: "border-transparent text-muted hover:text-foreground",
 						)}
 					>
-						{tab.icon && (
-							<tab.icon className="size-4 shrink-0" aria-hidden />
-						)}
 						{tab.label}
 					</Link>
 				))}

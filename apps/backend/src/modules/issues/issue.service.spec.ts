@@ -184,7 +184,7 @@ describe("IssueService.update permission rules", () => {
 describe("IssueService.create permission rules", () => {
   let prisma: {
     issue: { create: jest.Mock; findFirst: jest.Mock };
-    project: { findFirst: jest.Mock };
+    project: { findFirst: jest.Mock; update: jest.Mock };
     $transaction: jest.Mock;
     $executeRaw: jest.Mock;
   };
@@ -196,7 +196,10 @@ describe("IssueService.create permission rules", () => {
         create: jest.fn().mockResolvedValue({ id: "issue-new" }),
         findFirst: jest.fn().mockResolvedValue(null),
       },
-      project: { findFirst: jest.fn().mockResolvedValue({ id: "proj-1" }) },
+      project: {
+        findFirst: jest.fn().mockResolvedValue({ id: "proj-1" }),
+        update: jest.fn().mockResolvedValue({ issueCounter: 7 }),
+      },
       $transaction: jest.fn(),
       $executeRaw: jest.fn().mockResolvedValue(1),
     };
@@ -216,6 +219,21 @@ describe("IssueService.create permission rules", () => {
     await create(WorkspaceRole.MEMBER, { status: IssueStatus.TODO });
 
     expect(prisma.issue.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("numbers the issue from the project's counter", async () => {
+    await create(WorkspaceRole.ADMIN, {});
+
+    expect(prisma.project.update).toHaveBeenCalledWith({
+      where: { id: "proj-1" },
+      data: { issueCounter: { increment: 1 } },
+      select: { issueCounter: true },
+    });
+    expect(prisma.issue.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ number: 7 }) as unknown,
+      }),
+    );
   });
 
   it("refuses a MEMBER creating it straight into DONE", async () => {
@@ -246,7 +264,7 @@ describe("IssueService lane ranks", () => {
       create: jest.Mock;
       update: jest.Mock;
     };
-    project: { findFirst: jest.Mock };
+    project: { findFirst: jest.Mock; update: jest.Mock };
     $transaction: jest.Mock;
     $executeRaw: jest.Mock;
   };
@@ -287,7 +305,10 @@ describe("IssueService lane ranks", () => {
         create: jest.fn(track("create", () => ({ id: "issue-new" }))),
         update: jest.fn(track("update", () => ({ id: "issue-1" }))),
       },
-      project: { findFirst: jest.fn().mockResolvedValue({ id: projectId }) },
+      project: {
+        findFirst: jest.fn().mockResolvedValue({ id: projectId }),
+        update: jest.fn().mockResolvedValue({ issueCounter: 7 }),
+      },
       $transaction: jest.fn((cb: (tx: unknown) => unknown) => {
         calls.push("begin");
         return cb(prisma);
@@ -359,7 +380,7 @@ describe("IssueService tenant isolation", () => {
       update: jest.Mock;
       delete: jest.Mock;
     };
-    project: { findFirst: jest.Mock };
+    project: { findFirst: jest.Mock; update: jest.Mock };
     membership: { findUnique: jest.Mock };
     sprint: { findFirst: jest.Mock };
   };
@@ -374,7 +395,10 @@ describe("IssueService tenant isolation", () => {
         update: jest.fn(),
         delete: jest.fn(),
       },
-      project: { findFirst: jest.fn().mockResolvedValue(null) },
+      project: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        update: jest.fn(),
+      },
       membership: { findUnique: jest.fn().mockResolvedValue(null) },
       sprint: { findFirst: jest.fn().mockResolvedValue(null) },
     };

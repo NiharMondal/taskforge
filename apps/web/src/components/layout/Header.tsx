@@ -9,25 +9,13 @@ import { SignOutButton } from "@/features/auth/components/sign-out-button";
 
 import { useSidebar } from "./sidebar-context";
 import { ThemeSwitcher } from "../theme-switch/theme-switch";
+import { initialsOf } from "@/util/initials";
 
 /** Minimal, serializable view of the session user passed from the server layout. */
 export interface HeaderUser {
   name?: string | null;
   email?: string | null;
   image?: string | null;
-}
-
-/** Initials for the avatar fallback, e.g. "Ada Lovelace" -> "AL". */
-function initialsOf(value?: string | null): string {
-  if (!value) return "?";
-  return (
-    value
-      .trim()
-      .split(/\s+/)
-      .slice(0, 2)
-      .map((p) => p[0]?.toUpperCase() ?? "")
-      .join("") || "?"
-  );
 }
 
 /**

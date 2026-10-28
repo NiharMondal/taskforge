@@ -21,7 +21,7 @@ import { UpdateIssueDto } from "./dto/update-issue.dto";
 import { isAllowedTransition } from "./status-transitions";
 
 /** The Prisma client, or a transaction client from `$transaction`. */
-type Db = Pick<Prisma.TransactionClient, "issue">;
+type Db = Pick<Prisma.TransactionClient, "issue" | "project">;
 
 /** True when the fractional-indexing library can build a key after `rank`. */
 function isValidRank(rank: string): boolean {
@@ -63,6 +63,7 @@ export class IssueService {
           priority: dto.priority,
           sprintId: dto.sprintId,
           assigneeId: dto.assigneeId,
+          number: await this.nextIssueNumber(tx, projectId),
           rank: await this.appendRank(tx, workspaceId, projectId, status),
           workspaceId,
           projectId,
@@ -252,6 +253,21 @@ export class IssueService {
         );
       return generateKeyBetween(highestValid, null);
     }
+  }
+
+  /**
+   * The project's next issue number (shown as `<key>-<number>`). The increment
+   * is a single UPDATE, so its row lock serializes concurrent creates in the
+   * project until their transactions end — no two issues get the same number.
+   * The project was already checked to be in-tenant by `validateProject`.
+   */
+  private async nextIssueNumber(db: Db, projectId: string) {
+    const { issueCounter } = await db.project.update({
+      where: { id: projectId },
+      data: { issueCounter: { increment: 1 } },
+      select: { issueCounter: true },
+    });
+    return issueCounter;
   }
 
   /** Reject a client-supplied rank the fractional-index library can't build on. */

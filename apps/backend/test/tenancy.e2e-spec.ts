@@ -343,6 +343,33 @@ describe("Tenancy (e2e)", () => {
     expect(new Set(ranks).size).toBe(ranks.length);
   });
 
+  it("keys projects from their name and numbers issues per project, even in parallel", async () => {
+    const create = (name: string) =>
+      api()
+        .post("/api/v1/projects")
+        .set(as(aliceToken, aliceWs))
+        .send({ name })
+        .expect(201);
+    const first = data<{ id: string; key: string }>(await create("Key Test"));
+    const second = data<{ key: string }>(await create("Kilo Tango"));
+    expect([first.key, second.key]).toEqual(["KT", "KT2"]);
+
+    const created = await Promise.all(
+      Array.from({ length: 6 }, (_, i) =>
+        api()
+          .post(`/api/v1/projects/${first.id}/issues`)
+          .set(as(aliceToken, aliceWs))
+          .send({ title: `Numbered ${i}`, status: i % 2 ? "TODO" : "BACKLOG" })
+          .expect(201),
+      ),
+    );
+
+    const numbers = created
+      .map((res) => data<{ number: number }>(res).number)
+      .sort((a, b) => a - b);
+    expect(numbers).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+
   describe("errors keep the envelope", () => {
     it("reports a duplicate from the database as Prisma P2002", async () => {
       // The filter maps P2002 to 409; this checks the driver adapter really

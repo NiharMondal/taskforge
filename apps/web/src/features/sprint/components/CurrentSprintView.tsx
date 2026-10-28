@@ -23,7 +23,7 @@ import SprintSummaryCard from "./SprintSummaryCard";
 
 /**
  * The project's running sprint and its issues — what the team works from day
- * to day. Planning (create / edit / start) lives in project settings.
+ * to day. Planning (create / edit / start) lives in the backlog.
  *
  * No dedicated endpoint: the active sprint comes from the sprint list (the
  * backend allows one per project) and its issues are filtered out of the
@@ -107,16 +107,16 @@ export default function CurrentSprintView({ projectId }: { projectId: string }) 
 				title="No active sprint"
 				description={
 					permissions.canManageSprints
-						? "Plan a sprint and start it from project settings."
+						? "Plan a sprint and start it from the backlog."
 						: "Work shows up here once an admin starts a sprint."
 				}
 				action={
 					permissions.canManageSprints && (
 						<Link
-							href={`/projects/${projectId}/settings`}
+							href={`/projects/${projectId}/backlog`}
 							className="flex items-center gap-1 text-sm text-accent hover:underline"
 						>
-							Go to sprint settings
+							Go to backlog
 							<ArrowRight className="h-4 w-4" />
 						</Link>
 					)
@@ -139,7 +139,7 @@ export default function CurrentSprintView({ projectId }: { projectId: string }) 
 				<EmptyState
 					icon={<ListTodo className="h-12 w-12 text-muted/40" />}
 					title="No issues in this sprint"
-					description={`Pick “${sprint.name}” in an issue’s Sprint field to add it here.`}
+					description="Move issues into this sprint from the backlog."
 				/>
 			) : (
 				// Never empty here, so IssueList's create CTA can't show; rows

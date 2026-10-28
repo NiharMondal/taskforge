@@ -177,10 +177,15 @@ model Role {
 //// PROJECTS
 
 model Project {
-  id          String  @id @default(uuid())
-  name        String
-  key         String  @default(cuid())
-  description String?
+  id           String  @id @default(uuid())
+  name         String
+  // Human-readable prefix for issue keys (e.g. "WA" → WA-12), derived from the
+  // name on create and never changed after, so keys people have shared stay
+  // valid. Unique within the workspace.
+  key          String
+  description  String?
+  // The last issue number handed out; the next issue gets issueCounter + 1.
+  issueCounter Int     @default(0)
 
   workspaceId String
 
@@ -234,6 +239,9 @@ model Issue {
   status   IssueStatus   @default(BACKLOG)
   priority IssuePriority @default(MEDIUM)
   type     IssueType     @default(TASK)
+  // Per-project sequence, shown with the project key as `WA-12`. Allocated
+  // from Project.issueCounter on create; never reused.
+  number   Int
   // Board ordering within a (project, status) lane. Fractional index
   // (base-62 string, e.g. "a0", "a0V") so a card can be inserted between any
   // two neighbors without renumbering siblings — generated client-side via the
@@ -272,6 +280,7 @@ model Issue {
   comments Comment[]
   labels   IssueLabel[]
 
+  @@unique([projectId, number])
   @@index([workspaceId, projectId])
   @@index([workspaceId, status])
   @@index([workspaceId, assigneeId])

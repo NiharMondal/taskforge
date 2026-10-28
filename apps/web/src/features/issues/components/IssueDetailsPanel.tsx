@@ -4,14 +4,22 @@ import { Button } from "@heroui/react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 
-import { FormSelect, FormWrapper } from "@/components/form-element";
+import {
+	FormSelect,
+	FormTextField,
+	FormWrapper,
+} from "@/components/form-element";
 import { Member } from "@/features/memberships/types/membership-types";
 import {
 	canSetIssueStatus,
 	type Permissions,
 } from "@/features/memberships/lib/permissions";
 
-import { ISSUE_PRIORITIES, statusOptionsFor } from "../constants";
+import {
+	ISSUE_PRIORITIES,
+	statusOptionsFor,
+	typeOptionsFor,
+} from "../constants";
 import {
 	issueDetailsSchema,
 	TIssueDetailsValues,
@@ -35,8 +43,8 @@ type Props = {
 
 /**
  * Right "Details" panel of the issue detail page: the issue's metadata
- * (status, priority, assignee, sprint) plus the read-only reporter. Saved on
- * its own, independent of the content form on the left.
+ * (status, type, priority, assignee, sprint, story points) plus the read-only
+ * reporter. Saved on its own, independent of the content form on the left.
  */
 export default function IssueDetailsPanel({
 	defaultValues,
@@ -65,6 +73,8 @@ export default function IssueDetailsPanel({
 	);
 	const canEditFields = permissions.canEditIssueFields;
 	const canSave = canEditFields || permissions.canChangeIssueStatus;
+	// A sub-issue's type is SUBTASK for good, so its Select is display only.
+	const typeOptions = typeOptionsFor(defaultValues.type);
 
 	const handleSubmit = async (values: TIssueDetailsValues) => {
 		const success = await onSubmit(values);
@@ -87,6 +97,13 @@ export default function IssueDetailsPanel({
 							value: s.value,
 							label: s.label,
 						}))}
+					/>
+					<FormSelect
+						name="type"
+						label="Type"
+						placeholder="Select type"
+						isDisabled={!canEditFields || typeOptions.length === 1}
+						options={typeOptions}
 					/>
 					<FormSelect
 						name="priority"
@@ -125,6 +142,12 @@ export default function IssueDetailsPanel({
 								label: sprint.name,
 							})),
 						]}
+					/>
+					<FormTextField
+						name="timeEstimate"
+						label="Story points"
+						placeholder="Not estimated"
+						isDisabled={!canEditFields}
 					/>
 
 					{canSave && (

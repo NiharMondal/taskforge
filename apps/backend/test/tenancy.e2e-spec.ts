@@ -343,6 +343,120 @@ describe("Tenancy (e2e)", () => {
     expect(new Set(ranks).size).toBe(ranks.length);
   });
 
+  it("keys projects from their name and numbers issues per project, even in parallel", async () => {
+    const create = (name: string) =>
+      api()
+        .post("/api/v1/projects")
+        .set(as(aliceToken, aliceWs))
+        .send({ name })
+        .expect(201);
+    const first = data<{ id: string; key: string }>(await create("Key Test"));
+    const second = data<{ key: string }>(await create("Kilo Tango"));
+    expect([first.key, second.key]).toEqual(["KT", "KT2"]);
+
+    const created = await Promise.all(
+      Array.from({ length: 6 }, (_, i) =>
+        api()
+          .post(`/api/v1/projects/${first.id}/issues`)
+          .set(as(aliceToken, aliceWs))
+          .send({ title: `Numbered ${i}`, status: i % 2 ? "TODO" : "BACKLOG" })
+          .expect(201),
+      ),
+    );
+
+    const numbers = created
+      .map((res) => data<{ number: number }>(res).number)
+      .sort((a, b) => a - b);
+    expect(numbers).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+
+  it("creates sub-issues one level deep and returns them with the parent", async () => {
+    const issues = `/api/v1/projects/${projectId}/issues`;
+    const child = data<{ id: string; type: string; parentIssueId: string }>(
+      await api()
+        .post(issues)
+        .set(as(aliceToken, aliceWs))
+        .send({ title: "Write launch notes", parentIssueId: issueId })
+        .expect(201),
+    );
+    expect(child).toMatchObject({ type: "SUBTASK", parentIssueId: issueId });
+
+    const parent = data<{ subIssues: { id: string }[] }>(
+      await api()
+        .get(`${issues}/${issueId}`)
+        .set(as(aliceToken, aliceWs))
+        .expect(200),
+    );
+    expect(parent.subIssues.map((s) => s.id)).toEqual([child.id]);
+
+    const childDetail = data<{ parentIssue: { id: string } }>(
+      await api()
+        .get(`${issues}/${child.id}`)
+        .set(as(aliceToken, aliceWs))
+        .expect(200),
+    );
+    expect(childDetail.parentIssue.id).toBe(issueId);
+
+    // No grandchildren.
+    await api()
+      .post(issues)
+      .set(as(aliceToken, aliceWs))
+      .send({ title: "Too deep", parentIssueId: child.id })
+      .expect(400);
+
+    // A parent must be in the same project.
+    const other = data<{ id: string }>(
+      await api()
+        .post("/api/v1/projects")
+        .set(as(aliceToken, aliceWs))
+        .send({ name: "Other" })
+        .expect(201),
+    );
+    await api()
+      .post(`/api/v1/projects/${other.id}/issues`)
+      .set(as(aliceToken, aliceWs))
+      .send({ title: "Cross-project", parentIssueId: issueId })
+      .expect(403);
+  });
+
+  it("commits a Backlog issue to To Do when it joins a sprint, and leaves it alone going back", async () => {
+    const issues = `/api/v1/projects/${projectId}/issues`;
+    const sprint = data<{ id: string }>(
+      await api()
+        .post(`/api/v1/projects/${projectId}/sprints`)
+        .set(as(aliceToken, aliceWs))
+        .send({ name: "Commitment" })
+        .expect(201),
+    );
+    const issue = data<{ id: string; status: string }>(
+      await api()
+        .post(issues)
+        .set(as(aliceToken, aliceWs))
+        .send({ title: "Groomed" })
+        .expect(201),
+    );
+    expect(issue.status).toBe("BACKLOG");
+
+    const planned = data<{ status: string; rank: string }>(
+      await api()
+        .patch(`${issues}/${issue.id}`)
+        .set(as(aliceToken, aliceWs))
+        .send({ sprintId: sprint.id })
+        .expect(200),
+    );
+    expect(planned.status).toBe("TODO");
+    expect(planned.rank).toBeTruthy();
+
+    const unplanned = data<{ status: string; sprintId: string | null }>(
+      await api()
+        .patch(`${issues}/${issue.id}`)
+        .set(as(aliceToken, aliceWs))
+        .send({ sprintId: null })
+        .expect(200),
+    );
+    expect(unplanned).toMatchObject({ status: "TODO", sprintId: null });
+  });
+
   describe("errors keep the envelope", () => {
     it("reports a duplicate from the database as Prisma P2002", async () => {
       // The filter maps P2002 to 409; this checks the driver adapter really

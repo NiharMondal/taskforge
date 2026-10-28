@@ -14,7 +14,7 @@ export default async function IssueDetailPage({
 	const { projectId, slug } = await params;
 	return (
 		<div className="flex flex-col gap-4">
-			<BackButton href={`/projects/${projectId}/issues`} label="Issues" />
+			<BackButton href={`/projects/${projectId}/list`} label="List" />
 			<IssueDetailComponent projectId={projectId} issueId={slug} />
 		</div>
 	);

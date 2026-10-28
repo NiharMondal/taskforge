@@ -12,6 +12,8 @@ const FIELD_RULES = {
   title: "content",
   description: "content",
   priority: "content",
+  type: "content",
+  timeEstimate: "content",
   sprintId: "content",
   assigneeId: "content",
   status: "status",

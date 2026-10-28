@@ -2,6 +2,8 @@
 import { useMemo } from "react";
 
 import { Spinner } from "@heroui/react";
+import { CornerDownRight } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import ErrorAlert from "@/components/ui/error-alert";
@@ -13,13 +15,16 @@ import { getApiErrorMessage } from "@/lib/api-error";
 
 import { useIssueEditor } from "../hooks/use-issue-editor";
 import { useSingleIssue } from "../hooks/use-issues";
+import { formatEstimate } from "../lib/estimate";
 import {
 	TIssueContentValues,
 	TIssueDetailsValues,
 } from "../schema/issue-schema";
 import DeleteIssueButton from "./DeleteIssueButton";
 import IssueContentForm from "./IssueContentForm";
+import IssueKey from "./IssueKey";
 import IssueDetailsPanel from "./IssueDetailsPanel";
+import SubIssuesPanel from "./SubIssuesPanel";
 import { NO_SPRINT, UNASSIGNED } from "./IssueForm";
 
 type Props = {
@@ -62,6 +67,8 @@ export default function IssueDetailComponent({ projectId, issueId }: Props) {
 			issue && {
 				status: issue.status,
 				priority: issue.priority,
+				type: issue.type,
+				timeEstimate: formatEstimate(issue.timeEstimate),
 				assigneeId: issue.assigneeId ?? UNASSIGNED,
 				sprintId: issue.sprintId ?? NO_SPRINT,
 			},
@@ -92,12 +99,39 @@ export default function IssueDetailComponent({ projectId, issueId }: Props) {
 
 	return (
 		<div className="grid grid-cols-1 gap-5 xl:grid-cols-6">
-			<div className="xl:col-span-4">
+			<div className="flex flex-col gap-2 xl:col-span-4">
+				<div className="flex flex-wrap items-center gap-2 text-sm">
+					{issue.parentIssue && (
+						<>
+							<Link
+								href={`/projects/${projectId}/list/${issue.parentIssue.id}`}
+								className="flex min-w-0 items-center gap-1 text-muted hover:text-foreground hover:underline"
+							>
+								<CornerDownRight className="size-3.5 shrink-0" />
+								<IssueKey
+									issue={{
+										projectId,
+										number: issue.parentIssue.number,
+									}}
+									className="text-sm"
+								/>
+								<span className="truncate">{issue.parentIssue.title}</span>
+							</Link>
+							<span className="text-muted">/</span>
+						</>
+					)}
+					<IssueKey issue={issue} className="text-sm" />
+				</div>
 				<IssueContentForm
 					defaultValues={contentValues}
 					onSubmit={handleSaveContent}
 					isSubmitting={isSavingContent}
 					canEdit={permissions.canEditIssueFields}
+				/>
+				<SubIssuesPanel
+					issue={issue}
+					workspaceId={workspaceId}
+					canCreate={permissions.canCreateIssue}
 				/>
 			</div>
 			<div className="xl:col-span-2 flex flex-col gap-3">
@@ -116,7 +150,7 @@ export default function IssueDetailComponent({ projectId, issueId }: Props) {
 						projectId={projectId}
 						issue={issue}
 						onDeleted={() =>
-							router.replace(`/projects/${projectId}/issues`)
+							router.replace(`/projects/${projectId}/list`)
 						}
 					/>
 				)}

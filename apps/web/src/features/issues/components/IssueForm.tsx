@@ -11,7 +11,11 @@ import {
 	FormWrapper,
 } from "@/components/form-element";
 import { issueSchema, TIssueFormValues } from "../schema/issue-schema";
-import { ISSUE_PRIORITIES, ISSUE_STATUSES } from "../constants";
+import {
+	ISSUE_PRIORITIES,
+	ISSUE_STATUSES,
+	typeOptionsFor,
+} from "../constants";
 import { Member } from "@/features/memberships/types/membership-types";
 import { IssueStatus, Sprint } from "../types/issue-types";
 
@@ -27,6 +31,8 @@ type Props = {
 	sprints: Sprint[];
 	/** Status a new issue starts in. Defaults to BACKLOG. */
 	initialStatus?: IssueStatus;
+	/** Sprint a new issue starts in. Defaults to none (the backlog). */
+	initialSprintId?: string;
 };
 
 /** Sentinel ListBox key for "no assignee" (react-aria keys can't be empty). */
@@ -44,6 +50,7 @@ export default function IssueForm({
 	members,
 	sprints,
 	initialStatus = "BACKLOG",
+	initialSprintId,
 }: Props) {
 	const isEditing = !!defaultValues;
 
@@ -55,7 +62,9 @@ export default function IssueForm({
 			assigneeId: null,
 			status: initialStatus,
 			priority: "LOW",
-			sprintId: null,
+			type: "TASK",
+			timeEstimate: "",
+			sprintId: initialSprintId ?? null,
 		},
 		// `defaultValues` is only read once on mount. When editing, the issue is
 		// fetched async, so feed it through `values` to keep the form in sync once
@@ -109,6 +118,19 @@ export default function IssueForm({
 						value: p.value,
 						label: p.label,
 					}))}
+				/>
+			</div>
+			<div className="flex items-center justify-between gap-5 min-w-full">
+				<FormSelect
+					name="type"
+					label="Type"
+					placeholder="Select type"
+					options={typeOptionsFor("TASK")}
+				/>
+				<FormTextField
+					name="timeEstimate"
+					label="Story points"
+					placeholder="Not estimated"
 				/>
 			</div>
 			<FormSelect

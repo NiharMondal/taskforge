@@ -236,6 +236,37 @@ Rows created before rank existed are `NULL`. `pnpm run backfill:issue-rank`
 (`scripts/backfill-issue-rank.ts`) assigns spaced keys per lane in `createdAt` order — idempotent,
 only touches `rank IS NULL`. Keep the column nullable until it's been run everywhere.
 
+## Issue keys
+
+Issues are shown as `<Project.key>-<Issue.number>` (e.g. `WA-12`). `Project.key` is derived from
+the name on create by `deriveProjectKey` (`src/modules/projects/project-key.ts`: initials of up to 4
+words, or the first 3 characters of one word; `2`, `3`, ... appended until unique in the workspace)
+and is never changed afterwards. `Issue.number` comes from `Project.issueCounter`, incremented inside
+the create transaction — the row lock on the project serializes concurrent creates, and
+`@@unique([projectId, number])` backs it. The `project_keys_and_issue_numbers` migration backfilled
+existing rows with the same key rule, so change both together.
+
+## Sprint commitment
+
+"Backlog" means *not in a sprint*. `committedStatus` in `IssueService` moves a `BACKLOG`-status issue
+to `TODO` when it joins a sprint — on create (including a sub-issue inheriting its parent's sprint)
+and on a PATCH that sets `sprintId` without a `status` — because the web board shows the active
+sprint and has no BACKLOG lane. The implied status goes through `assertCanUpdateIssue` and the
+transition check like a sent one, and appends to the TODO lane. Leaving a sprint keeps the status.
+The `sprint_issues_leave_backlog_status` migration converted existing rows (rank cleared).
+
+## Sub-issues
+
+`POST /projects/:projectId/issues` with `parentIssueId` creates a sub-issue. `validateParent`
+requires the parent in the same workspace *and* project (else 403) and refuses a parent that is
+itself a sub-issue (400) — nesting is one level deep. The child is typed `SUBTASK` and, without a
+`sprintId`, takes the parent's sprint. `SUBTASK` comes only from this: the DTOs accept `type` as
+`EPIC`/`STORY`/`TASK`/`BUG`, sending one with `parentIssueId` is a 400, and so is changing a
+sub-issue's type. (`timeEstimate` holds story points, 0–100 or `null`, despite its name.) The parent can't be changed after create (`UpdateIssueDto` has
+no `parentIssueId`). The list route embeds `parentIssue { id, number, title }`; the single-issue route
+(`findDetail`, kept apart from the `findOne` that writes start with) also embeds `subIssues`.
+Deleting a parent cascades to its sub-issues.
+
 ## Tests
 
 `pnpm run test` runs Jest specs colocated with the code (`*.spec.ts`). They use a hand-rolled fake

@@ -1,7 +1,19 @@
 import type { Chip } from "@heroui/react";
+import {
+	Bookmark,
+	Bug,
+	ChevronDown,
+	ChevronUp,
+	ChevronsUp,
+	CornerDownRight,
+	Equal,
+	SquareCheck,
+	Zap,
+	type LucideIcon,
+} from "lucide-react";
 import type { ComponentProps } from "react";
 
-import type { IssuePriority, IssueStatus } from "./types/issue-types";
+import type { IssuePriority, IssueStatus, IssueType } from "./types/issue-types";
 
 /**
  * Display metadata for issue enums. Centralized here so chips, selects, and the
@@ -104,3 +116,57 @@ export const statusOptionsFor = (status: IssueStatus): StatusMeta[] => [
 	STATUS_META[status],
 	...STATUS_TRANSITIONS[status].map((next) => STATUS_META[next]),
 ];
+
+interface IconMeta {
+	label: string;
+	icon: LucideIcon;
+	/** Semantic text-color token for the icon. */
+	className: string;
+}
+
+/** Compact icon per issue type, for dense rows (backlog). */
+export const ISSUE_TYPE_META: Record<IssueType, IconMeta> = {
+	EPIC: { label: "Epic", icon: Zap, className: "text-warning" },
+	STORY: { label: "Story", icon: Bookmark, className: "text-success" },
+	TASK: { label: "Task", icon: SquareCheck, className: "text-accent" },
+	BUG: { label: "Bug", icon: Bug, className: "text-danger" },
+	SUBTASK: { label: "Subtask", icon: CornerDownRight, className: "text-muted" },
+};
+
+/**
+ * The types a user can pick. SUBTASK isn't one: creating a sub-issue sets it,
+ * and a sub-issue's type can't be changed.
+ */
+export const SELECTABLE_ISSUE_TYPES: IssueType[] = [
+	"EPIC",
+	"STORY",
+	"TASK",
+	"BUG",
+];
+
+/** Options for an issue's type Select: just SUBTASK for a sub-issue. */
+export const typeOptionsFor = (type: IssueType) =>
+	(type === "SUBTASK" ? ["SUBTASK" as const] : SELECTABLE_ISSUE_TYPES).map(
+		(value) => ({ value, label: ISSUE_TYPE_META[value].label }),
+	);
+
+/** Compact icon per priority — the dense-row alternative to `PriorityChip`. */
+export const PRIORITY_ICON_META: Record<IssuePriority, IconMeta> = {
+	URGENT: { label: "Urgent", icon: ChevronsUp, className: "text-danger" },
+	HIGH: { label: "High", icon: ChevronUp, className: "text-danger" },
+	MEDIUM: { label: "Medium", icon: Equal, className: "text-warning" },
+	LOW: { label: "Low", icon: ChevronDown, className: "text-accent" },
+};
+
+/**
+ * Coarse progress bucket for a status: not started, in flight, or done. Drives
+ * the three counts on a backlog sprint header.
+ */
+export const statusCategory = (
+	status: IssueStatus,
+): "todo" | "inProgress" | "done" =>
+	status === "DONE"
+		? "done"
+		: status === "BACKLOG" || status === "TODO"
+			? "todo"
+			: "inProgress";

@@ -90,7 +90,7 @@ Base path: `/projects/:projectId/issues`
 
 **`POST /projects/:projectId/issues`**
 
-**Auth:** Required. `ADMIN` or `OWNER` only.
+**Auth:** Required. `issue:create` (Owner, Admin and Member by default).
 
 **Request body:**
 ```json
@@ -99,10 +99,16 @@ Base path: `/projects/:projectId/issues`
   "description": "Users are getting 500 on login when email has uppercase letters",
   "status": "BACKLOG",
   "priority": "HIGH",
+  "type": "BUG",
+  "timeEstimate": 3,
   "sprintId": "uuid-optional",
-  "assigneeId": "uuid-optional"
+  "assigneeId": "uuid-optional",
+  "parentIssueId": "uuid-optional"
 }
 ```
+
+- `type` is `EPIC`, `STORY`, `TASK` or `BUG` (default `TASK`). `SUBTASK` can't be sent: an issue created with `parentIssueId` is a sub-issue, typed `SUBTASK`, and sending `type` with `parentIssueId` is a `400`.
+- `timeEstimate` holds **story points** despite its name: a whole number from 0 to 100, or `null` for not estimated.
 
 **What the backend does:**
 1. Validates the request body with `CreateIssueDto`.
@@ -213,10 +219,14 @@ Rules are permissions on the member's `Role` (`issue:status`, `issue:status:done
   "description": "Updated description",
   "status": "IN_PROGRESS",
   "priority": "URGENT",
+  "type": "STORY",
+  "timeEstimate": 5,
   "sprintId": "uuid-or-null",
   "assigneeId": "uuid-or-null"
 }
 ```
+
+`type` and `timeEstimate` follow the create rules and are content fields (`issue:edit:any` / `issue:edit:own`); `timeEstimate: null` clears the estimate. A sub-issue's type can't be changed (`400`), but it can be estimated.
 
 **What the backend does:**
 1. Checks the caller's role permissions (see the table above).
@@ -238,7 +248,7 @@ Rules are permissions on the member's `Role` (`issue:status`, `issue:status:done
 **Errors:**
 | Status | Reason |
 |--------|--------|
-| `400` | Validation failure |
+| `400` | Validation failure, a disallowed status transition, or a `type` sent for a sub-issue |
 | `403` | `MEMBER` attempted to update a restricted field or set status to `DONE` |
 | `404` | Issue not found in this project/workspace |
 

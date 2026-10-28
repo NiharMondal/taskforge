@@ -8,6 +8,7 @@ import { toast } from "@heroui/react";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { useSprints } from "@/features/sprint/hooks/use-sprints";
 import type { IssueStatus } from "../types/issue-types";
+import { parseEstimate } from "../lib/estimate";
 type TProps = {
 	isOpen: boolean;
 	onOpenChange: () => void;
@@ -17,6 +18,8 @@ type TProps = {
 	isLoading?: boolean;
 	/** Status the form starts on (the board has no BACKLOG lane, so it passes TODO). */
 	defaultStatus?: IssueStatus;
+	/** Sprint the form starts on (the board passes the active sprint). */
+	defaultSprintId?: string;
 };
 export default function CreateIssueModal({
 	isOpen,
@@ -24,6 +27,7 @@ export default function CreateIssueModal({
 	members,
 	projectId,
 	defaultStatus,
+	defaultSprintId,
 }: TProps) {
 	const { activeWorkspaceId } = useWorkspace();
 	const workspaceId = activeWorkspaceId ?? "";
@@ -35,7 +39,10 @@ export default function CreateIssueModal({
 
 	const handleCreateIssue = async (values: TIssueFormValues) => {
 		try {
-			const res = await createIssue(values);
+			const res = await createIssue({
+				...values,
+				timeEstimate: parseEstimate(values.timeEstimate),
+			});
 			toast.success(res.message || "Issue created successfully");
 			return true;
 		} catch (error) {
@@ -61,6 +68,7 @@ export default function CreateIssueModal({
 					onCancel={onOpenChange}
 					onSuccess={onOpenChange}
 					initialStatus={defaultStatus}
+					initialSprintId={defaultSprintId}
 				/>
 			)}
 		</MyModal>

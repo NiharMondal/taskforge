@@ -14,14 +14,14 @@ import {
 } from "@nestjs/common";
 import { generateKeyBetween } from "fractional-indexing";
 import type { Prisma } from "generated/prisma/client";
-import { IssueStatus } from "generated/prisma/enums";
+import { IssueStatus, IssueType } from "generated/prisma/enums";
 import { CreateIssueDto } from "./dto/create-issue.dto";
 import { QueryIssuesDto } from "./dto/query-issues.dto";
 import { UpdateIssueDto } from "./dto/update-issue.dto";
 import { isAllowedTransition } from "./status-transitions";
 
 /** The Prisma client, or a transaction client from `$transaction`. */
-type Db = Pick<Prisma.TransactionClient, "issue">;
+type Db = Pick<Prisma.TransactionClient, "issue" | "project">;
 
 /** True when the fractional-indexing library can build a key after `rank`. */
 function isValidRank(rank: string): boolean {
@@ -31,6 +31,19 @@ function isValidRank(rank: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * "Backlog" means *not in a sprint* — the backlog view, Jira's sense. An issue
+ * planned into a sprint is committed work, so the BACKLOG status becomes TODO
+ * there; otherwise it would sit in the sprint invisible, since the board has no
+ * BACKLOG lane. Any other status is kept.
+ */
+function committedStatus(
+  status: IssueStatus,
+  sprintId: string | null | undefined,
+): IssueStatus {
+  return sprintId && status === IssueStatus.BACKLOG ? IssueStatus.TODO : status;
 }
 
 @Injectable()
@@ -49,10 +62,22 @@ export class IssueService {
     await this.validateProject(workspaceId, projectId);
     await this.validateAssignee(workspaceId, dto.assigneeId);
     await this.validateSprint(workspaceId, projectId, dto.sprintId);
+    const parent = await this.validateParent(
+      workspaceId,
+      projectId,
+      dto.parentIssueId,
+    );
+    if (parent && dto.type) {
+      throw new BadRequestException("A sub-issue's type is always SUBTASK");
+    }
 
+    // A sub-issue is part of its parent's work, so it starts in the parent's
+    // sprint unless one was chosen.
+    const sprintId = dto.sprintId ?? parent?.sprintId;
     // Mirror the schema default explicitly: the lane a new card lands in decides
-    // which ranks it has to sort after.
-    const status = dto.status ?? IssueStatus.BACKLOG;
+    // which ranks it has to sort after. Work planned into a sprint starts as
+    // To Do (see `committedStatus`).
+    const status = committedStatus(dto.status ?? IssueStatus.BACKLOG, sprintId);
 
     return this.inLockedLane(projectId, status, async (tx) =>
       tx.issue.create({
@@ -61,8 +86,15 @@ export class IssueService {
           description: dto.description,
           status,
           priority: dto.priority,
-          sprintId: dto.sprintId,
+          timeEstimate: dto.timeEstimate,
+          sprintId,
           assigneeId: dto.assigneeId,
+          ...(dto.type && { type: dto.type }),
+          ...(parent && {
+            parentIssueId: parent.id,
+            type: IssueType.SUBTASK,
+          }),
+          number: await this.nextIssueNumber(tx, projectId),
           rank: await this.appendRank(tx, workspaceId, projectId, status),
           workspaceId,
           projectId,
@@ -93,11 +125,46 @@ export class IssueService {
           select: { id: true, name: true, avatarUrl: true },
         },
         sprint: { select: { id: true, name: true } },
+        // For the "↳ WA-3" tag on sub-issue rows and cards.
+        parentIssue: { select: { id: true, number: true, title: true } },
       });
 
     const { data, metaData } = await qb.execute(this.prisma.issue);
 
     return { issues: data, metaData };
+  }
+
+  /**
+   * The issue page's read: `findOne` plus its parent and sub-issues. Kept
+   * separate so the writes that start with `findOne` don't load them.
+   */
+  async findDetail(workspaceId: string, projectId: string, issueId: string) {
+    const issue = await this.prisma.issue.findFirst({
+      where: { id: issueId, workspaceId, projectId },
+      include: {
+        reporter: { select: { id: true, name: true, avatarUrl: true } },
+        assignee: { select: { id: true, name: true, avatarUrl: true } },
+        parentIssue: { select: { id: true, number: true, title: true } },
+        subIssues: {
+          orderBy: { number: "asc" },
+          select: {
+            id: true,
+            number: true,
+            title: true,
+            status: true,
+            priority: true,
+            assigneeId: true,
+            assignee: { select: { id: true, name: true, avatarUrl: true } },
+          },
+        },
+      },
+    });
+
+    if (!issue) {
+      throw new NotFoundException("Issue not found");
+    }
+
+    return issue;
   }
 
   async findOne(workspaceId: string, projectId: string, issueId: string) {
@@ -138,12 +205,29 @@ export class IssueService {
     assertCanUpdateSomeIssue(access);
 
     const issue = await this.findOne(workspaceId, projectId, issueId);
-    assertCanUpdateIssue(access, issue, dto);
 
-    if (dto.status && !isAllowedTransition(issue.status, dto.status)) {
+    // Moving a BACKLOG-status issue into a sprint commits it to To Do — a legal
+    // transition — appended to that lane below like any rank-less status
+    // change. It is checked as if the caller had sent the status themselves.
+    const status =
+      dto.status ??
+      (dto.sprintId &&
+      committedStatus(issue.status, dto.sprintId) !== issue.status
+        ? IssueStatus.TODO
+        : undefined);
+    assertCanUpdateIssue(access, issue, { ...dto, status });
+
+    if (status && !isAllowedTransition(issue.status, status)) {
       throw new BadRequestException(
-        `An issue can't move from ${issue.status} to ${dto.status}`,
+        `An issue can't move from ${issue.status} to ${status}`,
       );
+    }
+
+    // SUBTASK isn't a type anyone can pick (the DTO refuses it), so any type
+    // sent for a sub-issue would turn it into a top-level type while it keeps
+    // its parent.
+    if (dto.type && issue.type === IssueType.SUBTASK) {
+      throw new BadRequestException("A sub-issue's type can't be changed");
     }
 
     await this.validateAssignee(workspaceId, dto.assigneeId);
@@ -155,8 +239,10 @@ export class IssueService {
         data: {
           title: dto.title,
           description: dto.description,
-          status: dto.status,
+          status,
           priority: dto.priority,
+          type: dto.type,
+          timeEstimate: dto.timeEstimate,
           sprintId: dto.sprintId,
           assigneeId: dto.assigneeId,
           rank,
@@ -174,7 +260,7 @@ export class IssueService {
     // PATCH when it can't compute a key) would keep the rank the card had in
     // the lane it left and sort arbitrarily in the new one, so append it to the
     // end of the target lane — the same way a create does.
-    const targetLane = dto.status;
+    const targetLane = status;
     if (targetLane && targetLane !== issue.status) {
       return this.inLockedLane(projectId, targetLane, async (tx) =>
         write(
@@ -254,6 +340,21 @@ export class IssueService {
     }
   }
 
+  /**
+   * The project's next issue number (shown as `<key>-<number>`). The increment
+   * is a single UPDATE, so its row lock serializes concurrent creates in the
+   * project until their transactions end — no two issues get the same number.
+   * The project was already checked to be in-tenant by `validateProject`.
+   */
+  private async nextIssueNumber(db: Db, projectId: string) {
+    const { issueCounter } = await db.project.update({
+      where: { id: projectId },
+      data: { issueCounter: { increment: 1 } },
+      select: { issueCounter: true },
+    });
+    return issueCounter;
+  }
+
   /** Reject a client-supplied rank the fractional-index library can't build on. */
   private validateRank(rank: string) {
     if (!isValidRank(rank)) {
@@ -288,6 +389,32 @@ export class IssueService {
     if (!member) {
       throw new ForbiddenException("Assignee must belong to workspace");
     }
+  }
+
+  /**
+   * The parent for a new sub-issue: in this workspace *and* project, and not a
+   * sub-issue itself — nesting is one level deep.
+   */
+  private async validateParent(
+    workspaceId: string,
+    projectId: string,
+    parentIssueId?: string,
+  ) {
+    if (!parentIssueId) return null;
+
+    const parent = await this.prisma.issue.findFirst({
+      where: { id: parentIssueId, workspaceId, projectId },
+      select: { id: true, sprintId: true, parentIssueId: true },
+    });
+
+    if (!parent) {
+      throw new ForbiddenException("Invalid parent issue");
+    }
+    if (parent.parentIssueId) {
+      throw new BadRequestException("A sub-issue can't have sub-issues");
+    }
+
+    return parent;
   }
 
   private async validateSprint(

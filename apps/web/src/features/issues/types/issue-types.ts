@@ -33,6 +33,24 @@ export interface Sprint {
   id: string;
   name: string;
 }
+
+/** A parent issue as embedded in its sub-issues (list and detail routes). */
+export interface ParentIssueRef {
+  id: string;
+  number: number;
+  title: string;
+}
+
+/** A sub-issue as embedded in its parent (detail route only). */
+export interface SubIssue {
+  id: string;
+  number: number;
+  title: string;
+  status: IssueStatus;
+  priority: IssuePriority;
+  assigneeId?: string | null;
+  assignee?: IssueUser | null;
+}
 export interface Issue {
   id: string;
   title: string;
@@ -40,6 +58,8 @@ export interface Issue {
   status: IssueStatus;
   priority: IssuePriority;
   type: IssueType;
+  /** Per-project sequence; shown with the project key as `WA-12` (see `IssueKey`). */
+  number: number;
   /** Fractional index for board ordering within a lane (see `lib/rank.ts`). */
   rank?: string | null;
   workspaceId: string;
@@ -50,8 +70,13 @@ export interface Issue {
    * single-issue route doesn't, so read `sprintId` when you only need the id.
    */
   sprint?: Sprint | null;
+  /** Set on sub-issues. Nesting is one level deep: a sub-issue has no sub-issues. */
   parentIssueId?: string | null;
-  /** Not editable yet: the create/update DTOs don't accept it. */
+  /** Embedded by the list and detail routes; `null` for top-level issues. */
+  parentIssue?: ParentIssueRef | null;
+  /** Detail route only (`useSingleIssue`), ordered by number. */
+  subIssues?: SubIssue[];
+  /** Story points (0–100), despite the name; `null` when not estimated. */
   timeEstimate?: number | null;
   reporterId: string;
   assigneeId?: string | null;
@@ -66,8 +91,20 @@ export interface CreateIssueDto {
   description?: string;
   status?: IssueStatus;
   priority?: IssuePriority;
+  /**
+   * Never SUBTASK — the backend refuses it, and refuses any type sent with
+   * `parentIssueId` or for an existing sub-issue.
+   */
+  type?: IssueType;
+  /** Story points; `null` clears the estimate. */
+  timeEstimate?: number | null;
   assigneeId?: string | null;
   sprintId?: string | null;
+  /**
+   * Create as a sub-issue of this issue (same project). The backend types it
+   * SUBTASK and, without a `sprintId`, puts it in the parent's sprint.
+   */
+  parentIssueId?: string;
 }
 
 /**

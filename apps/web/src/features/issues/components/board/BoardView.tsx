@@ -16,7 +16,8 @@ import {
 } from "@dnd-kit/core";
 import { arrayMove, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { Button, Spinner, toast } from "@heroui/react";
-import { Plus } from "lucide-react";
+import { ArrowRight, Plus, Rocket } from "lucide-react";
+import Link from "next/link";
 
 import ErrorAlert from "@/components/ui/error-alert";
 import { getApiErrorMessage } from "@/lib/api-error";
@@ -27,14 +28,25 @@ import { getMemberName } from "@/features/memberships/lib/member";
 import { canSetIssueStatus } from "@/features/memberships/lib/permissions";
 import ProjectHeader from "@/features/projects/components/ProjectHeader";
 import { useProjects } from "@/features/projects/hooks/use-projects";
+import EndSprintModal from "@/features/sprint/components/EndSprintModal";
+import SprintSummaryCard from "@/features/sprint/components/SprintSummaryCard";
+import { useSprints } from "@/features/sprint/hooks/use-sprints";
+import type { Sprint } from "@/features/sprint/types/sprint-types";
 import { useWorkspace } from "@/features/workspace/context/workspace-context";
 
 import { BOARD_STATUSES, STATUS_TRANSITIONS } from "../../constants";
 import { useIssues, useUpdateIssue } from "../../hooks/use-issues";
+import {
+	EMPTY_FILTERS,
+	filterIssues,
+	isFiltered,
+	type IssueFilters,
+} from "../../lib/issue-filters";
 import { compareIssueRank, rankBetween } from "../../lib/rank";
 import type { Issue, IssueStatus } from "../../types/issue-types";
 import CreateIssueModal from "../CreateIssueModal";
 import IssueDetailModal from "../IssueDetailModal";
+import IssueFilterBar from "../IssueFilterBar";
 import BoardColumn from "./BoardColumn";
 import IssueCardBody from "./IssueCardBody";
 import { useBoolean } from "ahooks";
@@ -76,20 +88,57 @@ function groupByStatus(issues: Issue[]): Columns {
 }
 
 /**
- * The rank for the card at `idx` in a lane's final order, from its neighbors.
- * Undefined when it can't be computed — including when a neighbor exists but
- * has no rank yet: treating that neighbor as "no bound" would send the card to
- * the top or bottom of the lane instead of where it was dropped.
+ * The rank for the card dropped at `idx` of the lane as *shown* (`ordered`).
+ *
+ * The bounds come from the full lane (`lane`: every card of the sprint in that
+ * status except the dragged one, by rank), not just the visible cards: with a
+ * filter on, a hidden card can sit between two visible neighbours, and the key
+ * halfway between those neighbours may be exactly its key — two equal keys
+ * leave no room between them for any later drop. So the card goes right after
+ * its visible predecessor (or right before its visible successor) in the full
+ * lane. Unfiltered, both lanes are the same and this is the plain midpoint.
+ *
+ * Undefined when it can't be computed — including when a bound exists but has
+ * no rank yet: treating it as "no bound" would send the card to the top or
+ * bottom of the lane instead of where it was dropped.
  */
-function rankForPosition(ordered: Issue[], idx: number): string | undefined {
-	const prev = idx > 0 ? ordered[idx - 1] : null;
-	const next = idx < ordered.length - 1 ? ordered[idx + 1] : null;
+function rankForPosition(
+	ordered: Issue[],
+	idx: number,
+	lane: Issue[],
+): string | undefined {
+	const shownPrev = idx > 0 ? ordered[idx - 1] : null;
+	const shownNext = idx < ordered.length - 1 ? ordered[idx + 1] : null;
+
+	let prev: Issue | null;
+	let next: Issue | null;
+	if (shownPrev) {
+		const at = lane.findIndex((i) => i.id === shownPrev.id);
+		if (at === -1) return undefined;
+		prev = shownPrev;
+		next = lane[at + 1] ?? null;
+	} else if (shownNext) {
+		const at = lane.findIndex((i) => i.id === shownNext.id);
+		if (at === -1) return undefined;
+		prev = at > 0 ? lane[at - 1] : null;
+		next = shownNext;
+	} else {
+		// Alone in the lane as shown: after everything hidden in it.
+		prev = lane.at(-1) ?? null;
+		next = null;
+	}
+
 	if ((prev && !prev.rank) || (next && !next.rank)) return undefined;
 	return rankBetween(prev?.rank, next?.rank);
 }
 
 /**
- * Kanban board. Columns are status lanes; dragging a card persists its new
+ * The active sprint's board (Jira's "Active sprint"): only issues in the
+ * project's running sprint get a card, under a strip with the sprint's dates,
+ * progress and Complete action. Issues outside it are planned on the backlog;
+ * with no sprint running the board says so and points there.
+ *
+ * Columns are status lanes; dragging a card persists its new
  * status *and* position via an optimistic PATCH ({@link useUpdateIssue}).
  *
  * Position is durable: the drop computes a fractional `rank` from the card's
@@ -108,12 +157,33 @@ export default function BoardView({ projectId }: { projectId: string }) {
 	const { data: members = [] } = useMemberships(workspaceId);
 	const permissions = useWorkspacePermissions();
 
+	const sprintsQuery = useSprints(workspaceId, projectId);
+	const activeSprint = sprintsQuery.data?.find((s) => s.isActive);
+	const activeSprintId = activeSprint?.id;
+	const [endingSprint, setEndingSprint] = useState<Sprint | null>(null);
+
 	const { data, isLoading, isError, refetch } = useIssues(
 		workspaceId,
 		projectId,
 	);
-	const issues = data ?? EMPTY_ISSUES;
+	// Memoized: the render-time resync below compares this by reference, so a
+	// freshly filtered array every render would loop.
+	const issues = useMemo(
+		() =>
+			data && activeSprintId
+				? data.filter((i) => i.sprintId === activeSprintId)
+				: EMPTY_ISSUES,
+		[data, activeSprintId],
+	);
 	const { mutate: updateIssue } = useUpdateIssue(workspaceId, projectId);
+
+	// Search / assignee filters narrow the cards shown; the sprint strip still
+	// counts the whole sprint. Memoized for the same reference check as above.
+	const [filters, setFilters] = useState<IssueFilters>(EMPTY_FILTERS);
+	const visibleIssues = useMemo(
+		() => filterIssues(issues, filters, project?.key),
+		[issues, filters, project?.key],
+	);
 
 	// Local mirror of the columns so cards can move live during a drag. Resynced
 	// by comparing against the previous server list *during render* (React's
@@ -121,9 +191,9 @@ export default function BoardView({ projectId }: { projectId: string }) {
 	// — including the optimistic write on drop — regroup. Drags don't trigger a
 	// refetch, so an in-progress drag is never clobbered mid-move.
 	const [columns, setColumns] = useState<Columns>(() =>
-		groupByStatus(issues),
+		groupByStatus(visibleIssues),
 	);
-	const [syncedIssues, setSyncedIssues] = useState(issues);
+	const [syncedIssues, setSyncedIssues] = useState(visibleIssues);
 	const [activeId, setActiveId] = useState<string | null>(null);
 	// Only the id: the modal reads the issue from the live list, so it shows
 	// saves and refetches, and closes if the issue is deleted.
@@ -131,9 +201,9 @@ export default function BoardView({ projectId }: { projectId: string }) {
 	const selectedIssue = issues.find((i) => i.id === selectedIssueId) ?? null;
 	const draggedFrom = useRef<IssueStatus | null>(null);
 
-	if (issues !== syncedIssues) {
-		setSyncedIssues(issues);
-		setColumns(groupByStatus(issues));
+	if (visibleIssues !== syncedIssues) {
+		setSyncedIssues(visibleIssues);
+		setColumns(groupByStatus(visibleIssues));
 	}
 
 	const assigneeNames = useMemo(() => {
@@ -243,7 +313,10 @@ export default function BoardView({ projectId }: { projectId: string }) {
 			: items;
 
 		const idx = ordered.findIndex((i) => i.id === activeId);
-		const newRank = rankForPosition(ordered, idx);
+		const fullLane = groupByStatus(issues)[container].filter(
+			(i) => i.id !== activeId,
+		);
+		const newRank = rankForPosition(ordered, idx, fullLane);
 
 		if (positionChanged) {
 			setColumns((prev) => ({ ...prev, [container]: ordered }));
@@ -257,7 +330,7 @@ export default function BoardView({ projectId }: { projectId: string }) {
 		// changes nothing), so put the lane back rather than show an order that
 		// will vanish on the next refetch.
 		if (!laneChanged && positionChanged && !newRank) {
-			setColumns(groupByStatus(issues));
+			setColumns(groupByStatus(visibleIssues));
 			toast.danger(
 				"Couldn’t save this card’s position. Try dropping it somewhere else.",
 			);
@@ -297,7 +370,7 @@ export default function BoardView({ projectId }: { projectId: string }) {
 			<ProjectHeader
 				projectId={projectId}
 				project={project}
-				active="board"
+				active="activeSprint"
 				actions={
 					permissions.canCreateIssue && (
 						<Button onPress={openModal}>
@@ -308,18 +381,61 @@ export default function BoardView({ projectId }: { projectId: string }) {
 				}
 			/>
 
-			{isError ? (
+			{isError || sprintsQuery.isError ? (
 				<ErrorAlert
 					title="Couldn’t load the board"
 					description="Check your connection and try again."
-					onRetry={() => refetch()}
+					onRetry={() => {
+						refetch();
+						sprintsQuery.refetch();
+					}}
 				/>
-			) : isLoading ? (
+			) : isLoading || sprintsQuery.isLoading ? (
 				<div className="flex items-center gap-2 py-12 text-muted">
 					<Spinner size="sm" />
 					Loading board…
 				</div>
+			) : !activeSprint ? (
+				<div className="flex flex-col items-center justify-center gap-4 py-24 text-center">
+					<Rocket className="h-12 w-12 text-muted/40" />
+					<div className="flex flex-col gap-1">
+						<p className="font-medium">No active sprint</p>
+						<p className="text-sm text-muted">
+							{permissions.canManageSprints
+								? "Plan issues into a sprint and start it from the backlog."
+								: "The board fills up once an admin starts a sprint."}
+						</p>
+					</div>
+					<Link
+						href={`/projects/${projectId}/backlog`}
+						className="flex items-center gap-1 text-sm text-accent hover:underline"
+					>
+						Go to backlog
+						<ArrowRight className="h-4 w-4" />
+					</Link>
+				</div>
 			) : (
+				<>
+				<SprintSummaryCard
+					sprint={activeSprint}
+					doneCount={issues.filter((i) => i.status === "DONE").length}
+					totalCount={issues.length}
+					canManage={permissions.canManageSprints}
+					onEnd={() => setEndingSprint(activeSprint)}
+				/>
+				<div className="flex flex-wrap items-center justify-between gap-3">
+					<IssueFilterBar
+						filters={filters}
+						onChange={setFilters}
+						members={members}
+					/>
+					{isFiltered(filters) && (
+						<span className="text-xs text-muted">
+							Showing {visibleIssues.length} of {issues.length}{" "}
+							{issues.length === 1 ? "issue" : "issues"}
+						</span>
+					)}
+				</div>
 				<DndContext
 					sensors={sensors}
 					collisionDetection={closestCorners}
@@ -356,6 +472,7 @@ export default function BoardView({ projectId }: { projectId: string }) {
 						) : null}
 					</DragOverlay>
 				</DndContext>
+				</>
 			)}
 
 			<CreateIssueModal
@@ -363,8 +480,17 @@ export default function BoardView({ projectId }: { projectId: string }) {
 				onOpenChange={closeModal}
 				members={members}
 				projectId={projectId}
-				// The board has no BACKLOG lane, so a new issue would vanish from it.
+				// Created from the board, an issue joins the sprint on screen, in
+				// To Do (there is no BACKLOG lane, so it would vanish otherwise).
 				defaultStatus="TODO"
+				defaultSprintId={activeSprintId}
+			/>
+
+			<EndSprintModal
+				workspaceId={workspaceId}
+				projectId={projectId}
+				sprint={endingSprint}
+				onClose={() => setEndingSprint(null)}
 			/>
 
 			<IssueDetailModal

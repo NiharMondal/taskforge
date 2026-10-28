@@ -18,7 +18,12 @@ export default function Avatar({
 	return (
 		<AV
 			size={size}
-			className={cn("ring-1 ring-accent ", { "size-5": customSize })}
+			// HeroUI clips the image to the root's corners, and the theme's
+			// rounded-2xl is nearly square here — round the root itself.
+			className={cn("ring-1 ring-accent", {
+				"rounded-full": shape === "circle",
+				"size-5": customSize,
+			})}
 		>
 			<div
 				className={cn(
@@ -26,7 +31,7 @@ export default function Avatar({
 					shape === "circle" && "rounded-full",
 				)}
 			>
-				<AV.Image alt={alt} src={src} />
+				<AV.Image alt={alt} src={src} className="object-cover" />
 				<AV.Fallback>{fallback}</AV.Fallback>
 			</div>
 		</AV>

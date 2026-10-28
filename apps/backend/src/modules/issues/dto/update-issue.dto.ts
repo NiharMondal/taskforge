@@ -1,14 +1,23 @@
 import { IsOptionalNonNull } from "@/common/decorators/is-optional-non-null.decorator";
-import { IssueStatus, IssuePriority } from "generated/prisma/enums";
+import { IssueStatus, IssuePriority, IssueType } from "generated/prisma/enums";
 import {
   IsEnum,
+  IsIn,
+  IsInt,
   IsOptional,
   IsString,
   IsUUID,
   Matches,
+  Max,
   MaxLength,
+  Min,
   MinLength,
 } from "class-validator";
+import {
+  ISSUE_TYPE_MESSAGE,
+  MAX_STORY_POINTS,
+  SELECTABLE_ISSUE_TYPES,
+} from "./create-issue.dto";
 
 export class UpdateIssueDto {
   @IsOptionalNonNull()
@@ -29,6 +38,18 @@ export class UpdateIssueDto {
   @IsOptionalNonNull()
   @IsEnum(IssuePriority)
   priority?: IssuePriority;
+
+  /** A sub-issue's type (SUBTASK) can't be changed; the service refuses it. */
+  @IsOptionalNonNull()
+  @IsIn(SELECTABLE_ISSUE_TYPES, { message: ISSUE_TYPE_MESSAGE })
+  type?: IssueType;
+
+  /** Story points; `null` clears the estimate. */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(MAX_STORY_POINTS)
+  timeEstimate?: number | null;
 
   @IsOptional()
   @IsUUID()

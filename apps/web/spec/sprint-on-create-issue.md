@@ -2,7 +2,9 @@
 
 ## Summary
 
-Sprints are project-scoped. The **Current Sprint** tab shows the running sprint and its issues; sprints are planned (created / edited / started / ended) in the project's **Settings** tab. When creating or editing an issue, a sprint can be assigned via a dropdown selector.
+Sprints are project-scoped. The project tabs follow Jira's Scrum layout: **Active Sprint** is the board, **Backlog** plans sprints (create / edit / start / complete, move issues between them), **List** is every issue.
+
+"Backlog" means *not in a sprint*. An issue whose status is `BACKLOG` is moved to `TODO` by the backend when it joins a sprint (on create or on a `sprintId` PATCH), since the board has no BACKLOG lane; leaving a sprint keeps the status. When creating or editing an issue, a sprint can be assigned via a dropdown selector.
 
 ## Backend Contracts
 
@@ -50,19 +52,25 @@ Sprint {
 - Populated from `GET /projects/:projectId/sprints`
 - PATCH payload includes `sprintId` only when it changes
 
-### Current sprint page (`/projects/:projectId/sprint`)
-- The project's active sprint (`isActive`; the backend allows one per project)
-- Summary card: name, goal, date range, days left / overdue, done-of-total progress (Done = `DONE`, matching what the backend keeps on end)
-- End sprint button (OWNER/ADMIN) → shared confirm dialog
-- The sprint's issues, filtered client-side from the cached project issue list and grouped by status (`IssueList`)
-- No active sprint → empty state; admins get a link to project settings
+### Active sprint (`/projects/:projectId/active-sprint`)
+- Lanes hold only the active sprint's issues (`isActive`; the backend allows one per project)
+- Sprint strip above the lanes (`SprintSummaryCard`): name, dates, days left / overdue, goal, done-of-total progress (Done = `DONE`, matching what the backend keeps on complete), Complete sprint for OWNER/ADMIN
+- Filter row: search (title or key) and assignee avatars, same logic as the List (`filterIssues`); the strip still counts the whole sprint
+- "New Issue" from the board starts in the active sprint, in To Do
+- No active sprint → empty state linking to the backlog
 
-### Sprint planning in project settings (`/projects/:projectId/settings`)
-- Lists all sprints for the project
-- "New Sprint" button → create modal
-- Edit icon per row → edit modal pre-filled with sprint data
-- Active sprints show a green "Active" badge
-- Shows goal, date range (formatted), and active status
+### List (`/projects/:projectId/list`)
+- Table, newest first: Work (type, key, title), Assignee, Reporter, Priority, Status (inline select), Sprint, Created
+- Search (title or key, e.g. `WA-12`), assignee avatar toggles, status and sprint ("Backlog (no sprint)" included) filters — client-side over the cached project list
+- Sub-issues nest under their parent behind a chevron; when a filter hides the parent they stand alone with a `↳ WA-3` tag
+
+### Backlog (`/projects/:projectId/backlog`)
+- Sections, top to bottom: the active sprint, planned sprints (creation order), then **Backlog** — issues with no open sprint, excluding `DONE`. Completed sprints aren't shown.
+- Section header: name, Active chip, dates, issue count, and to-do / in-progress / done counts (`statusCategory` in `features/issues/constants.ts`); collapsible.
+- OWNER/ADMIN (`canManageSprints`): Start sprint (disabled while another is active), Complete sprint (shared confirm), edit pencil; "Create sprint" on the Backlog header.
+- Rows: type icon, issue key (`WA-12`), title (links to the issue page), status, estimate, priority icon, assignee.
+- Moving an issue (`canEditIssueFields`): drag a row onto another section, or the row's ⋯ "Move to" menu. Both PATCH `{ sprintId }` (`null` for the backlog) through the optimistic `useUpdateIssue`.
+- Within a section rows sort by priority, then issue number, with each sub-issue kept right under its parent when both are in the section. There is no stored manual order: `rank` orders board lanes, not backlog sections.
 
 ## Files
 
@@ -74,15 +82,23 @@ Sprint {
 | `src/features/sprint/hooks/use-sprints.ts` | useSprints, useCreateSprint, useUpdateSprint |
 | `src/features/sprint/components/SprintForm.tsx` | Create/edit form (name, goal, dates) |
 | `src/features/sprint/components/SprintFormModal.tsx` | Modal wrapper for SprintForm |
-| `src/features/sprint/components/SprintsView.tsx` | List + create/edit/start orchestration (project settings) |
-| `src/features/sprint/components/CurrentSprintView.tsx` | Active sprint + its issues |
-| `src/features/sprint/components/SprintSummaryCard.tsx` | Active sprint header: dates, days left, progress |
-| `src/features/sprint/components/EndSprintModal.tsx` | End-sprint confirm, shared by both pages |
-| `src/app/(dashboard)/projects/[projectId]/sprint/page.tsx` | Current sprint route |
-| `src/app/(dashboard)/projects/[projectId]/settings/page.tsx` | Project settings route |
-| `src/features/projects/components/ProjectHeader.tsx` | "Current Sprint" and "Settings" tabs |
+| `src/features/sprint/components/backlog/BacklogView.tsx` | Backlog: sections, drag-and-drop, sprint actions |
+| `src/features/sprint/components/backlog/BacklogSection.tsx` | Droppable, collapsible section with header counts |
+| `src/features/sprint/components/backlog/BacklogIssueRow.tsx` | Draggable issue row + ⋯ "Move to" menu |
+| `src/features/sprint/hooks/use-sprint-actions.ts` | Create / edit / start handlers with toasts |
+| `src/features/sprint/components/SprintSummaryCard.tsx` | Sprint strip above the board: dates, days left, progress |
+| `src/features/issues/components/list/IssueTable.tsx` | List tab table with nested sub-issues |
+| `src/features/issues/components/IssueFilterBar.tsx` | Search / assignee / status / sprint filter row (List and board) |
+| `src/features/issues/lib/issue-filters.ts` | `filterIssues` and the filter state shape |
+| `src/features/sprint/components/EndSprintModal.tsx` | Complete-sprint confirm, shared by board and backlog |
+| `src/app/(dashboard)/projects/[projectId]/backlog/page.tsx` | Backlog route |
+| `src/features/projects/components/ProjectHeader.tsx` | Active Sprint / Backlog / List tabs |
 | `src/features/issues/types/issue-types.ts` | CreateIssueDto / UpdateIssueDto include sprintId |
 | `src/features/issues/components/IssueForm.tsx` | Sprint selector field |
 | `src/features/issues/components/CreateIssueModal.tsx` | Fetches sprints, passes to IssueForm |
 | `src/features/issues/components/IssueDetailComponent.tsx` | Sprint diff in update handler |
 | `src/features/issues/components/IssueDetailModal.tsx` | Sprint diff in update handler |
+
+## Sub-issues
+
+One level deep (an issue's sub-issues can't have their own). The issue page shows a **Sub-issues** panel (`SubIssuesPanel`: progress, one row per child, and an inline "Add sub-issue" title field for `canCreateIssue`), which `POST`s `{ title, parentIssueId }`; the backend types the child `SUBTASK` and puts it in the parent's sprint. A sub-issue's page links back to its parent and has no panel. Sub-issues are ordinary rows/cards everywhere else, tagged `↳ WA-3` (`ParentTag`). Moving a parent between sprints does not move its sub-issues.

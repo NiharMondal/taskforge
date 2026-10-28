@@ -17,8 +17,8 @@ interface Props {
 }
 
 /**
- * "End sprint?" confirmation, shared by the current-sprint view and the
- * sprint list in project settings. Owns the end mutation, so callers only
+ * "Complete sprint?" confirmation, shared by the current-sprint view and the
+ * backlog. Owns the end mutation, so callers only
  * decide which sprint it is for.
  */
 export default function EndSprintModal({
@@ -36,10 +36,10 @@ export default function EndSprintModal({
 		if (!sprint) return;
 		try {
 			const res = await endSprint(sprint.id);
-			toast.success(res.message || "Sprint ended");
+			toast.success(res.message || "Sprint completed");
 			onClose();
 		} catch (error) {
-			toast.danger(getApiErrorMessage(error, "Failed to end sprint"));
+			toast.danger(getApiErrorMessage(error, "Failed to complete sprint"));
 		}
 	};
 
@@ -47,16 +47,16 @@ export default function EndSprintModal({
 		<ConfirmModal
 			isOpen={!!sprint}
 			onClose={onClose}
-			title="End sprint?"
+			title="Complete sprint?"
 			description={
 				<>
-					Ending <strong>{sprint?.name}</strong> takes its unfinished
+					Completing <strong>{sprint?.name}</strong> takes its unfinished
 					issues out of the sprint (their status is left as is).
 					Issues that are Done stay with it. This can’t be undone.
 				</>
 			}
-			confirmLabel="End sprint"
-			pendingLabel="Ending…"
+			confirmLabel="Complete sprint"
+			pendingLabel="Completing…"
 			isPending={isPending}
 			onConfirm={handleConfirm}
 		/>

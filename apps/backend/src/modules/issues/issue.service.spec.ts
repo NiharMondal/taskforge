@@ -6,7 +6,7 @@ import {
   ForbiddenException,
   NotFoundException,
 } from "@nestjs/common";
-import { IssueStatus, WorkspaceRole } from "generated/prisma/enums";
+import { IssueStatus, IssueType, WorkspaceRole } from "generated/prisma/enums";
 import { IssueService } from "./issue.service";
 
 describe("IssueService.update permission rules", () => {
@@ -18,6 +18,7 @@ describe("IssueService.update permission rules", () => {
   /** The issue as stored; nobody involved is `me` unless a test says so. */
   let stored: {
     status: IssueStatus;
+    type: IssueType;
     reporterId: string;
     assigneeId: string | null;
   };
@@ -31,6 +32,7 @@ describe("IssueService.update permission rules", () => {
   beforeEach(() => {
     stored = {
       status: IssueStatus.TODO,
+      type: IssueType.TASK,
       reporterId: "user-other",
       assigneeId: null,
     };
@@ -97,6 +99,8 @@ describe("IssueService.update permission rules", () => {
       ["priority", { priority: "HIGH" }],
       ["sprintId", { sprintId: "sprint-1" }],
       ["assigneeId", { assigneeId: "user-x" }],
+      ["type", { type: IssueType.BUG }],
+      ["timeEstimate", { timeEstimate: 5 }],
     ])("may not change %s", async (_label, dto) => {
       await refused(as(WorkspaceRole.MEMBER), dto);
     });
@@ -124,6 +128,8 @@ describe("IssueService.update permission rules", () => {
         title: "Renamed",
         description: "Rewritten",
         priority: "HIGH",
+        type: IssueType.BUG,
+        timeEstimate: 5,
       });
 
       expect(prisma.issue.update).toHaveBeenCalledTimes(1);
@@ -179,12 +185,48 @@ describe("IssueService.update permission rules", () => {
   it("refuses a field nobody has been allowed to write", async () => {
     await refused(as(WorkspaceRole.OWNER), { reporterId: "user-x" });
   });
+
+  describe("type and estimate", () => {
+    it("writes both, and clears the estimate with null", async () => {
+      await update(as(WorkspaceRole.ADMIN), {
+        type: IssueType.STORY,
+        timeEstimate: null,
+      });
+
+      expect(prisma.issue.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            type: IssueType.STORY,
+            timeEstimate: null,
+          }) as unknown,
+        }),
+      );
+    });
+
+    it("refuses changing a sub-issue's type, even for the OWNER", async () => {
+      stored.type = IssueType.SUBTASK;
+
+      await expect(
+        update(as(WorkspaceRole.OWNER), { type: IssueType.TASK }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.issue.update).not.toHaveBeenCalled();
+    });
+
+    it("still lets a sub-issue be estimated", async () => {
+      stored.type = IssueType.SUBTASK;
+
+      await update(as(WorkspaceRole.OWNER), { timeEstimate: 3 });
+
+      expect(prisma.issue.update).toHaveBeenCalledTimes(1);
+    });
+  });
 });
 
 describe("IssueService.create permission rules", () => {
   let prisma: {
     issue: { create: jest.Mock; findFirst: jest.Mock };
-    project: { findFirst: jest.Mock };
+    project: { findFirst: jest.Mock; update: jest.Mock };
+    sprint: { findFirst: jest.Mock };
     $transaction: jest.Mock;
     $executeRaw: jest.Mock;
   };
@@ -196,7 +238,11 @@ describe("IssueService.create permission rules", () => {
         create: jest.fn().mockResolvedValue({ id: "issue-new" }),
         findFirst: jest.fn().mockResolvedValue(null),
       },
-      project: { findFirst: jest.fn().mockResolvedValue({ id: "proj-1" }) },
+      project: {
+        findFirst: jest.fn().mockResolvedValue({ id: "proj-1" }),
+        update: jest.fn().mockResolvedValue({ issueCounter: 7 }),
+      },
+      sprint: { findFirst: jest.fn().mockResolvedValue(null) },
       $transaction: jest.fn(),
       $executeRaw: jest.fn().mockResolvedValue(1),
     };
@@ -218,6 +264,21 @@ describe("IssueService.create permission rules", () => {
     expect(prisma.issue.create).toHaveBeenCalledTimes(1);
   });
 
+  it("numbers the issue from the project's counter", async () => {
+    await create(WorkspaceRole.ADMIN, {});
+
+    expect(prisma.project.update).toHaveBeenCalledWith({
+      where: { id: "proj-1" },
+      data: { issueCounter: { increment: 1 } },
+      select: { issueCounter: true },
+    });
+    expect(prisma.issue.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ number: 7 }) as unknown,
+      }),
+    );
+  });
+
   it("refuses a MEMBER creating it straight into DONE", async () => {
     await expect(
       create(WorkspaceRole.MEMBER, { status: IssueStatus.DONE }),
@@ -229,6 +290,93 @@ describe("IssueService.create permission rules", () => {
     await create(WorkspaceRole.ADMIN, { status: IssueStatus.DONE });
 
     expect(prisma.issue.create).toHaveBeenCalledTimes(1);
+  });
+
+  describe("type, estimate and sub-issues", () => {
+    const createdData = () =>
+      (
+        prisma.issue.create.mock.calls[0] as [{ data: Record<string, unknown> }]
+      )[0].data;
+
+    it("types a sub-issue SUBTASK and starts it in the parent's sprint", async () => {
+      prisma.issue.findFirst.mockResolvedValueOnce({
+        id: "parent-1",
+        sprintId: "sprint-1",
+        parentIssueId: null,
+      });
+
+      await create(WorkspaceRole.MEMBER, { parentIssueId: "parent-1" });
+
+      expect(createdData()).toMatchObject({
+        parentIssueId: "parent-1",
+        type: IssueType.SUBTASK,
+        sprintId: "sprint-1",
+      });
+    });
+
+    it("keeps a sprint chosen for the sub-issue over the parent's", async () => {
+      prisma.issue.findFirst.mockResolvedValueOnce({
+        id: "parent-1",
+        sprintId: "sprint-1",
+        parentIssueId: null,
+      });
+      prisma.sprint.findFirst.mockResolvedValue({ id: "sprint-2" });
+
+      await create(WorkspaceRole.ADMIN, {
+        parentIssueId: "parent-1",
+        sprintId: "sprint-2",
+      });
+
+      expect(createdData()).toMatchObject({ sprintId: "sprint-2" });
+    });
+
+    it("refuses a sub-issue of a sub-issue", async () => {
+      prisma.issue.findFirst.mockResolvedValueOnce({
+        id: "child-1",
+        sprintId: null,
+        parentIssueId: "parent-1",
+      });
+
+      await expect(
+        create(WorkspaceRole.ADMIN, { parentIssueId: "child-1" }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.issue.create).not.toHaveBeenCalled();
+    });
+
+    it("leaves type and parent alone for a top-level issue", async () => {
+      await create(WorkspaceRole.ADMIN, {});
+
+      expect(createdData()).not.toHaveProperty("parentIssueId");
+      expect(createdData()).not.toHaveProperty("type");
+    });
+
+    it("refuses a type sent for a sub-issue", async () => {
+      prisma.issue.findFirst.mockResolvedValueOnce({
+        id: "parent-1",
+        sprintId: null,
+        parentIssueId: null,
+      });
+
+      await expect(
+        create(WorkspaceRole.ADMIN, {
+          parentIssueId: "parent-1",
+          type: IssueType.BUG,
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.issue.create).not.toHaveBeenCalled();
+    });
+
+    it("stores the chosen type and estimate for a top-level issue", async () => {
+      await create(WorkspaceRole.MEMBER, {
+        type: IssueType.BUG,
+        timeEstimate: 8,
+      });
+
+      expect(createdData()).toMatchObject({
+        type: IssueType.BUG,
+        timeEstimate: 8,
+      });
+    });
   });
 });
 
@@ -246,7 +394,7 @@ describe("IssueService lane ranks", () => {
       create: jest.Mock;
       update: jest.Mock;
     };
-    project: { findFirst: jest.Mock };
+    project: { findFirst: jest.Mock; update: jest.Mock };
     $transaction: jest.Mock;
     $executeRaw: jest.Mock;
   };
@@ -287,7 +435,10 @@ describe("IssueService lane ranks", () => {
         create: jest.fn(track("create", () => ({ id: "issue-new" }))),
         update: jest.fn(track("update", () => ({ id: "issue-1" }))),
       },
-      project: { findFirst: jest.fn().mockResolvedValue({ id: projectId }) },
+      project: {
+        findFirst: jest.fn().mockResolvedValue({ id: projectId }),
+        update: jest.fn().mockResolvedValue({ issueCounter: 7 }),
+      },
       $transaction: jest.fn((cb: (tx: unknown) => unknown) => {
         calls.push("begin");
         return cb(prisma);
@@ -359,7 +510,7 @@ describe("IssueService tenant isolation", () => {
       update: jest.Mock;
       delete: jest.Mock;
     };
-    project: { findFirst: jest.Mock };
+    project: { findFirst: jest.Mock; update: jest.Mock };
     membership: { findUnique: jest.Mock };
     sprint: { findFirst: jest.Mock };
   };
@@ -374,7 +525,10 @@ describe("IssueService tenant isolation", () => {
         update: jest.fn(),
         delete: jest.fn(),
       },
-      project: { findFirst: jest.fn().mockResolvedValue(null) },
+      project: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        update: jest.fn(),
+      },
       membership: { findUnique: jest.fn().mockResolvedValue(null) },
       sprint: { findFirst: jest.fn().mockResolvedValue(null) },
     };
@@ -384,6 +538,18 @@ describe("IssueService tenant isolation", () => {
   it("scopes a single-issue read to the workspace and project", async () => {
     await expect(
       service.findOne(workspaceId, projectId, "issue-B"),
+    ).rejects.toBeInstanceOf(NotFoundException);
+
+    expect(prisma.issue.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "issue-B", workspaceId, projectId },
+      }),
+    );
+  });
+
+  it("scopes the issue page read (with parent and sub-issues) the same way", async () => {
+    await expect(
+      service.findDetail(workspaceId, projectId, "issue-B"),
     ).rejects.toBeInstanceOf(NotFoundException);
 
     expect(prisma.issue.findFirst).toHaveBeenCalledWith(
@@ -446,6 +612,20 @@ describe("IssueService tenant isolation", () => {
       expect(prisma.issue.create).not.toHaveBeenCalled();
     });
 
+    it("refuses a parent issue from another workspace or project", async () => {
+      prisma.project.findFirst.mockResolvedValue({ id: projectId });
+
+      await expect(create({ parentIssueId: "issue-B" })).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+      expect(prisma.issue.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "issue-B", workspaceId, projectId },
+        }),
+      );
+      expect(prisma.issue.create).not.toHaveBeenCalled();
+    });
+
     it("refuses a sprint from another workspace or project", async () => {
       prisma.project.findFirst.mockResolvedValue({ id: projectId });
 
@@ -457,5 +637,125 @@ describe("IssueService tenant isolation", () => {
       });
       expect(prisma.issue.create).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("IssueService sprint commitment (BACKLOG → TODO)", () => {
+  const owner = accessAs(WorkspaceRole.OWNER, { workspaceId: "ws-1" });
+  let prisma: {
+    issue: { findFirst: jest.Mock; create: jest.Mock; update: jest.Mock };
+    project: { findFirst: jest.Mock; update: jest.Mock };
+    sprint: { findFirst: jest.Mock };
+    membership: { findUnique: jest.Mock };
+    $transaction: jest.Mock;
+    $executeRaw: jest.Mock;
+  };
+  let service: IssueService;
+
+  beforeEach(() => {
+    prisma = {
+      issue: {
+        // Lane-max lookups find an empty lane.
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: "issue-new" }),
+        update: jest.fn().mockResolvedValue({ id: "issue-1" }),
+      },
+      project: {
+        findFirst: jest.fn().mockResolvedValue({ id: "proj-1" }),
+        update: jest.fn().mockResolvedValue({ issueCounter: 1 }),
+      },
+      sprint: { findFirst: jest.fn().mockResolvedValue({ id: "sprint-1" }) },
+      membership: { findUnique: jest.fn() },
+      $transaction: jest.fn(),
+      $executeRaw: jest.fn().mockResolvedValue(1),
+    };
+    prisma.$transaction.mockImplementation((cb: (tx: unknown) => unknown) =>
+      cb(prisma),
+    );
+    service = new IssueService(prisma as unknown as PrismaService);
+  });
+
+  const written = (mock: jest.Mock) =>
+    (mock.mock.calls[0] as [{ data: { status?: IssueStatus } }])[0].data;
+  const stored = (status: IssueStatus) =>
+    prisma.issue.findFirst.mockResolvedValueOnce({
+      id: "issue-1",
+      status,
+      reporterId: "u",
+      assigneeId: null,
+    });
+
+  it("creates an issue planned into a sprint as To Do, not Backlog", async () => {
+    await service.create("ws-1", "proj-1", "u", owner, {
+      title: "Planned",
+      sprintId: "sprint-1",
+    });
+
+    expect(written(prisma.issue.create).status).toBe(IssueStatus.TODO);
+  });
+
+  it("keeps any other status a sprint issue is created with", async () => {
+    await service.create("ws-1", "proj-1", "u", owner, {
+      title: "Started",
+      status: IssueStatus.IN_PROGRESS,
+      sprintId: "sprint-1",
+    });
+
+    expect(written(prisma.issue.create).status).toBe(IssueStatus.IN_PROGRESS);
+  });
+
+  it("keeps Backlog for an issue created outside a sprint", async () => {
+    await service.create("ws-1", "proj-1", "u", owner, { title: "Later" });
+
+    expect(written(prisma.issue.create).status).toBe(IssueStatus.BACKLOG);
+  });
+
+  it("moves a Backlog issue to To Do when it is put into a sprint, appending to that lane", async () => {
+    stored(IssueStatus.BACKLOG);
+
+    await service.update("ws-1", "proj-1", "issue-1", owner, {
+      sprintId: "sprint-1",
+    });
+
+    expect(written(prisma.issue.update).status).toBe(IssueStatus.TODO);
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(1); // the TODO lane lock
+  });
+
+  it("leaves the status of an in-flight issue alone when its sprint changes", async () => {
+    stored(IssueStatus.IN_PROGRESS);
+
+    await service.update("ws-1", "proj-1", "issue-1", owner, {
+      sprintId: "sprint-1",
+    });
+
+    expect(written(prisma.issue.update).status).toBeUndefined();
+  });
+
+  it("leaves the status alone when an issue goes back to the backlog", async () => {
+    stored(IssueStatus.TODO);
+
+    await service.update("ws-1", "proj-1", "issue-1", owner, {
+      sprintId: null as unknown as string,
+    });
+
+    expect(written(prisma.issue.update).status).toBeUndefined();
+  });
+
+  it("refuses the implied status change to a role without issue:status", async () => {
+    stored(IssueStatus.BACKLOG);
+    // A custom role that may edit issues but not move them between statuses.
+    const editorOnly: WorkspaceAccess = {
+      ...owner,
+      isOwner: false,
+      systemKey: null,
+      permissions: new Set(["issue:edit:any"] as const),
+    };
+
+    await expect(
+      service.update("ws-1", "proj-1", "issue-1", editorOnly, {
+        sprintId: "sprint-1",
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.issue.update).not.toHaveBeenCalled();
   });
 });

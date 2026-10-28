@@ -60,7 +60,7 @@ export default function ProjectCard({ project, canManage }: ProjectCardProps) {
 		<>
 			<Card className="relative h-full transition-shadow hover:shadow-md">
 				<Link
-					href={`/projects/${project.id}/board`}
+					href={`/projects/${project.id}/active-sprint`}
 					aria-label={`Open ${project.name}`}
 					className="absolute inset-0 z-0 rounded-[inherit]"
 				/>

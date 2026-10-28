@@ -7,8 +7,11 @@ import {
 	getSingleIssue,
 	updateIssue,
 } from "../api/issue-api";
-import type { Issue, UpdateIssueDto } from "../types/issue-types";
-import { TIssueFormValues } from "../schema/issue-schema";
+import type {
+	CreateIssueDto,
+	Issue,
+	UpdateIssueDto,
+} from "../types/issue-types";
 import { projectKeys } from "@/features/projects/hooks/use-projects";
 
 /**
@@ -60,8 +63,10 @@ export function useCreateIssue(workspaceId: string, projectId: string) {
 	const queryClient = useQueryClient();
 
 	return useMutation({
-		mutationFn: (dto: TIssueFormValues) =>
+		mutationFn: (dto: CreateIssueDto) =>
 			createIssue(workspaceId, projectId, dto),
+		// Invalidating the list key also refetches every detail entry under it
+		// (prefix match), so a parent's sub-issue list picks up a new child.
 		onSuccess: () => {
 			queryClient.invalidateQueries({
 				queryKey: issueKeys.list(workspaceId, projectId),

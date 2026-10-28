@@ -88,7 +88,7 @@ Each workspace has `Role` rows (name + `permissions: String[]`); `Membership.rol
 `seedSystemRoles` (`src/modules/roles/system-roles.ts`) in every transaction that creates a
 workspace. The permission catalog and the built-ins' defaults are
 `src/common/permissions/permissions.ts` — a new key needs a migration to reach existing Role rows
-(as `comment_permissions` did), and the `add_workspace_roles` seed plus those grant migrations must
+(as `comment_permissions` and `label_permissions` did), and the `add_workspace_roles` seed plus those grant migrations must
 add up to `DEFAULT_ROLE_PERMISSIONS`.
 
 - **OWNER holds every permission in code** (its stored list is ignored), including
@@ -277,6 +277,15 @@ Deleting a parent cascades to its sub-issues.
 `comment:create`) or `comment:delete:any`. `content` is the editor's HTML, stored as sent, and must
 have text once tags are stripped. The issue list embeds `_count.comments` for board cards.
 
+## Labels
+
+`src/modules/labels/` serves the workspace's labels at `/labels` (`spec/label-spec.md`): any member
+lists them, `label:manage` creates, edits and deletes. Names are trimmed and unique per workspace
+*ignoring case* (`assertNameFree`; the DB index alone is case-sensitive). Issues take `labelIds` on
+create and update — a content field in `issue-access.ts`; `validateLabels` refuses one from another
+workspace (403); on update the list replaces the set (`deleteMany` + `create`). Issue reads include
+`LABELS_INCLUDE` and return `labels: [{ id, name, color }]` via `flattenLabels`, not the join rows.
+
 ## Tests
 
 `pnpm run test` runs Jest specs colocated with the code (`*.spec.ts`). They use a hand-rolled fake
@@ -284,12 +293,12 @@ have text once tags are stripped. The issue list embeds `_count.comments` for bo
 they need no database. Current coverage: `WorkspaceGuard`, `JwtAuthGuard`, `PermissionsGuard`, `IssueService`
 permission rules and tenant isolation, `MembershipService` role changes/removal, `UserController`/`UserService`,
 `InvitationService`/controller, register/login/Google sign-in (`AuthService`, `GoogleTokenVerifier`,
-throttling), `WorkspaceService`, `SprintService.endSprint`, `CommentService` and the issue and comment DTOs.
+throttling), `WorkspaceService`, `SprintService.endSprint`, `CommentService`, `LabelService` and the issue, comment and label DTOs.
 `jest` maps `@/` and `generated/` in `package.json` and transforms the ESM-only `fractional-indexing`.
 
 `pnpm run test:e2e` (`test/*.e2e-spec.ts`) boots the real `AppModule` through `configureApp()` and
 drives it with supertest against Postgres: sign-up, cross-workspace isolation, the header/path-param
-check, invite → accept, MEMBER limits, and comments (isolation, authorship, cascade on issue delete). `MailService` is overridden; other boot-time secrets get
+check, invite → accept, MEMBER limits, comments (isolation, authorship, cascade on issue delete), and labels (isolation, MEMBER limits, cascade on label delete). `MailService` is overridden; other boot-time secrets get
 placeholders in `test/setup-e2e.ts`. Rules:
 
 - `DATABASE_URL` must point at a **migrated** database whose name has `e2e` or `test` as a whole word, e.g. `taskforge_e2e` (`latest` doesn't count)

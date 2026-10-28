@@ -1,5 +1,7 @@
 import z from "zod";
 
+import { MAX_ISSUE_LABELS } from "@/features/labels/constants";
+
 import { MAX_STORY_POINTS } from "../lib/estimate";
 
 // Limits mirror the backend's CreateIssueDto / UpdateIssueDto, so a form never
@@ -43,6 +45,9 @@ export const issueSchema = z.object({
 		),
 	assigneeId: z.string().nullable().optional(),
 	sprintId: z.string().nullable().optional(),
+	labelIds: z
+		.array(z.string())
+		.max(MAX_ISSUE_LABELS, `At most ${MAX_ISSUE_LABELS} labels`),
 });
 
 export type TIssueFormValues = z.infer<typeof issueSchema>;
@@ -51,7 +56,7 @@ export type TIssueFormValues = z.infer<typeof issueSchema>;
  * The detail page splits the single form into two independently-saved sections:
  * the left column edits the issue's content (title + description), the right
  * "Details" panel edits its metadata (status, priority, type, estimate,
- * assignee, sprint).
+ * assignee, sprint, labels).
  */
 export const issueContentSchema = issueSchema.pick({
 	title: true,
@@ -66,6 +71,7 @@ export const issueDetailsSchema = issueSchema.pick({
 	timeEstimate: true,
 	assigneeId: true,
 	sprintId: true,
+	labelIds: true,
 });
 export type TIssueDetailsValues = z.infer<typeof issueDetailsSchema>;
 

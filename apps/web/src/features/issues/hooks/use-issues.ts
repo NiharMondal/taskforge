@@ -12,6 +12,8 @@ import type {
 	Issue,
 	UpdateIssueDto,
 } from "../types/issue-types";
+import { labelKeys } from "@/features/labels/hooks/use-labels";
+import type { Label } from "@/features/labels/types/label-types";
 import { projectKeys } from "@/features/projects/hooks/use-projects";
 
 /**
@@ -103,9 +105,22 @@ export function useUpdateIssue(workspaceId: string, projectId: string) {
 			await queryClient.cancelQueries({ queryKey: key });
 			const previous = queryClient.getQueryData<Issue[]>(key);
 
+			// `labelIds` alone can't render chips; resolve them from the cached
+			// workspace labels (skipped if those aren't loaded — the refetch on
+			// settle fills them in).
+			const { labelIds, ...fields } = dto;
+			const allLabels =
+				labelIds &&
+				queryClient.getQueryData<Label[]>(labelKeys.list(workspaceId));
+			const labels = allLabels
+				? allLabels.filter((l) => labelIds.includes(l.id))
+				: undefined;
+
 			queryClient.setQueryData<Issue[]>(key, (old) =>
 				old?.map((issue) =>
-					issue.id === issueId ? { ...issue, ...dto } : issue,
+					issue.id === issueId
+						? { ...issue, ...fields, ...(labels && { labels }) }
+						: issue,
 				),
 			);
 

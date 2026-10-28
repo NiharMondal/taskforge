@@ -7,6 +7,7 @@ import { ChevronDown, ChevronRight, CircleUserRound } from "lucide-react";
 import Link from "next/link";
 
 import Avatar from "@/components/ui/avatar";
+import { LabelChips } from "@/features/labels/components/LabelChip";
 import type { Permissions } from "@/features/memberships/lib/permissions";
 import { formatDate } from "@/util/format-date";
 import { initialsOf } from "@/util/initials";
@@ -107,6 +108,11 @@ export default function IssueTable({
 						>
 							{issue.title}
 						</Link>
+						<LabelChips
+							labels={issue.labels}
+							max={2}
+							className="shrink-0 flex-nowrap"
+						/>
 						{children.length > 0 && (
 							<span className="shrink-0 text-xs text-muted">
 								{children.length}

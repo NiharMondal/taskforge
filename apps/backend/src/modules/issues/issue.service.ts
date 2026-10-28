@@ -23,6 +23,22 @@ import { isAllowedTransition } from "./status-transitions";
 /** The Prisma client, or a transaction client from `$transaction`. */
 type Db = Pick<Prisma.TransactionClient, "issue" | "project">;
 
+/** Every issue read embeds its labels, alphabetically. */
+const LABELS_INCLUDE = {
+  labels: {
+    orderBy: { label: { name: "asc" } },
+    select: { label: { select: { id: true, name: true, color: true } } },
+  },
+} as const;
+
+/** The join rows (`labels: [{ label }]`) as the labels themselves. */
+function flattenLabels<T extends { labels: { label: unknown }[] }>({
+  labels,
+  ...issue
+}: T) {
+  return { ...issue, labels: labels.map((l) => l.label) };
+}
+
 /** True when the fractional-indexing library can build a key after `rank`. */
 function isValidRank(rank: string): boolean {
   try {
@@ -62,6 +78,7 @@ export class IssueService {
     await this.validateProject(workspaceId, projectId);
     await this.validateAssignee(workspaceId, dto.assigneeId);
     await this.validateSprint(workspaceId, projectId, dto.sprintId);
+    await this.validateLabels(workspaceId, dto.labelIds);
     const parent = await this.validateParent(
       workspaceId,
       projectId,
@@ -90,6 +107,11 @@ export class IssueService {
           sprintId,
           assigneeId: dto.assigneeId,
           ...(dto.type && { type: dto.type }),
+          ...(dto.labelIds?.length && {
+            labels: {
+              create: dto.labelIds.map((labelId) => ({ labelId })),
+            },
+          }),
           ...(parent && {
             parentIssueId: parent.id,
             type: IssueType.SUBTASK,
@@ -129,11 +151,12 @@ export class IssueService {
         parentIssue: { select: { id: true, number: true, title: true } },
         // The comment count on board cards; the thread itself is its own route.
         _count: { select: { comments: true } },
+        ...LABELS_INCLUDE,
       });
 
     const { data, metaData } = await qb.execute(this.prisma.issue);
 
-    return { issues: data, metaData };
+    return { issues: data.map(flattenLabels), metaData };
   }
 
   /**
@@ -147,6 +170,7 @@ export class IssueService {
         reporter: { select: { id: true, name: true, avatarUrl: true } },
         assignee: { select: { id: true, name: true, avatarUrl: true } },
         parentIssue: { select: { id: true, number: true, title: true } },
+        ...LABELS_INCLUDE,
         subIssues: {
           orderBy: { number: "asc" },
           select: {
@@ -166,7 +190,7 @@ export class IssueService {
       throw new NotFoundException("Issue not found");
     }
 
-    return issue;
+    return flattenLabels(issue);
   }
 
   async findOne(workspaceId: string, projectId: string, issueId: string) {
@@ -234,6 +258,7 @@ export class IssueService {
 
     await this.validateAssignee(workspaceId, dto.assigneeId);
     await this.validateSprint(workspaceId, projectId, dto.sprintId);
+    await this.validateLabels(workspaceId, dto.labelIds);
 
     const write = (db: Db, rank: string | undefined) =>
       db.issue.update({
@@ -247,6 +272,11 @@ export class IssueService {
           timeEstimate: dto.timeEstimate,
           sprintId: dto.sprintId,
           assigneeId: dto.assigneeId,
+          // The sent list replaces the issue's labels.
+          labels: dto.labelIds && {
+            deleteMany: {},
+            create: dto.labelIds.map((labelId) => ({ labelId })),
+          },
           rank,
         },
       });
@@ -417,6 +447,19 @@ export class IssueService {
     }
 
     return parent;
+  }
+
+  /** Every label must be this workspace's; one that isn't refuses the write. */
+  private async validateLabels(workspaceId: string, labelIds?: string[]) {
+    if (!labelIds?.length) return;
+
+    const found = await this.prisma.label.count({
+      where: { id: { in: labelIds }, workspaceId },
+    });
+
+    if (found !== labelIds.length) {
+      throw new ForbiddenException("Invalid label");
+    }
   }
 
   private async validateSprint(

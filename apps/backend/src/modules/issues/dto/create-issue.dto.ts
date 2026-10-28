@@ -1,5 +1,8 @@
 import { IsOptionalNonNull } from "@/common/decorators/is-optional-non-null.decorator";
 import {
+  ArrayMaxSize,
+  ArrayUnique,
+  IsArray,
   IsEnum,
   IsIn,
   IsInt,
@@ -30,6 +33,9 @@ export const ISSUE_TYPE_MESSAGE =
 
 /** Upper bound for `timeEstimate`, which holds story points. */
 export const MAX_STORY_POINTS = 100;
+
+/** How many labels one issue can carry. */
+export const MAX_ISSUE_LABELS = 10;
 
 export class CreateIssueDto {
   @IsString()
@@ -70,6 +76,14 @@ export class CreateIssueDto {
   @IsOptional()
   @IsUUID()
   assigneeId?: string;
+
+  /** Labels of this workspace (see `/labels`). */
+  @IsOptionalNonNull()
+  @IsArray()
+  @ArrayMaxSize(MAX_ISSUE_LABELS)
+  @ArrayUnique()
+  @IsUUID("all", { each: true })
+  labelIds?: string[];
 
   /**
    * Creates a sub-issue of this issue (same project, one level deep). The new

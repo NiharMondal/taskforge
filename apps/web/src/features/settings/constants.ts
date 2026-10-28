@@ -1,4 +1,10 @@
-import { SlidersHorizontal, User, Users, type LucideIcon } from "lucide-react";
+import {
+	SlidersHorizontal,
+	Tag,
+	User,
+	Users,
+	type LucideIcon,
+} from "lucide-react";
 
 /** A single settings sub-section, rendered as a tab linking to its sub-route. */
 export interface SettingsTab {
@@ -15,6 +21,7 @@ export interface SettingsTab {
 export const SETTINGS_TABS: SettingsTab[] = [
 	{ href: "/settings/members", label: "Members", icon: Users },
 	{ href: "/settings/general", label: "General", icon: SlidersHorizontal },
+	{ href: "/settings/labels", label: "Labels", icon: Tag },
 	{ href: "/settings/profile", label: "Profile", icon: User },
 ];
 

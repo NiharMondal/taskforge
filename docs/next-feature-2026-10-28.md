@@ -157,6 +157,7 @@ As the comment in `permissions.ts` says, stored roles don't pick up new keys. Sh
 A suggested order, each as its own PR:
 
 1. **Labels.** Workspace labels (`Label` already has `@@unique([workspaceId, name])`), a label picker on issues, a label filter in `IssueFilterBar`.
+   > **Status: done (2026-10-29) on branch `feat/labels`, not committed yet.** Admins manage labels in Settings → Labels (new `label:manage` permission; migration `20261029090000_label_permissions` grants it to existing Admin roles). Issues take up to 10 labels (`labelIds`), set like any other content field, and show them on board cards, list and backlog rows. The board and the List tab filter by label (any of the picked ones). Names are unique per workspace ignoring case; colors come from a fixed palette. Spec: `apps/backend/spec/label-spec.md`. Not checked: the e2e run (left to CI) and the UI in a browser.
 2. **Issue activity.** Write `AuditLog` rows for issue changes (status, assignee, sprint, comments) and show them in the issue detail, mixed with comments.
 3. **Ownership transfer and leave workspace.**
 4. **Security pass:** email verification at registration, refresh tokens, and the remaining `forbidNonWhitelisted` audit from the gap audit.

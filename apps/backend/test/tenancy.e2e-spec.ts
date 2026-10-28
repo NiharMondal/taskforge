@@ -383,6 +383,103 @@ describe("Tenancy (e2e)", () => {
     });
   });
 
+  describe("labels", () => {
+    let bugId: string;
+    const issues = () => `/api/v1/projects/${projectId}/issues`;
+    type Labelled = { id: string; labels: { id: string; name: string }[] };
+    const labelsOf = async (id: string) => {
+      const res = await api().get(issues()).set(as(aliceToken, aliceWs));
+      return data<Labelled[]>(res).find((i) => i.id === id)?.labels;
+    };
+
+    beforeAll(async () => {
+      const bug = await api()
+        .post("/api/v1/labels")
+        .set(as(aliceToken, aliceWs))
+        .send({ name: " Bug ", color: "#ef4444" })
+        .expect(201);
+      bugId = data<{ id: string }>(bug).id;
+    });
+
+    it("keeps label names unique in the workspace, ignoring case", async () => {
+      await api()
+        .post("/api/v1/labels")
+        .set(as(aliceToken, aliceWs))
+        .send({ name: "BUG", color: "#000000" })
+        .expect(409);
+    });
+
+    it("lets a MEMBER read labels but not manage them", async () => {
+      const res = await api()
+        .get("/api/v1/labels")
+        .set(as(bobToken, aliceWs))
+        .expect(200);
+      expect(data<{ name: string }[]>(res).map((l) => l.name)).toEqual(["Bug"]);
+
+      await api()
+        .post("/api/v1/labels")
+        .set(as(bobToken, aliceWs))
+        .send({ name: "Mine", color: "#000000" })
+        .expect(403);
+      await api()
+        .delete(`/api/v1/labels/${bugId}`)
+        .set(as(bobToken, aliceWs))
+        .expect(403);
+    });
+
+    it("lets a MEMBER label their own issue, not someone else's", async () => {
+      const created = await api()
+        .post(issues())
+        .set(as(bobToken, aliceWs))
+        .send({ title: "Bob's bug", labelIds: [bugId] })
+        .expect(201);
+
+      await expect(labelsOf(data<{ id: string }>(created).id)).resolves.toEqual(
+        [expect.objectContaining({ id: bugId, name: "Bug" })],
+      );
+      await api()
+        .patch(`${issues()}/${issueId}`)
+        .set(as(bobToken, aliceWs))
+        .send({ labelIds: [bugId] })
+        .expect(403);
+    });
+
+    it("refuses a label from another workspace", async () => {
+      // Bob owns his own workspace, so he can make a label there.
+      const foreign = await api()
+        .post("/api/v1/labels")
+        .set(as(bobToken, bobWs))
+        .send({ name: "Bob's", color: "#22c55e" })
+        .expect(201);
+
+      await api()
+        .patch(`${issues()}/${issueId}`)
+        .set(as(aliceToken, aliceWs))
+        .send({ labelIds: [bugId, data<{ id: string }>(foreign).id] })
+        .expect(403);
+      await expect(labelsOf(issueId)).resolves.toEqual([]);
+      await api()
+        .delete(`/api/v1/labels/${data<{ id: string }>(foreign).id}`)
+        .set(as(aliceToken, aliceWs))
+        .expect(404);
+    });
+
+    it("takes a deleted label off every issue", async () => {
+      await api()
+        .patch(`${issues()}/${issueId}`)
+        .set(as(aliceToken, aliceWs))
+        .send({ labelIds: [bugId] })
+        .expect(200);
+      await expect(labelsOf(issueId)).resolves.toHaveLength(1);
+
+      await api()
+        .delete(`/api/v1/labels/${bugId}`)
+        .set(as(aliceToken, aliceWs))
+        .expect(200);
+      await expect(labelsOf(issueId)).resolves.toEqual([]);
+    });
+  });
+
   it("appends a new card after the lane's last card in byte order (H6)", async () => {
     // A card dragged above the first one gets a key like "Zz" (uppercase sorts
     // before "a0" in byte order). A locale collation sorts "Zz" *after* "a0",

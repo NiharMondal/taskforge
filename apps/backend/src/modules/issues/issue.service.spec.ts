@@ -101,6 +101,7 @@ describe("IssueService.update permission rules", () => {
       ["assigneeId", { assigneeId: "user-x" }],
       ["type", { type: IssueType.BUG }],
       ["timeEstimate", { timeEstimate: 5 }],
+      ["labelIds", { labelIds: [] }],
     ])("may not change %s", async (_label, dto) => {
       await refused(as(WorkspaceRole.MEMBER), dto);
     });
@@ -757,5 +758,142 @@ describe("IssueService sprint commitment (BACKLOG → TODO)", () => {
       }),
     ).rejects.toBeInstanceOf(ForbiddenException);
     expect(prisma.issue.update).not.toHaveBeenCalled();
+  });
+});
+
+describe("IssueService labels", () => {
+  const workspaceId = "ws-1";
+  const projectId = "proj-1";
+  const issueId = "issue-1";
+  const owner = accessAs(WorkspaceRole.OWNER, { workspaceId });
+
+  let prisma: {
+    issue: { findFirst: jest.Mock; create: jest.Mock; update: jest.Mock };
+    project: { findFirst: jest.Mock; update: jest.Mock };
+    label: { count: jest.Mock };
+    $transaction: jest.Mock;
+    $executeRaw: jest.Mock;
+  };
+  let service: IssueService;
+
+  beforeEach(() => {
+    prisma = {
+      issue: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: issueId,
+          status: IssueStatus.TODO,
+          type: IssueType.TASK,
+          reporterId: "user-other",
+          assigneeId: null,
+        }),
+        create: jest.fn().mockResolvedValue({ id: issueId }),
+        update: jest.fn().mockResolvedValue({ id: issueId }),
+      },
+      project: {
+        findFirst: jest.fn().mockResolvedValue({ id: projectId }),
+        update: jest.fn().mockResolvedValue({ issueCounter: 1 }),
+      },
+      // Every label asked about is found in the workspace unless a test says so.
+      label: {
+        count: jest.fn(({ where }: { where: { id: { in: string[] } } }) =>
+          Promise.resolve(where.id.in.length),
+        ),
+      },
+      $transaction: jest.fn(),
+      $executeRaw: jest.fn().mockResolvedValue(1),
+    };
+    prisma.$transaction.mockImplementation((cb: (tx: unknown) => unknown) =>
+      cb(prisma),
+    );
+    service = new IssueService(prisma as unknown as PrismaService);
+  });
+
+  const written = (mock: jest.Mock) =>
+    (mock.mock.calls[0] as [{ data: Record<string, unknown> }])[0].data;
+
+  it("looks the labels up in this workspace only", async () => {
+    await service.update(workspaceId, projectId, issueId, owner, {
+      labelIds: ["label-1", "label-2"],
+    });
+
+    expect(prisma.label.count).toHaveBeenCalledWith({
+      where: { id: { in: ["label-1", "label-2"] }, workspaceId },
+    });
+  });
+
+  it.each([
+    [
+      "create",
+      () =>
+        service.create(workspaceId, projectId, "user-me", owner, {
+          title: "New",
+          labelIds: ["label-1", "label-B"],
+        }),
+    ],
+    [
+      "update",
+      () =>
+        service.update(workspaceId, projectId, issueId, owner, {
+          labelIds: ["label-1", "label-B"],
+        }),
+    ],
+  ])(
+    "refuses to %s with a label from another workspace",
+    async (_label, act) => {
+      prisma.label.count.mockResolvedValue(1);
+
+      await expect(act()).rejects.toBeInstanceOf(ForbiddenException);
+      expect(prisma.issue.create).not.toHaveBeenCalled();
+      expect(prisma.issue.update).not.toHaveBeenCalled();
+    },
+  );
+
+  it("attaches the labels to a new issue", async () => {
+    await service.create(workspaceId, projectId, "user-me", owner, {
+      title: "New",
+      labelIds: ["label-1", "label-2"],
+    });
+
+    expect(written(prisma.issue.create)).toMatchObject({
+      labels: { create: [{ labelId: "label-1" }, { labelId: "label-2" }] },
+    });
+  });
+
+  it("replaces an issue's labels with the list sent, and [] clears them", async () => {
+    await service.update(workspaceId, projectId, issueId, owner, {
+      labelIds: ["label-2"],
+    });
+    expect(written(prisma.issue.update)).toMatchObject({
+      labels: { deleteMany: {}, create: [{ labelId: "label-2" }] },
+    });
+
+    prisma.issue.update.mockClear();
+    await service.update(workspaceId, projectId, issueId, owner, {
+      labelIds: [],
+    });
+    expect(written(prisma.issue.update)).toMatchObject({
+      labels: { deleteMany: {}, create: [] },
+    });
+  });
+
+  it("leaves the labels alone when labelIds isn't sent", async () => {
+    await service.update(workspaceId, projectId, issueId, owner, {
+      title: "Renamed",
+    });
+
+    expect(written(prisma.issue.update).labels).toBeUndefined();
+    expect(prisma.label.count).not.toHaveBeenCalled();
+  });
+
+  it("returns the issue page's labels as a plain list", async () => {
+    const bug = { id: "label-1", name: "Bug", color: "#ef4444" };
+    prisma.issue.findFirst.mockResolvedValue({
+      id: issueId,
+      labels: [{ label: bug }],
+    });
+
+    await expect(
+      service.findDetail(workspaceId, projectId, issueId),
+    ).resolves.toMatchObject({ labels: [bug] });
   });
 });

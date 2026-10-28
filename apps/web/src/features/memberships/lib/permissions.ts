@@ -1,8 +1,5 @@
 import type { IssueStatus } from "@/features/issues/types/issue-types";
-import {
-	GRANTABLE_PERMISSIONS,
-	type Permission,
-} from "@/features/roles/constants";
+import { ALL_PERMISSIONS, type Permission } from "@taskforge/shared";
 
 /**
  * What the viewer may do in the active workspace, as flags for hiding or
@@ -107,7 +104,7 @@ export const NO_PERMISSIONS = permissionsFrom([], {
  * isn't allowed, exactly as it did before the UI was role-aware.
  */
 export const UNRESTRICTED_PERMISSIONS = permissionsFrom(
-	[...GRANTABLE_PERMISSIONS, "workspace:delete", "workspace:transfer"],
+	ALL_PERMISSIONS,
 	{ isOwner: true, userId: undefined },
 );
 

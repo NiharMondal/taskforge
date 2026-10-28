@@ -34,8 +34,9 @@ import SprintSummaryCard from "@/features/sprint/components/SprintSummaryCard";
 import { useSprints } from "@/features/sprint/hooks/use-sprints";
 import type { Sprint } from "@/features/sprint/types/sprint-types";
 import { useWorkspace } from "@/features/workspace/context/workspace-context";
+import { isAllowedTransition } from "@taskforge/shared";
 
-import { BOARD_STATUSES, STATUS_TRANSITIONS } from "../../constants";
+import { BOARD_STATUSES } from "../../constants";
 import { useIssues, useUpdateIssue } from "../../hooks/use-issues";
 import {
 	EMPTY_FILTERS,
@@ -56,13 +57,13 @@ type Columns = Record<IssueStatus, Issue[]>;
 
 /**
  * Whether a drag that started in `from` may end in `to`: back in its own lane,
- * or one of its legal next statuses ({@link STATUS_TRANSITIONS}) — the same
- * rule as the status Selects on the list and detail views (and the API).
+ * or one of its legal next statuses (`isAllowedTransition`, shared with the
+ * API) — the same rule as the status Selects on the list and detail views.
  * Measured against the lane the drag *started* in, not the card's live mid-drag
  * lane, so it can't be walked through several steps in a single drag.
  */
 const canDropInto = (from: IssueStatus, to: IssueStatus): boolean =>
-	from === to || STATUS_TRANSITIONS[from].includes(to);
+	isAllowedTransition(from, to);
 
 // Stable empty reference for the loading/disabled window. A fresh `[]` literal
 // each render would make the render-time resync below fire every render (it

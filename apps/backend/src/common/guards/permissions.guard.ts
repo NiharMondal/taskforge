@@ -6,7 +6,7 @@ import {
   Injectable,
 } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
-import { Permission } from "../permissions/permissions";
+import { Permission } from "@taskforge/shared";
 import { resolveWorkspaceAccess } from "../permissions/workspace-access";
 import { AuthenticatedRequest } from "../types/authenticated-request.interface";
 

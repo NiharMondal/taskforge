@@ -1,3 +1,11 @@
+import {
+  MAX_ISSUE_DESCRIPTION_LENGTH,
+  MAX_ISSUE_LABELS,
+  MAX_ISSUE_TITLE_LENGTH,
+  MAX_STORY_POINTS,
+  MIN_ISSUE_TITLE_LENGTH,
+  SELECTABLE_ISSUE_TYPES,
+} from "@taskforge/shared";
 import { IsOptionalNonNull } from "@/common/decorators/is-optional-non-null.decorator";
 import {
   ArrayMaxSize,
@@ -17,36 +25,19 @@ import {
 } from "class-validator";
 import { IssuePriority, IssueStatus, IssueType } from "generated/prisma/enums";
 
-/**
- * The types a client may pick. SUBTASK isn't one: creating with
- * `parentIssueId` is what makes a sub-issue, and its type never changes.
- */
-export const SELECTABLE_ISSUE_TYPES = [
-  IssueType.EPIC,
-  IssueType.STORY,
-  IssueType.TASK,
-  IssueType.BUG,
-] as const;
-
 export const ISSUE_TYPE_MESSAGE =
   "type must be EPIC, STORY, TASK or BUG (a sub-issue is created with parentIssueId)";
-
-/** Upper bound for `timeEstimate`, which holds story points. */
-export const MAX_STORY_POINTS = 100;
-
-/** How many labels one issue can carry. */
-export const MAX_ISSUE_LABELS = 10;
 
 export class CreateIssueDto {
   @IsString()
   @IsNotEmpty()
-  @MinLength(2)
-  @MaxLength(255)
+  @MinLength(MIN_ISSUE_TITLE_LENGTH)
+  @MaxLength(MAX_ISSUE_TITLE_LENGTH)
   title: string;
 
   @IsOptional()
   @IsString()
-  @MaxLength(2000)
+  @MaxLength(MAX_ISSUE_DESCRIPTION_LENGTH)
   description?: string;
 
   @IsOptionalNonNull()

@@ -1,6 +1,6 @@
 import type { WorkspaceRole } from "@/features/workspace/types/workspace-types";
 
-import type { GrantablePermission } from "../constants";
+import type { GrantablePermission } from "@taskforge/shared";
 
 /**
  * A workspace role, as `GET /roles` returns it

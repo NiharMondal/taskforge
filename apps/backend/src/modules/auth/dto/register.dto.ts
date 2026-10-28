@@ -1,3 +1,9 @@
+import {
+  MAX_NAME_LENGTH,
+  MAX_PASSWORD_LENGTH,
+  MIN_PASSWORD_LENGTH,
+  MIN_USER_NAME_LENGTH,
+} from "@taskforge/shared";
 import { IsEmail, IsString, MaxLength, MinLength } from "class-validator";
 
 export class RegisterDto {
@@ -5,12 +11,12 @@ export class RegisterDto {
   email: string;
 
   @IsString()
-  @MinLength(6)
-  @MaxLength(72) // bcrypt only reads the first 72 bytes
+  @MinLength(MIN_PASSWORD_LENGTH)
+  @MaxLength(MAX_PASSWORD_LENGTH) // bcrypt only reads the first 72 bytes
   password: string;
 
   @IsString()
-  @MinLength(2)
-  @MaxLength(100)
+  @MinLength(MIN_USER_NAME_LENGTH)
+  @MaxLength(MAX_NAME_LENGTH)
   name: string;
 }

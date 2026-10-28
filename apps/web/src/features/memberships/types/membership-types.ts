@@ -1,4 +1,4 @@
-import type { Permission } from "@/features/roles/constants";
+import type { Permission } from "@taskforge/shared";
 import type { RoleSummary } from "@/features/roles/types/role-types";
 import type { WorkspaceRole } from "@/features/workspace/types/workspace-types";
 import { ICommonUserEntity } from "@/types/common";

@@ -1,16 +1,20 @@
-import { WorkspaceRole } from "generated/prisma/enums";
+import type { WorkspaceRole } from "./enums";
 
 /**
- * Everything a workspace role can be granted. A `Role` row stores a subset of
- * these keys; routes declare what they need with `@RequirePermission(...)` and
- * services check finer rules (issue fields, ownership) with `issue-access.ts`.
+ * Everything a workspace role can be granted, in the order the API returns
+ * them. A `Role` row stores a subset of these keys; backend routes declare
+ * what they need with `@RequirePermission(...)` and services check finer rules
+ * (issue fields, ownership) with `issue-access.ts`. The web's role editor
+ * lists them (its labels live in `features/roles/constants.ts`, which must
+ * cover every key) and its permission flags read them.
  *
  * Adding a key: add it here, decide which built-in roles get it in
- * DEFAULT_ROLE_PERMISSIONS, and ship a migration that grants it to existing
- * Role rows — stored roles never pick up new keys on their own.
+ * DEFAULT_ROLE_PERMISSIONS, ship a backend migration that grants it to
+ * existing Role rows — stored roles never pick up new keys on their own — and
+ * give it a label in the web's PERMISSION_GROUPS.
  */
 export const GRANTABLE_PERMISSIONS = [
-  /** GET/PATCH /workspaces/:id — rename, edit the description. */
+  /** PATCH /workspaces/:id — rename, edit the description. */
   "workspace:manage",
   /** Create, edit and delete projects. */
   "project:manage",
@@ -51,9 +55,8 @@ export const OWNER_ONLY_PERMISSIONS = [
 ] as const;
 
 export type GrantablePermission = (typeof GRANTABLE_PERMISSIONS)[number];
-export type Permission =
-  | GrantablePermission
-  | (typeof OWNER_ONLY_PERMISSIONS)[number];
+export type OwnerOnlyPermission = (typeof OWNER_ONLY_PERMISSIONS)[number];
+export type Permission = GrantablePermission | OwnerOnlyPermission;
 
 export const ALL_PERMISSIONS: readonly Permission[] = [
   ...GRANTABLE_PERMISSIONS,
@@ -68,31 +71,31 @@ export function isGrantablePermission(key: string): key is GrantablePermission {
 
 /**
  * What each built-in role is seeded with — in new workspaces by
- * `seedSystemRoles`, and in existing ones by the `add_workspace_roles`
+ * `seedSystemRoles`, and in existing ones by the backend's `add_workspace_roles`
  * migration plus the migrations that granted later keys
- * (`comment_permissions`, `label_permissions`); keep them in step. OWNER's list is stored empty
- * because the owner is granted ALL_PERMISSIONS in code (see
- * `resolveWorkspaceAccess`).
+ * (`comment_permissions`, `label_permissions`); keep them in step. OWNER's
+ * list is stored empty because the owner is granted ALL_PERMISSIONS in code
+ * (see `resolveWorkspaceAccess`).
  */
 export const DEFAULT_ROLE_PERMISSIONS: Record<
   WorkspaceRole,
   readonly GrantablePermission[]
 > = {
-  [WorkspaceRole.OWNER]: [],
-  [WorkspaceRole.ADMIN]: GRANTABLE_PERMISSIONS,
-  [WorkspaceRole.MEMBER]: [
+  OWNER: [],
+  ADMIN: GRANTABLE_PERMISSIONS,
+  MEMBER: [
     "issue:create",
     "issue:edit:own",
     "issue:status",
     "comment:create",
   ],
-  [WorkspaceRole.VIEWER]: [],
+  VIEWER: [],
 };
 
-/** Display names of the built-in roles (match the web app's labels). */
+/** Display names of the built-in roles. */
 export const SYSTEM_ROLE_NAMES: Record<WorkspaceRole, string> = {
-  [WorkspaceRole.OWNER]: "Owner",
-  [WorkspaceRole.ADMIN]: "Admin",
-  [WorkspaceRole.MEMBER]: "Member",
-  [WorkspaceRole.VIEWER]: "Viewer",
+  OWNER: "Owner",
+  ADMIN: "Admin",
+  MEMBER: "Member",
+  VIEWER: "Viewer",
 };

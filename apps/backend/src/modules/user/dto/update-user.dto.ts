@@ -1,10 +1,11 @@
+import { MAX_NAME_LENGTH } from "@taskforge/shared";
 import { IsOptionalNonNull } from "@/common/decorators/is-optional-non-null.decorator";
 import { IsOptional, IsString, IsUrl, MaxLength } from "class-validator";
 
 export class UpdateUserDto {
   @IsString()
   @IsOptionalNonNull()
-  @MaxLength(100)
+  @MaxLength(MAX_NAME_LENGTH)
   name?: string;
 
   // Accepted for compatibility but ignored: the server sets avatarUrl from the

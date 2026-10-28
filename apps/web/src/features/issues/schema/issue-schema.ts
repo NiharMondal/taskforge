@@ -1,38 +1,44 @@
+import {
+	ISSUE_PRIORITY_VALUES,
+	ISSUE_STATUS_VALUES,
+	ISSUE_TYPE_VALUES,
+	MAX_ISSUE_DESCRIPTION_LENGTH,
+	MAX_ISSUE_LABELS,
+	MAX_ISSUE_TITLE_LENGTH,
+	MAX_STORY_POINTS,
+	MIN_ISSUE_TITLE_LENGTH,
+} from "@taskforge/shared";
 import z from "zod";
 
-import { MAX_ISSUE_LABELS } from "@/features/labels/constants";
-
-import { MAX_STORY_POINTS } from "../lib/estimate";
-
-// Limits mirror the backend's CreateIssueDto / UpdateIssueDto, so a form never
+// Limits are the backend DTOs' own (`@taskforge/shared`), so a form never
 // submits something the API answers with a 400.
 export const issueSchema = z.object({
 	title: z
 		.string()
 		.trim()
 		.min(1, "Title is required")
-		.min(2, "Title must be at least 2 characters")
-		.max(255, "Title must be at most 255 characters"),
-	// Stored as the editor's HTML, which is what the 2000 limit counts —
+		.min(
+			MIN_ISSUE_TITLE_LENGTH,
+			`Title must be at least ${MIN_ISSUE_TITLE_LENGTH} characters`,
+		)
+		.max(
+			MAX_ISSUE_TITLE_LENGTH,
+			`Title must be at most ${MAX_ISSUE_TITLE_LENGTH} characters`,
+		),
+	// Stored as the editor's HTML, which is what the limit counts —
 	// formatting markup included.
 	description: z
 		.string()
-		.max(2000, "Description is too long (formatting counts toward the limit)")
+		.max(
+			MAX_ISSUE_DESCRIPTION_LENGTH,
+			"Description is too long (formatting counts toward the limit)",
+		)
 		.optional(),
-	status: z.enum([
-		"BACKLOG",
-		"TODO",
-		"IN_PROGRESS",
-		"IN_REVIEW",
-		"QA_REQUESTED",
-		"QA_FAILED",
-		"DEPLOYED",
-		"DONE",
-	]),
-	priority: z.enum(["LOW", "MEDIUM", "HIGH", "URGENT"]),
+	status: z.enum(ISSUE_STATUS_VALUES),
+	priority: z.enum(ISSUE_PRIORITY_VALUES),
 	// SUBTASK is here so a sub-issue's details form can hold its type; the
 	// selects never offer it and the backend refuses it.
-	type: z.enum(["EPIC", "STORY", "TASK", "BUG", "SUBTASK"]),
+	type: z.enum(ISSUE_TYPE_VALUES),
 	// Story points as the input's text ("" = not estimated); converted with
 	// `parseEstimate` before it is sent.
 	timeEstimate: z

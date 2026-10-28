@@ -1,33 +1,10 @@
-/**
- * The permission catalog, mirroring `GRANTABLE_PERMISSIONS` in
- * apps/backend/src/common/permissions/permissions.ts — same keys, same order.
- * Change both together: a key missing here can't be granted from the role
- * editor, and one the backend doesn't know is a 400.
+import type { GrantablePermission } from "@taskforge/shared";
+
+/*
+ * The permission catalog itself (`GRANTABLE_PERMISSIONS`, `Permission`) is in
+ * `@taskforge/shared`, the same list the API checks. This file only labels it
+ * for the role editor — a key with no entry here can't be granted from it.
  */
-export const GRANTABLE_PERMISSIONS = [
-	"workspace:manage",
-	"project:manage",
-	"label:manage",
-	"sprint:manage",
-	"issue:create",
-	"issue:delete",
-	"issue:edit:any",
-	"issue:edit:own",
-	"issue:status",
-	"issue:status:done",
-	"comment:create",
-	"comment:delete:any",
-	"member:manage",
-	"invitation:manage",
-	"role:manage",
-] as const;
-
-export type GrantablePermission = (typeof GRANTABLE_PERMISSIONS)[number];
-
-/** Held by the workspace owner alone; no role can be given them. */
-export type OwnerOnlyPermission = "workspace:delete" | "workspace:transfer";
-
-export type Permission = GrantablePermission | OwnerOnlyPermission;
 
 export interface PermissionMeta {
 	key: GrantablePermission;
@@ -134,5 +111,3 @@ export const PERMISSION_GROUPS: { title: string; permissions: PermissionMeta[] }
 		],
 	},
 ];
-
-export const MAX_ROLE_NAME_LENGTH = 50;

@@ -21,10 +21,7 @@ import { useWorkspacePermissions } from "@/features/memberships/hooks/use-worksp
 import { holdsAll } from "@/features/memberships/lib/permissions";
 import RoleForm from "@/features/roles/components/RoleForm";
 import { RoleChip } from "@/features/roles/components/RoleChip";
-import {
-	GRANTABLE_PERMISSIONS,
-	MAX_ROLE_NAME_LENGTH,
-} from "@/features/roles/constants";
+import { GRANTABLE_PERMISSIONS, MAX_ROLE_NAME_LENGTH } from "@taskforge/shared";
 import {
 	useCreateRole,
 	useDeleteRole,

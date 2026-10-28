@@ -90,8 +90,8 @@ replaced token reused after 60 seconds revokes the family, and `POST /auth/logou
 Each workspace has `Role` rows (name + `permissions: String[]`); `Membership.roleId` /
 `Invitation.roleId` point at one. The four built-ins carry a `systemKey` and are created by
 `seedSystemRoles` (`src/modules/roles/system-roles.ts`) in every transaction that creates a
-workspace. The permission catalog and the built-ins' defaults are
-`src/common/permissions/permissions.ts` — a new key needs a migration to reach existing Role rows
+workspace. The permission catalog and the built-ins' defaults are in
+`@taskforge/shared` (`packages/shared/src/permissions.ts`) — a new key needs a migration to reach existing Role rows
 (as `comment_permissions` and `label_permissions` did), and the `add_workspace_roles` seed plus those grant migrations must
 add up to `DEFAULT_ROLE_PERMISSIONS`.
 
@@ -182,7 +182,7 @@ list and no delete route — don't add one without a tenant-scoped design.
 Controllers return `sendResponse()` from `src/common/utils/send-response.ts`:
 
 ```ts
-{ success: true, statusCode: number, message: string, metaData?: IPaginationMeta, data: T }
+{ success: true, statusCode: number, message: string, metaData?: PaginationMeta, data: T }
 ```
 
 Errors are shaped by the global `HttpExceptionFilter` (`src/lib/http-exception.filter.ts`), which
@@ -255,7 +255,8 @@ asset's URL, Google's picture, or `null` after `avatarPublicId: null` removes th
 
 `Issue.rank` is a nullable fractional index (base-62 string) for ordering cards within a
 `(project, status)` lane, backed by the `@@index([projectId, status, rank])`. Keys come from
-`fractional-indexing` — the same library the frontend uses, so both sides generate compatible keys.
+`@taskforge/shared`'s `rankBetween`/`isValidRank` (`fractional-indexing`) — the same helpers the
+frontend uses, so both sides generate compatible keys.
 
 `IssueService` owns rank on writes:
 
@@ -353,7 +354,7 @@ they need no database. Current coverage: `WorkspaceGuard`, `JwtAuthGuard`, `Perm
 permission rules and tenant isolation, `MembershipService` role changes/removal, `UserController`/`UserService`,
 `InvitationService`/controller, register/verify/login/Google sign-in/refresh (`AuthService`,
 `RefreshTokenService`, `GoogleTokenVerifier`, throttling), `WorkspaceService`, `SprintService.endSprint`, `CommentService`, `LabelService`, `ActivityService`, `RoleService` and the role DTOs, `issueChanges`, the history rows `IssueService` writes, and the issue, comment and label DTOs.
-`jest` maps `@/` and `generated/` in `package.json` and transforms the ESM-only `fractional-indexing`.
+`jest` maps `@/` and `generated/` in `package.json` and transforms the ESM-only `fractional-indexing` (a dependency of `@taskforge/shared`, which Jest loads as TypeScript source).
 
 `pnpm run test:e2e` (`test/*.e2e-spec.ts`) boots the real `AppModule` through `configureApp()` and
 drives it with supertest against Postgres: sign-up through the emailed link (read from the

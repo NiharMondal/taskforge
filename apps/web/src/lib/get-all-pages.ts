@@ -1,11 +1,9 @@
+import { MAX_PAGE_SIZE } from "@taskforge/shared";
 import type { AxiosRequestConfig } from "axios";
 
 import type { ApiResponse } from "@/types/api";
 
 import { api } from "./axios";
-
-/** The backend's maximum `limit` on paginated lists (`PaginationQueryDto`). */
-const PAGE_SIZE = 100;
 
 /**
  * GET every page of a paginated list and return them as one list.
@@ -28,7 +26,7 @@ export async function getAllPages<T extends { id: string }>(
   for (;;) {
     const res = await api.get<T[]>(url, {
       ...config,
-      params: { ...config.params, page, limit: PAGE_SIZE },
+      params: { ...config.params, page, limit: MAX_PAGE_SIZE },
     });
 
     // A write landing between page fetches shifts rows across the boundary,

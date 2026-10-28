@@ -15,12 +15,8 @@ export const ROLE_COLOR: Record<WorkspaceRole, ChipColor> = {
 };
 
 /**
- * Built-in role labels, for rows that predate roles (no `assignedRole`).
- * Everything else shows the role's own name.
+ * Built-in role labels, for rows that predate roles (no `assignedRole`):
+ * the names the API gives the built-in roles. Everything else shows the
+ * role's own name.
  */
-export const ROLE_LABELS: Record<WorkspaceRole, string> = {
-	OWNER: "Owner",
-	ADMIN: "Admin",
-	MEMBER: "Member",
-	VIEWER: "Viewer",
-};
+export { SYSTEM_ROLE_NAMES as ROLE_LABELS } from "@taskforge/shared";

@@ -1,3 +1,11 @@
+import {
+  MAX_ISSUE_DESCRIPTION_LENGTH,
+  MAX_ISSUE_LABELS,
+  MAX_ISSUE_TITLE_LENGTH,
+  MAX_STORY_POINTS,
+  MIN_ISSUE_TITLE_LENGTH,
+  SELECTABLE_ISSUE_TYPES,
+} from "@taskforge/shared";
 import { IsOptionalNonNull } from "@/common/decorators/is-optional-non-null.decorator";
 import { IssueStatus, IssuePriority, IssueType } from "generated/prisma/enums";
 import {
@@ -16,23 +24,18 @@ import {
   Min,
   MinLength,
 } from "class-validator";
-import {
-  ISSUE_TYPE_MESSAGE,
-  MAX_ISSUE_LABELS,
-  MAX_STORY_POINTS,
-  SELECTABLE_ISSUE_TYPES,
-} from "./create-issue.dto";
+import { ISSUE_TYPE_MESSAGE } from "./create-issue.dto";
 
 export class UpdateIssueDto {
   @IsOptionalNonNull()
   @IsString()
-  @MinLength(2)
-  @MaxLength(255)
+  @MinLength(MIN_ISSUE_TITLE_LENGTH)
+  @MaxLength(MAX_ISSUE_TITLE_LENGTH)
   title?: string;
 
   @IsOptional()
   @IsString()
-  @MaxLength(2000)
+  @MaxLength(MAX_ISSUE_DESCRIPTION_LENGTH)
   description?: string;
 
   @IsOptionalNonNull()

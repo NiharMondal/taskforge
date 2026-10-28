@@ -1,7 +1,7 @@
 import {
   GRANTABLE_PERMISSIONS,
   isGrantablePermission,
-} from "@/common/permissions/permissions";
+} from "@taskforge/shared";
 import {
   assertActorHolds,
   WorkspaceAccess,

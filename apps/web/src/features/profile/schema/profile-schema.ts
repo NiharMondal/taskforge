@@ -1,3 +1,4 @@
+import { MAX_NAME_LENGTH } from "@taskforge/shared";
 import { z } from "zod";
 
 /**
@@ -6,7 +7,7 @@ import { z } from "zod";
  * photo selected" and is stripped before the request.
  */
 export const profileSchema = z.object({
-	name: z.string().min(1, "Name is required").max(100, "Name is too long"),
+	name: z.string().min(1, "Name is required").max(MAX_NAME_LENGTH, "Name is too long"),
 	avatarUrl: z.union([z.url(), z.literal("")]).optional(),
 	avatarPublicId: z.string().optional(),
 });

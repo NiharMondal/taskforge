@@ -1,6 +1,7 @@
+import { MAX_COMMENT_LENGTH } from "@taskforge/shared";
 import { plainToInstance } from "class-transformer";
 import { validate } from "class-validator";
-import { CreateCommentDto, MAX_COMMENT_LENGTH } from "./create-comment.dto";
+import { CreateCommentDto } from "./create-comment.dto";
 
 const invalidFields = async (body: object) =>
   (await validate(plainToInstance(CreateCommentDto, body))).map(

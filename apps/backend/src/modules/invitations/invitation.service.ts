@@ -22,7 +22,7 @@ import {
 import { ConfigService } from "@nestjs/config";
 import { InvitationStatus, WorkspaceRole } from "generated/prisma/enums";
 import { MailService } from "../mail/mail.service";
-import { SYSTEM_ROLE_NAMES } from "@/common/permissions/permissions";
+import { SYSTEM_ROLE_NAMES } from "@taskforge/shared";
 import { findSystemRole, resolveAssignableRole } from "../roles/system-roles";
 import { SendInvitationDto } from "./dto/send-invitation.dto";
 

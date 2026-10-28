@@ -16,7 +16,7 @@
 import "dotenv/config";
 
 import { PrismaPg } from "@prisma/adapter-pg";
-import { generateNKeysBetween } from "fractional-indexing";
+import { ranksBetween } from "@taskforge/shared";
 import { PrismaClient } from "generated/prisma/client";
 
 const prisma = new PrismaClient({
@@ -60,11 +60,7 @@ async function main() {
   }
 
   for (const [key, ids] of lanes) {
-    const keys = generateNKeysBetween(
-      maxRank.get(key) ?? null,
-      null,
-      ids.length,
-    );
+    const keys = ranksBetween(maxRank.get(key) ?? null, null, ids.length);
     await prisma.$transaction(
       ids.map((id, index) =>
         prisma.issue.update({ where: { id }, data: { rank: keys[index] } }),

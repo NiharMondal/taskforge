@@ -1,6 +1,7 @@
+import { MAX_LABEL_NAME_LENGTH } from "@taskforge/shared";
 import { plainToInstance } from "class-transformer";
 import { validate } from "class-validator";
-import { CreateLabelDto, MAX_LABEL_NAME_LENGTH } from "./create-label.dto";
+import { CreateLabelDto } from "./create-label.dto";
 import { UpdateLabelDto } from "./update-label.dto";
 
 const check = async (dto: new () => object, body: object) => {

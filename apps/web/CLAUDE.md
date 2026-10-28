@@ -54,7 +54,8 @@ app/
         board/      — kanban
         issues/
           [slug]/   — issue detail page ([slug] is the issue id)
-        sprints/
+        sprint/     — current (active) sprint + its issues
+        settings/   — project settings: sprint planning (create / edit / start / end)
     settings/       — general, members, profile
     issues/         — redirect → /projects (no workspace-wide issues endpoint)
   invitations/accept/

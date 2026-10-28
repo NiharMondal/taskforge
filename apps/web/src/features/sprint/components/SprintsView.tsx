@@ -5,7 +5,6 @@ import { Button, Chip, toast } from "@heroui/react";
 import { Pencil, Play, Plus, Square } from "lucide-react";
 
 import ErrorAlert from "@/components/ui/error-alert";
-import MyModal from "@/components/ui/my-modal";
 import { useWorkspacePermissions } from "@/features/memberships/hooks/use-workspace-permissions";
 import { useWorkspace } from "@/features/workspace/context/workspace-context";
 import { getApiErrorMessage } from "@/lib/api-error";
@@ -15,10 +14,10 @@ import {
 	useCreateSprint,
 	useUpdateSprint,
 	useStartSprint,
-	useEndSprint,
 } from "../hooks/use-sprints";
 import type { Sprint } from "../types/sprint-types";
 import type { TSprintFormValues } from "../schema/sprint-schema";
+import EndSprintModal from "./EndSprintModal";
 import SprintFormModal from "./SprintFormModal";
 import { fromISO, toISO } from "@/util/iso";
 
@@ -46,10 +45,6 @@ export default function SprintsView({ projectId }: Props) {
 		isPending: isStarting,
 		variables: startingId,
 	} = useStartSprint(workspaceId, projectId);
-	const { mutateAsync: endSprint, isPending: isEnding } = useEndSprint(
-		workspaceId,
-		projectId,
-	);
 
 	const [createOpen, setCreateOpen] = useState(false);
 	const [editingSprint, setEditingSprint] = useState<Sprint | null>(null);
@@ -101,17 +96,6 @@ export default function SprintsView({ projectId }: Props) {
 			toast.success(res.message || "Sprint started");
 		} catch (error) {
 			toast.danger(getApiErrorMessage(error, "Failed to start sprint"));
-		}
-	};
-
-	const handleConfirmEnd = async () => {
-		if (!endingSprint) return;
-		try {
-			const res = await endSprint(endingSprint.id);
-			toast.success(res.message || "Sprint ended");
-			setEndingSprint(null);
-		} catch (error) {
-			toast.danger(getApiErrorMessage(error, "Failed to end sprint"));
 		}
 	};
 
@@ -186,38 +170,12 @@ export default function SprintsView({ projectId }: Props) {
 				defaultValues={editDefaultValues}
 			/>
 
-			<MyModal
-				isOpen={!!endingSprint}
-				onOpenChange={(open) => !open && setEndingSprint(null)}
-				size="md"
-				title="End sprint?"
-			>
-				<div className="flex flex-col gap-4 pb-2">
-					<p className="text-sm text-muted">
-						Ending <strong>{endingSprint?.name}</strong> takes its
-						unfinished issues out of the sprint (their status is
-						left as is). Issues that are Done stay with it. This
-						can’t be undone.
-					</p>
-					<div className="flex justify-end gap-2">
-						<Button
-							type="button"
-							variant="outline"
-							onPress={() => setEndingSprint(null)}
-						>
-							Cancel
-						</Button>
-						<Button
-							type="button"
-							variant="danger"
-							isDisabled={isEnding}
-							onPress={handleConfirmEnd}
-						>
-							{isEnding ? "Ending…" : "End sprint"}
-						</Button>
-					</div>
-				</div>
-			</MyModal>
+			<EndSprintModal
+				workspaceId={workspaceId}
+				projectId={projectId}
+				sprint={endingSprint}
+				onClose={() => setEndingSprint(null)}
+			/>
 		</div>
 	);
 }

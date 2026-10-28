@@ -1,10 +1,11 @@
 import { PrismaService } from "@/prisma/prisma.service";
+import { NotFoundException } from "@nestjs/common";
 import { WorkspaceRole } from "generated/prisma/enums";
 import { WorkspaceService } from "./workspace.service";
 
 describe("WorkspaceService", () => {
   let prisma: {
-    workspace: { create: jest.Mock; update: jest.Mock };
+    workspace: { create: jest.Mock; update: jest.Mock; findUnique: jest.Mock };
     membership: { create: jest.Mock };
     role: { createManyAndReturn: jest.Mock };
     $transaction: jest.Mock;
@@ -16,6 +17,7 @@ describe("WorkspaceService", () => {
       workspace: {
         create: jest.fn().mockResolvedValue({ id: "ws-1" }),
         update: jest.fn().mockResolvedValue({ id: "ws-1" }),
+        findUnique: jest.fn().mockResolvedValue({ id: "ws-1", name: "Acme" }),
       },
       membership: { create: jest.fn().mockResolvedValue({}) },
       role: {
@@ -104,6 +106,27 @@ describe("WorkspaceService", () => {
         where: { id: "ws-1" },
         data: { name: "Acme", description: "" },
       });
+    });
+  });
+
+  describe("findOne", () => {
+    // Membership is WorkspaceGuard's job; any member may read the row.
+    it("returns the workspace without a second membership lookup", async () => {
+      await expect(service.findOne("ws-1")).resolves.toEqual({
+        id: "ws-1",
+        name: "Acme",
+      });
+      expect(prisma.workspace.findUnique).toHaveBeenCalledWith({
+        where: { id: "ws-1" },
+      });
+    });
+
+    it("404s a workspace that no longer exists", async () => {
+      prisma.workspace.findUnique.mockResolvedValue(null);
+
+      await expect(service.findOne("ws-gone")).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
     });
   });
 });

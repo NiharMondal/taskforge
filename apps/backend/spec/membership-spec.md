@@ -7,7 +7,8 @@ A workspace's roster: who is in it and with which role. Members are added throug
 ## Rules that hold across every route
 
 - **One owner.** Every workspace has exactly one `OWNER`. The owner holds every permission in code, can't be assigned, invited, demoted or removed, and stops being the owner only by **transferring** ownership (or deleting the workspace).
-- **No escalation.** An actor can't change or remove a member, or hand out a role, holding permissions the actor lacks (`assertActorHolds`).
+- **No escalation.** An actor can't hand out a role holding permissions the actor lacks (`assertActorHolds`).
+- **Strictly more access to act on a member.** Changing a member's role or removing them needs every permission the member holds plus at least one more (`assertActorOutranks`), else `403`. So an Admin can't demote or remove another Admin (only the owner can), and the same goes for two holders of one custom role. An Admin can still make someone an Admin.
 - **Roles** are the workspace's built-ins or its custom roles (`spec/role-spec.md`). Roster rows carry `assignedRole { id, name, systemKey }`; the enum `role` reads `MEMBER` for a custom role.
 - **Tenant.** Every route goes through `WorkspaceGuard`; the workspace comes from `x-workspace-id`, and `:userId` is looked up in that workspace only.
 

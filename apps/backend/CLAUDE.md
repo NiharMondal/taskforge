@@ -107,8 +107,13 @@ add up to `DEFAULT_ROLE_PERMISSIONS`.
   each field to `issue:status` (`status`, `rank`) or the content permissions (`issue:edit:any`, or
   `issue:edit:own` when the *stored* issue's reporter or assignee is the caller). Fields missing from
   the map are refused. DONE needs `issue:status:done`, on create too.
-- **No escalation:** `assertActorHolds` refuses a role change, removal or invitation that involves
-  a permission the actor doesn't hold.
+- **No escalation:** `assertActorHolds` refuses handing out a role (role change, invitation) that
+  holds a permission the actor doesn't. Changing or removing a member takes *strictly more* access
+  (`assertActorOutranks`: every one of the target's permissions plus at least one more), so two
+  Admins — or two holders of the same custom role — can't demote or remove each other; the OWNER,
+  with the owner-only keys, outranks everyone. An Admin can still make someone an Admin.
+- `GET /workspaces/:id` is open to any member (`WorkspaceGuard` only): it returns the same row
+  `GET /workspaces` already lists. `PATCH` needs `workspace:manage`, `DELETE` `workspace:delete`.
 - **Custom roles** (`src/modules/roles/`, `spec/role-spec.md`): `GET /roles` for any member;
   `role:manage` creates, edits and deletes custom roles. The built-ins are read-only (grant
   migrations extend them by `systemKey`), names are unique ignoring case, and a role still held by a

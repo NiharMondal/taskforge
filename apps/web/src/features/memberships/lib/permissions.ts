@@ -141,7 +141,7 @@ export function canSetIssueStatus(
 
 /**
  * Whether the viewer holds every one of `keys` — the backend's no-escalation
- * rule for handing out, editing or acting on a role (`assertActorHolds`).
+ * rule for handing out or editing a role (`assertActorHolds`).
  */
 export function holdsAll(
 	permissions: Permissions,
@@ -150,4 +150,17 @@ export function holdsAll(
 	const granted: ReadonlySet<string> = permissions.granted;
 	for (const key of keys) if (!granted.has(key)) return false;
 	return true;
+}
+
+/**
+ * Whether the viewer holds every one of a member's `keys` and at least one
+ * more — the backend's rule for changing or removing a member
+ * (`assertActorOutranks`), so an Admin can't act on another Admin.
+ */
+export function outranks(
+	permissions: Permissions,
+	keys: Iterable<string>,
+): boolean {
+	const target = new Set(keys);
+	return holdsAll(permissions, target) && permissions.granted.size > target.size;
 }

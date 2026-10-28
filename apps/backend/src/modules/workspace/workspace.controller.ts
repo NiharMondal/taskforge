@@ -61,13 +61,12 @@ export class WorkspaceController {
     });
   }
 
-  // GET ONE
+  // GET ONE — any member: the same row GET /workspaces already returns
   @Get(":workspaceId")
   @HttpCode(HttpStatus.OK)
-  @RequirePermission("workspace:manage")
   @UseGuards(WorkspaceGuard)
-  async findOne(@CurrentUser() user: JwtPayload, @WorkspaceId() id: string) {
-    const res = await this.workspaceService.findOne(id, user.sub);
+  async findOne(@WorkspaceId() id: string) {
+    const res = await this.workspaceService.findOne(id);
     return sendResponse({
       statusCode: HttpStatus.OK,
       message: "Workspace fetched successfully",

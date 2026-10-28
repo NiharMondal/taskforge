@@ -134,3 +134,25 @@ export function assertActorHolds(
     }
   }
 }
+
+/**
+ * Refuse unless the actor holds every one of the target member's
+ * `permissions` and at least one more. Changing or removing a member takes
+ * strictly more access than theirs, so peers (two Admins, or two holders of
+ * the same custom role) can't demote or remove each other; the OWNER, who
+ * alone holds the owner-only keys, outranks everyone.
+ */
+export function assertActorOutranks(
+  actor: WorkspaceAccess,
+  permissions: Iterable<string>,
+) {
+  const held: ReadonlySet<string> = actor.permissions;
+  const target = new Set(permissions);
+  const holdsAll = [...target].every((permission) => held.has(permission));
+  // With every target key held, "one more" is just a larger set.
+  if (!holdsAll || held.size <= target.size) {
+    throw new ForbiddenException(
+      "You can only change or remove a member with less access than your own",
+    );
+  }
+}

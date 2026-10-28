@@ -338,6 +338,10 @@ describe("Tenancy (e2e)", () => {
         .get("/api/v1/projects")
         .set(as(bobToken, aliceWs))
         .expect(403);
+      await api()
+        .get(`/api/v1/workspaces/${aliceWs}`)
+        .set(as(bobToken, aliceWs))
+        .expect(403);
     });
 
     it("does not show Alice's project in Bob's own workspace", async () => {
@@ -432,6 +436,20 @@ describe("Tenancy (e2e)", () => {
         .patch(issueUrl)
         .set(as(bobToken, aliceWs))
         .send({ title: "Hijacked" })
+        .expect(403);
+    });
+
+    it("lets Bob read the workspace but not edit it", async () => {
+      const res = await api()
+        .get(`/api/v1/workspaces/${aliceWs}`)
+        .set(as(bobToken, aliceWs))
+        .expect(200);
+
+      expect(data<{ id: string }>(res).id).toBe(aliceWs);
+      await api()
+        .patch(`/api/v1/workspaces/${aliceWs}`)
+        .set(as(bobToken, aliceWs))
+        .send({ name: "Bob's now" })
         .expect(403);
     });
 

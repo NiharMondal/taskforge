@@ -1,11 +1,7 @@
 import { PaginationQueryDto } from "@/common/dto/pagination-query.dto";
 import PrismaQueryBuilder from "@/lib/PrismQueryBuilder";
 import { PrismaService } from "@/prisma/prisma.service";
-import {
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
-} from "@nestjs/common";
+import { Injectable, NotFoundException } from "@nestjs/common";
 import { WorkspaceRole } from "generated/prisma/enums";
 import { seedSystemRoles } from "../roles/system-roles";
 import { CreateWorkspaceDto } from "./dto/create-workspace.dto";
@@ -53,28 +49,14 @@ export class WorkspaceService {
       .execute(this.prisma.workspace);
   }
 
-  // get single workspace
-  async findOne(workspaceId: string, userId: string) {
+  // get single workspace — WorkspaceGuard has already proven membership
+  async findOne(workspaceId: string) {
     const workspace = await this.prisma.workspace.findUnique({
       where: { id: workspaceId },
     });
 
     if (!workspace) {
       throw new NotFoundException("Workspace not found");
-    }
-
-    // check membership
-    const membership = await this.prisma.membership.findUnique({
-      where: {
-        userId_workspaceId: {
-          userId,
-          workspaceId,
-        },
-      },
-    });
-
-    if (!membership) {
-      throw new ForbiddenException("Not a member of this workspace");
     }
 
     return workspace;

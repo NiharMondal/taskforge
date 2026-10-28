@@ -50,3 +50,8 @@ export const issueDetailsSchema = issueSchema.pick({
 	sprintId: true,
 });
 export type TIssueDetailsValues = z.infer<typeof issueDetailsSchema>;
+
+/** The inline "Add sub-issue" field on the issue page: a title, nothing else. */
+export const subIssueSchema = issueSchema.pick({ title: true });
+
+export type TSubIssueValues = z.infer<typeof subIssueSchema>;

@@ -63,7 +63,7 @@ Sprint {
 - OWNER/ADMIN (`canManageSprints`): Start sprint (disabled while another is active), Complete sprint (shared confirm), edit pencil; "Create sprint" on the Backlog header.
 - Rows: type icon, issue key (`WA-12`), title (links to the issue page), status, estimate, priority icon, assignee.
 - Moving an issue (`canEditIssueFields`): drag a row onto another section, or the row's ⋯ "Move to" menu. Both PATCH `{ sprintId }` (`null` for the backlog) through the optimistic `useUpdateIssue`.
-- Within a section rows sort by priority, then issue number. There is no stored manual order: `rank` orders board lanes, not backlog sections.
+- Within a section rows sort by priority, then issue number, with each sub-issue kept right under its parent when both are in the section. There is no stored manual order: `rank` orders board lanes, not backlog sections.
 
 ## Files
 
@@ -90,3 +90,7 @@ Sprint {
 | `src/features/issues/components/CreateIssueModal.tsx` | Fetches sprints, passes to IssueForm |
 | `src/features/issues/components/IssueDetailComponent.tsx` | Sprint diff in update handler |
 | `src/features/issues/components/IssueDetailModal.tsx` | Sprint diff in update handler |
+
+## Sub-issues
+
+One level deep (an issue's sub-issues can't have their own). The issue page shows a **Sub-issues** panel (`SubIssuesPanel`: progress, one row per child, and an inline "Add sub-issue" title field for `canCreateIssue`), which `POST`s `{ title, parentIssueId }`; the backend types the child `SUBTASK` and puts it in the parent's sprint. A sub-issue's page links back to its parent and has no panel. Sub-issues are ordinary rows/cards everywhere else, tagged `↳ WA-3` (`ParentTag`). Moving a parent between sprints does not move its sub-issues.

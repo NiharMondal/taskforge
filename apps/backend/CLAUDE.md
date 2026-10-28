@@ -246,6 +246,16 @@ the create transaction — the row lock on the project serializes concurrent cre
 `@@unique([projectId, number])` backs it. The `project_keys_and_issue_numbers` migration backfilled
 existing rows with the same key rule, so change both together.
 
+## Sub-issues
+
+`POST /projects/:projectId/issues` with `parentIssueId` creates a sub-issue. `validateParent`
+requires the parent in the same workspace *and* project (else 403) and refuses a parent that is
+itself a sub-issue (400) — nesting is one level deep. The child is typed `SUBTASK` and, without a
+`sprintId`, takes the parent's sprint. The parent can't be changed after create (`UpdateIssueDto` has
+no `parentIssueId`). The list route embeds `parentIssue { id, number, title }`; the single-issue route
+(`findDetail`, kept apart from the `findOne` that writes start with) also embeds `subIssues`.
+Deleting a parent cascades to its sub-issues.
+
 ## Tests
 
 `pnpm run test` runs Jest specs colocated with the code (`*.spec.ts`). They use a hand-rolled fake

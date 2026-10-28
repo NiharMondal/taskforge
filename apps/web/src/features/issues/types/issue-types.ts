@@ -33,6 +33,24 @@ export interface Sprint {
   id: string;
   name: string;
 }
+
+/** A parent issue as embedded in its sub-issues (list and detail routes). */
+export interface ParentIssueRef {
+  id: string;
+  number: number;
+  title: string;
+}
+
+/** A sub-issue as embedded in its parent (detail route only). */
+export interface SubIssue {
+  id: string;
+  number: number;
+  title: string;
+  status: IssueStatus;
+  priority: IssuePriority;
+  assigneeId?: string | null;
+  assignee?: IssueUser | null;
+}
 export interface Issue {
   id: string;
   title: string;
@@ -52,7 +70,12 @@ export interface Issue {
    * single-issue route doesn't, so read `sprintId` when you only need the id.
    */
   sprint?: Sprint | null;
+  /** Set on sub-issues. Nesting is one level deep: a sub-issue has no sub-issues. */
   parentIssueId?: string | null;
+  /** Embedded by the list and detail routes; `null` for top-level issues. */
+  parentIssue?: ParentIssueRef | null;
+  /** Detail route only (`useSingleIssue`), ordered by number. */
+  subIssues?: SubIssue[];
   /** Not editable yet: the create/update DTOs don't accept it. */
   timeEstimate?: number | null;
   reporterId: string;
@@ -70,6 +93,11 @@ export interface CreateIssueDto {
   priority?: IssuePriority;
   assigneeId?: string | null;
   sprintId?: string | null;
+  /**
+   * Create as a sub-issue of this issue (same project). The backend types it
+   * SUBTASK and, without a `sprintId`, puts it in the parent's sprint.
+   */
+  parentIssueId?: string;
 }
 
 /**

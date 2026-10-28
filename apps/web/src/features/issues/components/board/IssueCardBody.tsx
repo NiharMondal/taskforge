@@ -2,6 +2,7 @@ import { CircleUserRound } from "lucide-react";
 
 import type { Issue } from "../../types/issue-types";
 import IssueKey from "../IssueKey";
+import ParentTag from "../ParentTag";
 import PriorityChip from "../PriorityChip";
 
 /**
@@ -17,7 +18,10 @@ export default function IssueCardBody({
 }) {
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-3 shadow-sm">
-      <IssueKey issue={issue} />
+      <div className="flex items-center gap-1.5">
+        <IssueKey issue={issue} />
+        <ParentTag issue={issue} />
+      </div>
       <p className="-mt-1 text-sm font-medium">{issue.title}</p>
       <div className="flex items-center justify-between gap-2">
         <PriorityChip priority={issue.priority} />

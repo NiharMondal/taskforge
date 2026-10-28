@@ -10,6 +10,7 @@ import {
 import { statusOptionsFor } from "../constants";
 import type { Issue, IssueStatus } from "../types/issue-types";
 import IssueKey from "./IssueKey";
+import ParentTag from "./ParentTag";
 import PriorityChip from "./PriorityChip";
 import { useRouter } from "next/navigation";
 import { TFSelect } from "@/components/ui/TFSelect";
@@ -54,6 +55,7 @@ export default function IssueRow({
 		<div className="flex items-center gap-4 rounded-lg border border-border bg-surface p-3 transition-colors hover:bg-surface-secondary">
 			<PriorityChip priority={issue.priority} />
 			<IssueKey issue={issue} />
+			<ParentTag issue={issue} />
 			<button
 				type="button"
 				onClick={handleClick}

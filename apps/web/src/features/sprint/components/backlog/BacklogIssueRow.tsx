@@ -17,6 +17,7 @@ import type { KeyboardEvent, PointerEvent, ReactNode } from "react";
 import Avatar from "@/components/ui/avatar";
 import { IssueTypeIcon, PriorityIcon } from "@/features/issues/components/IssueIcons";
 import IssueKey from "@/features/issues/components/IssueKey";
+import ParentTag from "@/features/issues/components/ParentTag";
 import StatusChip from "@/features/issues/components/StatusChip";
 import type { Issue } from "@/features/issues/types/issue-types";
 import { initialsOf } from "@/util/initials";
@@ -122,6 +123,7 @@ export function BacklogIssueRowBody({
 		<div className="flex items-center gap-3 border-b border-border bg-surface px-3 py-2 last:border-b-0">
 			<IssueTypeIcon type={issue.type} />
 			<IssueKey issue={issue} className="w-16" />
+			<ParentTag issue={issue} />
 			<Link
 				href={`/projects/${issue.projectId}/issues/${issue.id}`}
 				{...keepOutOfDrag}

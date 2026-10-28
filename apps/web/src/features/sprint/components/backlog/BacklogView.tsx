@@ -51,13 +51,33 @@ const PRIORITY_ORDER = Object.fromEntries(
 );
 
 /**
- * Most urgent first, then oldest first. Sprint membership is all a move
+ * Most urgent first, then lowest number first. Sprint membership is all a move
  * changes: `rank` orders board lanes, not backlog sections, so there's no
  * stored manual order to show here.
  */
 const byPriorityThenNumber = (a: Issue, b: Issue) =>
 	PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority] ||
 	a.number - b.number;
+
+/**
+ * A section's rows in display order: {@link byPriorityThenNumber}, except that
+ * a sub-issue sits right under its parent when both are in the section.
+ */
+function orderSection(issues: Issue[]): Issue[] {
+	const sorted = [...issues].sort(byPriorityThenNumber);
+	const ids = new Set(sorted.map((i) => i.id));
+	const childrenOf = new Map<string, Issue[]>();
+	for (const issue of sorted) {
+		if (issue.parentIssueId && ids.has(issue.parentIssueId)) {
+			const siblings = childrenOf.get(issue.parentIssueId) ?? [];
+			siblings.push(issue);
+			childrenOf.set(issue.parentIssueId, siblings);
+		}
+	}
+	return sorted
+		.filter((i) => !(i.parentIssueId && ids.has(i.parentIssueId)))
+		.flatMap((i) => [i, ...(childrenOf.get(i.id) ?? [])]);
+}
 
 interface Section {
 	id: string;
@@ -109,22 +129,22 @@ export default function BacklogView({ projectId }: { projectId: string }) {
 				id: sprint.id,
 				title: sprint.name,
 				sprint,
-				issues: issues
-					.filter((i) => i.sprintId === sprint.id)
-					.sort(byPriorityThenNumber),
+				issues: orderSection(
+					issues.filter((i) => i.sprintId === sprint.id),
+				),
 			})),
 			{
 				id: BACKLOG_SECTION_ID,
 				title: "Backlog",
 				// Unscheduled work; finished issues stay out of the way. (Done
 				// issues of a completed sprint keep that sprint's id.)
-				issues: issues
-					.filter(
+				issues: orderSection(
+					issues.filter(
 						(i) =>
 							i.status !== "DONE" &&
 							!(i.sprintId && openIds.has(i.sprintId)),
-					)
-					.sort(byPriorityThenNumber),
+					),
+				),
 			},
 		];
 	}, [sprintsQuery.data, issuesQuery.data]);

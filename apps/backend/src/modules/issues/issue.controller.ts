@@ -81,7 +81,7 @@ export class IssueController {
     @Param("projectId") projectId: string,
     @Param("issueId") issueId: string,
   ) {
-    const issue = await this.issueService.findOne(
+    const issue = await this.issueService.findDetail(
       workspaceId,
       projectId,
       issueId,

@@ -14,7 +14,7 @@ import {
 } from "@nestjs/common";
 import { generateKeyBetween } from "fractional-indexing";
 import type { Prisma } from "generated/prisma/client";
-import { IssueStatus } from "generated/prisma/enums";
+import { IssueStatus, IssueType } from "generated/prisma/enums";
 import { CreateIssueDto } from "./dto/create-issue.dto";
 import { QueryIssuesDto } from "./dto/query-issues.dto";
 import { UpdateIssueDto } from "./dto/update-issue.dto";
@@ -49,6 +49,11 @@ export class IssueService {
     await this.validateProject(workspaceId, projectId);
     await this.validateAssignee(workspaceId, dto.assigneeId);
     await this.validateSprint(workspaceId, projectId, dto.sprintId);
+    const parent = await this.validateParent(
+      workspaceId,
+      projectId,
+      dto.parentIssueId,
+    );
 
     // Mirror the schema default explicitly: the lane a new card lands in decides
     // which ranks it has to sort after.
@@ -61,8 +66,14 @@ export class IssueService {
           description: dto.description,
           status,
           priority: dto.priority,
-          sprintId: dto.sprintId,
+          // A sub-issue is part of its parent's work, so it starts in the
+          // parent's sprint unless one was chosen.
+          sprintId: dto.sprintId ?? parent?.sprintId,
           assigneeId: dto.assigneeId,
+          ...(parent && {
+            parentIssueId: parent.id,
+            type: IssueType.SUBTASK,
+          }),
           number: await this.nextIssueNumber(tx, projectId),
           rank: await this.appendRank(tx, workspaceId, projectId, status),
           workspaceId,
@@ -94,11 +105,46 @@ export class IssueService {
           select: { id: true, name: true, avatarUrl: true },
         },
         sprint: { select: { id: true, name: true } },
+        // For the "↳ WA-3" tag on sub-issue rows and cards.
+        parentIssue: { select: { id: true, number: true, title: true } },
       });
 
     const { data, metaData } = await qb.execute(this.prisma.issue);
 
     return { issues: data, metaData };
+  }
+
+  /**
+   * The issue page's read: `findOne` plus its parent and sub-issues. Kept
+   * separate so the writes that start with `findOne` don't load them.
+   */
+  async findDetail(workspaceId: string, projectId: string, issueId: string) {
+    const issue = await this.prisma.issue.findFirst({
+      where: { id: issueId, workspaceId, projectId },
+      include: {
+        reporter: { select: { id: true, name: true, avatarUrl: true } },
+        assignee: { select: { id: true, name: true, avatarUrl: true } },
+        parentIssue: { select: { id: true, number: true, title: true } },
+        subIssues: {
+          orderBy: { number: "asc" },
+          select: {
+            id: true,
+            number: true,
+            title: true,
+            status: true,
+            priority: true,
+            assigneeId: true,
+            assignee: { select: { id: true, name: true, avatarUrl: true } },
+          },
+        },
+      },
+    });
+
+    if (!issue) {
+      throw new NotFoundException("Issue not found");
+    }
+
+    return issue;
   }
 
   async findOne(workspaceId: string, projectId: string, issueId: string) {
@@ -304,6 +350,32 @@ export class IssueService {
     if (!member) {
       throw new ForbiddenException("Assignee must belong to workspace");
     }
+  }
+
+  /**
+   * The parent for a new sub-issue: in this workspace *and* project, and not a
+   * sub-issue itself — nesting is one level deep.
+   */
+  private async validateParent(
+    workspaceId: string,
+    projectId: string,
+    parentIssueId?: string,
+  ) {
+    if (!parentIssueId) return null;
+
+    const parent = await this.prisma.issue.findFirst({
+      where: { id: parentIssueId, workspaceId, projectId },
+      select: { id: true, sprintId: true, parentIssueId: true },
+    });
+
+    if (!parent) {
+      throw new ForbiddenException("Invalid parent issue");
+    }
+    if (parent.parentIssueId) {
+      throw new BadRequestException("A sub-issue can't have sub-issues");
+    }
+
+    return parent;
   }
 
   private async validateSprint(

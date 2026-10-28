@@ -37,4 +37,13 @@ export class CreateIssueDto {
   @IsOptional()
   @IsUUID()
   assigneeId?: string;
+
+  /**
+   * Creates a sub-issue of this issue (same project, one level deep). The new
+   * issue is typed SUBTASK and, unless `sprintId` is sent, joins the parent's
+   * sprint.
+   */
+  @IsOptional()
+  @IsUUID()
+  parentIssueId?: string;
 }

@@ -370,6 +370,55 @@ describe("Tenancy (e2e)", () => {
     expect(numbers).toEqual([1, 2, 3, 4, 5, 6]);
   });
 
+  it("creates sub-issues one level deep and returns them with the parent", async () => {
+    const issues = `/api/v1/projects/${projectId}/issues`;
+    const child = data<{ id: string; type: string; parentIssueId: string }>(
+      await api()
+        .post(issues)
+        .set(as(aliceToken, aliceWs))
+        .send({ title: "Write launch notes", parentIssueId: issueId })
+        .expect(201),
+    );
+    expect(child).toMatchObject({ type: "SUBTASK", parentIssueId: issueId });
+
+    const parent = data<{ subIssues: { id: string }[] }>(
+      await api()
+        .get(`${issues}/${issueId}`)
+        .set(as(aliceToken, aliceWs))
+        .expect(200),
+    );
+    expect(parent.subIssues.map((s) => s.id)).toEqual([child.id]);
+
+    const childDetail = data<{ parentIssue: { id: string } }>(
+      await api()
+        .get(`${issues}/${child.id}`)
+        .set(as(aliceToken, aliceWs))
+        .expect(200),
+    );
+    expect(childDetail.parentIssue.id).toBe(issueId);
+
+    // No grandchildren.
+    await api()
+      .post(issues)
+      .set(as(aliceToken, aliceWs))
+      .send({ title: "Too deep", parentIssueId: child.id })
+      .expect(400);
+
+    // A parent must be in the same project.
+    const other = data<{ id: string }>(
+      await api()
+        .post("/api/v1/projects")
+        .set(as(aliceToken, aliceWs))
+        .send({ name: "Other" })
+        .expect(201),
+    );
+    await api()
+      .post(`/api/v1/projects/${other.id}/issues`)
+      .set(as(aliceToken, aliceWs))
+      .send({ title: "Cross-project", parentIssueId: issueId })
+      .expect(403);
+  });
+
   describe("errors keep the envelope", () => {
     it("reports a duplicate from the database as Prisma P2002", async () => {
       // The filter maps P2002 to 409; this checks the driver adapter really

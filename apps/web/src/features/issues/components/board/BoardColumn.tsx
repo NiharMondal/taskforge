@@ -8,12 +8,8 @@ import {
 
 import { Chip } from "@heroui/react";
 
-import { BOARD_STATUSES } from "../../constants";
 import type { Issue, IssueStatus } from "../../types/issue-types";
 import BoardIssueCard from "./BoardIssueCard";
-
-// Derived from the board lanes so it never drifts from the status set.
-const STATUS_ORDER: IssueStatus[] = BOARD_STATUSES.map((s) => s.value);
 
 interface BoardColumnProps {
 	status: IssueStatus;
@@ -42,14 +38,14 @@ export default function BoardColumn({
 	const { setNodeRef } = useDroppable({ id: status });
 	const { active, over } = useDndContext();
 
-  const sourceStatus = active?.data?.current?.sortable?.containerId as
+	// The lane the dragged card currently sits in. BoardView moves the card
+	// into a lane mid-drag only when it may be dropped there, so this is the
+	// lane the drop will land in — highlight it while the pointer is over it.
+	const cardLane = active?.data?.current?.sortable?.containerId as
 		| IssueStatus
 		| undefined;
 	const isOver =
-		sourceStatus !== undefined &&
-		Math.abs(
-			STATUS_ORDER.indexOf(status) - STATUS_ORDER.indexOf(sourceStatus),
-		) <= 0 &&
+		cardLane === status &&
 		(over?.id === status || issues.some((i) => i.id === over?.id));
 
 	return (

@@ -49,6 +49,9 @@ export default function ProfileSettings() {
 		if (isTempPublicId(values.avatarPublicId)) {
 			dto.avatarUrl = values.avatarUrl;
 			dto.avatarPublicId = values.avatarPublicId;
+		} else if (!values.avatarUrl && user?.avatarUrl) {
+			// "Remove" on a saved avatar: an explicit null clears it.
+			dto.avatarPublicId = null;
 		}
 
 		try {
@@ -103,6 +106,7 @@ export default function ProfileSettings() {
 				) : (
 					<ProfileForm
 						key={user.id}
+						userId={user.id}
 						defaultValues={{
 							name: user.name,
 							avatarUrl: user.avatarUrl ?? "",

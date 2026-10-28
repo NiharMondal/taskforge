@@ -1,3 +1,5 @@
+import { accessAs } from "@/common/permissions/test-access";
+import { WorkspaceAccess } from "@/common/permissions/workspace-access";
 import { PrismaService } from "@/prisma/prisma.service";
 import { ForbiddenException, NotFoundException } from "@nestjs/common";
 import { WorkspaceRole } from "generated/prisma/enums";
@@ -34,6 +36,7 @@ describe("MembershipService.findAllByWorkspaceId", () => {
             email: true,
           },
         },
+        assignedRole: { select: { id: true, name: true, systemKey: true } },
       },
     });
   });
@@ -42,10 +45,22 @@ describe("MembershipService.findAllByWorkspaceId", () => {
 describe("MembershipService role changes and removal", () => {
   const workspaceId = "ws-A";
   const admin = "user-admin";
+  const adminAccess = accessAs(WorkspaceRole.ADMIN, {
+    workspaceId,
+    userId: admin,
+  });
+  /** An actor whose custom role can manage members but do nothing else. */
+  const memberManager: WorkspaceAccess = {
+    ...adminAccess,
+    userId: "user-manager",
+    systemKey: null,
+    permissions: new Set(["member:manage"]),
+  };
 
   let roster: Record<string, WorkspaceRole>;
   let prisma: {
     membership: { findUnique: jest.Mock; update: jest.Mock; delete: jest.Mock };
+    role: { findFirst: jest.Mock };
   };
   let service: MembershipService;
 
@@ -74,6 +89,8 @@ describe("MembershipService role changes and removal", () => {
         update: jest.fn().mockResolvedValue({}),
         delete: jest.fn().mockResolvedValue({}),
       },
+      // No Role rows by default: the enum's default permissions apply.
+      role: { findFirst: jest.fn().mockResolvedValue(null) },
     };
     service = new MembershipService(prisma as unknown as PrismaService);
   });
@@ -83,7 +100,7 @@ describe("MembershipService role changes and removal", () => {
       await service.updateRole(
         workspaceId,
         "user-member",
-        admin,
+        adminAccess,
         WorkspaceRole.ADMIN,
       );
 
@@ -91,8 +108,32 @@ describe("MembershipService role changes and removal", () => {
         where: {
           userId_workspaceId: { userId: "user-member", workspaceId },
         },
-        data: { role: WorkspaceRole.ADMIN },
+        data: { role: WorkspaceRole.ADMIN, roleId: null },
       });
+    });
+
+    it("points the member at this workspace's matching Role row", async () => {
+      prisma.role.findFirst.mockResolvedValue({
+        id: "role-viewer",
+        permissions: [],
+      });
+
+      await service.updateRole(
+        workspaceId,
+        "user-member",
+        adminAccess,
+        WorkspaceRole.VIEWER,
+      );
+
+      expect(prisma.role.findFirst).toHaveBeenCalledWith({
+        where: { workspaceId, systemKey: WorkspaceRole.VIEWER },
+        select: { id: true, permissions: true },
+      });
+      expect(prisma.membership.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: { role: WorkspaceRole.VIEWER, roleId: "role-viewer" },
+        }),
+      );
     });
 
     it("404s a user who is a member of another workspace only", async () => {
@@ -100,23 +141,50 @@ describe("MembershipService role changes and removal", () => {
         service.updateRole(
           workspaceId,
           "user-from-B",
-          admin,
+          adminAccess,
           WorkspaceRole.ADMIN,
         ),
       ).rejects.toBeInstanceOf(NotFoundException);
       expect(prisma.membership.update).not.toHaveBeenCalled();
     });
 
-    it("refuses an actor who is only a MEMBER", async () => {
-      await expect(
-        service.updateRole(
+    describe("an actor may not hand out more access than their own", () => {
+      it("refuses to assign a role with permissions the actor lacks", async () => {
+        await expect(
+          service.updateRole(
+            workspaceId,
+            "user-member",
+            memberManager,
+            WorkspaceRole.ADMIN,
+          ),
+        ).rejects.toBeInstanceOf(ForbiddenException);
+        expect(prisma.membership.update).not.toHaveBeenCalled();
+      });
+
+      it("refuses to change a member who holds permissions the actor lacks", async () => {
+        await expect(
+          service.updateRole(
+            workspaceId,
+            "user-member",
+            memberManager,
+            WorkspaceRole.VIEWER,
+          ),
+        ).rejects.toBeInstanceOf(ForbiddenException);
+        expect(prisma.membership.update).not.toHaveBeenCalled();
+      });
+
+      it("allows a change entirely within the actor's own access", async () => {
+        roster["user-viewer"] = WorkspaceRole.VIEWER;
+
+        await service.updateRole(
           workspaceId,
-          "user-owner",
-          "user-member",
+          "user-viewer",
+          memberManager,
           WorkspaceRole.VIEWER,
-        ),
-      ).rejects.toBeInstanceOf(ForbiddenException);
-      expect(prisma.membership.update).not.toHaveBeenCalled();
+        );
+
+        expect(prisma.membership.update).toHaveBeenCalled();
+      });
     });
 
     it.each([
@@ -125,7 +193,7 @@ describe("MembershipService role changes and removal", () => {
       ["anyone to OWNER", "user-member", WorkspaceRole.OWNER],
     ])("refuses to change %s", async (_label, target, role) => {
       await expect(
-        service.updateRole(workspaceId, target, admin, role),
+        service.updateRole(workspaceId, target, adminAccess, role),
       ).rejects.toBeInstanceOf(ForbiddenException);
       expect(prisma.membership.update).not.toHaveBeenCalled();
     });
@@ -133,7 +201,7 @@ describe("MembershipService role changes and removal", () => {
 
   describe("removeMember", () => {
     it("removes the member from this workspace only", async () => {
-      await service.removeMember(workspaceId, "user-member");
+      await service.removeMember(workspaceId, "user-member", adminAccess);
 
       expect(prisma.membership.delete).toHaveBeenCalledWith({
         where: {
@@ -144,14 +212,14 @@ describe("MembershipService role changes and removal", () => {
 
     it("404s a user who is not in this workspace", async () => {
       await expect(
-        service.removeMember(workspaceId, "user-from-B"),
+        service.removeMember(workspaceId, "user-from-B", adminAccess),
       ).rejects.toBeInstanceOf(NotFoundException);
       expect(prisma.membership.delete).not.toHaveBeenCalled();
     });
 
     it("refuses to remove the OWNER", async () => {
       await expect(
-        service.removeMember(workspaceId, "user-owner"),
+        service.removeMember(workspaceId, "user-owner", adminAccess),
       ).rejects.toBeInstanceOf(ForbiddenException);
       expect(prisma.membership.delete).not.toHaveBeenCalled();
     });

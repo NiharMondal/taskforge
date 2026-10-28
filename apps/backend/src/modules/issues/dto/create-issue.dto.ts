@@ -1,3 +1,4 @@
+import { IsOptionalNonNull } from "@/common/decorators/is-optional-non-null.decorator";
 import {
   IsEnum,
   IsNotEmpty,
@@ -21,11 +22,11 @@ export class CreateIssueDto {
   @MaxLength(2000)
   description?: string;
 
-  @IsOptional()
+  @IsOptionalNonNull()
   @IsEnum(IssueStatus)
   status?: IssueStatus;
 
-  @IsOptional()
+  @IsOptionalNonNull()
   @IsEnum(IssuePriority)
   priority?: IssuePriority;
 

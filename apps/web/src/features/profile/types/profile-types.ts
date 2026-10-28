@@ -11,6 +11,7 @@ export interface User {
 	email: string;
 	avatarUrl: string | null;
 	avatarPublicId: string | null;
+	emailVerifiedAt: string | null;
 	createdAt: string;
 	updatedAt: string;
 }
@@ -23,5 +24,6 @@ export interface User {
 export interface UpdateProfileDto {
 	name?: string;
 	avatarUrl?: string;
-	avatarPublicId?: string;
+	/** `null` removes the avatar (the backend also deletes the stored image). */
+	avatarPublicId?: string | null;
 }

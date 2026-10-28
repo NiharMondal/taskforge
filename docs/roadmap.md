@@ -102,11 +102,11 @@ The schema already has models with no code: `Comment`, `Label` and `IssueLabel`,
 
 ## Phase 5: Docs cleanup (can ride along with any PR)
 
-- [apps/backend/CLAUDE.md](apps/backend/CLAUDE.md) claims `?sort=rank` works, but `QueryIssuesDto` has no `sort` field, so the whitelist pipe strips it. This comes from code reading and should be confirmed with a live request. Also fix the `baseUrl` line.
+- ~~`?sort=rank` is stripped by the whitelist pipe.~~ `QueryIssuesDto` now declares `sort`. Still open: fix the `baseUrl` line in [apps/backend/CLAUDE.md](apps/backend/CLAUDE.md).
 - [apps/backend/src/modules/auth/CLAUDE.md](apps/backend/src/modules/auth/CLAUDE.md) lines 15 and 19: `RolesGuard` is not global, and it throws rather than deferring.
-- `apps/web/.claude/schema.prisma` and `BACK_END_API.md` have drifted badly (no `Auth`, `OAuthAccount`, `avatarPublicId` and so on). Regenerate them or delete them so nothing treats them as the contract.
+- ~~`apps/web/.claude/schema.prisma` and `BACK_END_API.md` have drifted badly.~~ Deleted; docs point at the real schema and controllers.
 - `apps/web/spec/projects.md` is stale (mock data), and `layout.md` describes a workspace-switch endpoint that was deliberately not built.
-- Backend specs (`apps/backend/spec/`) are gitignored, so they vanish on a fresh clone even though the root CLAUDE.md points readers to them. Commit them or move the content into tracked docs. `issue-spec.md` also lists 5 statuses where the schema has 8.
+- ~~Backend specs (`apps/backend/spec/`) are gitignored.~~ No longer ignored, and `issue-spec.md` now lists all 8 statuses.
 - Replace the boilerplate READMEs in both apps. Add a LICENSE.
 
 ## Verification

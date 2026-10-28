@@ -2,8 +2,16 @@ import { z } from "zod";
 import type { DateValue } from "@internationalized/date";
 export const sprintSchema = z
 	.object({
-		name: z.string().min(1, "Name is required"),
-		goal: z.string().nullable().optional(),
+		// Limits mirror the backend's CreateSprintDto / UpdateSprintDto.
+		name: z
+			.string()
+			.min(1, "Name is required")
+			.max(100, "Name must be at most 100 characters"),
+		goal: z
+			.string()
+			.max(500, "Goal must be at most 500 characters")
+			.nullable()
+			.optional(),
 		startDate: z.custom<DateValue>().nullable().optional(),
 		endDate: z.custom<DateValue>().nullable().optional(),
 	})

@@ -5,14 +5,17 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 
 import { FormTextField, FormWrapper } from "@/components/form-element";
-import { Eye, EyeOff } from "lucide-react";
 import { signIn } from "next-auth/react";
+import PasswordVisibilityToggle from "./password-visibility-toggle";
+import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { register } from "../api/auth-api";
+import { resolvePostLoginTarget } from "../lib/callback-url";
 import { registerSchema, type RegisterInput } from "../schemas/auth-schema";
 
 export function RegisterForm() {
 	const [showPassword, setShowPassword] = useState(false);
+	const searchParams = useSearchParams();
 
 	const methods = useForm<RegisterInput>({
 		resolver: zodResolver(registerSchema),
@@ -26,13 +29,21 @@ export function RegisterForm() {
 
 	const onSubmit = async (values: RegisterInput) => {
 		try {
-			const res = await register(values);
+			// Only what the backend reads: `confirmPassword` is form-only.
+			const res = await register({
+				name: values.name,
+				email: values.email,
+				password: values.password,
+			});
 			if (res.success) {
 				await signIn("credentials", {
 					email: values.email,
 					password: values.password,
 					redirect: true,
-					redirectTo: "/dashboard",
+					// e.g. back to the invite link that sent them here
+					redirectTo: resolvePostLoginTarget(
+						searchParams.get("callbackUrl"),
+					),
 				});
 			}
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -62,13 +73,10 @@ export function RegisterForm() {
 				type={showPassword ? "text" : "password"}
 				placeholder="At least 8 characters"
 				ornament={
-					<div onClick={() => setShowPassword((prev) => !prev)}>
-						{showPassword ? (
-							<Eye size={20} />
-						) : (
-							<EyeOff size={20} />
-						)}
-					</div>
+					<PasswordVisibilityToggle
+						isVisible={showPassword}
+						onToggle={() => setShowPassword((prev) => !prev)}
+					/>
 				}
 			/>
 
@@ -78,18 +86,23 @@ export function RegisterForm() {
 				type={showPassword ? "text" : "password"}
 				placeholder="Re-enter your password"
 				ornament={
-					<div onClick={() => setShowPassword((prev) => !prev)}>
-						{showPassword ? (
-							<Eye size={20} />
-						) : (
-							<EyeOff size={20} />
-						)}
-					</div>
+					<PasswordVisibilityToggle
+						isVisible={showPassword}
+						onToggle={() => setShowPassword((prev) => !prev)}
+					/>
 				}
 			/>
 
-			<Button type="submit" variant="primary" fullWidth className="mt-2">
-				Create Account
+			<Button
+				type="submit"
+				variant="primary"
+				fullWidth
+				className="mt-2"
+				isDisabled={methods.formState.isSubmitting}
+			>
+				{methods.formState.isSubmitting
+					? "Creating account…"
+					: "Create Account"}
 			</Button>
 		</FormWrapper>
 	);

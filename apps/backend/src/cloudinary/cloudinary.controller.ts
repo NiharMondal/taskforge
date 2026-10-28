@@ -1,3 +1,5 @@
+import { CurrentUser } from "@/common/decorators/current-user.decorator";
+import type { JwtPayload } from "@/common/strategies/jwt.strategy";
 import { sendResponse } from "@/common/utils/send-response";
 import { Body, Controller, HttpCode, HttpStatus, Post } from "@nestjs/common";
 import { CloudinaryService } from "./cloudinary.service";
@@ -11,8 +13,11 @@ export class CloudinaryController {
   // picks an avatar but cancels instead of saving). Best-effort cleanup.
   @Post("delete-temp")
   @HttpCode(HttpStatus.OK)
-  async deleteTemp(@Body() dto: DeleteTempImageDto) {
-    await this.cloudinary.deleteTemp(dto.publicId);
+  async deleteTemp(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: DeleteTempImageDto,
+  ) {
+    await this.cloudinary.deleteTemp(dto.publicId, user.sub);
     return sendResponse({
       statusCode: HttpStatus.OK,
       message: "Temporary image deleted",

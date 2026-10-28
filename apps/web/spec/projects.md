@@ -91,64 +91,17 @@ export interface CreateProjectDto {
 
 ### `src/features/projects/api/project-api.ts`
 
+> Implementation note: this section originally showed mock data behind a `@/lib/api-client`
+> import, which was never built. The real file calls the backend through `api` from
+> `src/lib/axios.ts`, with each request pinned to its workspace:
+
 ```ts
-import apiClient from "@/lib/api-client";
-import { Project, CreateProjectDto } from "../types/project-types";
-
-// Mock data — swap for real API calls when backend is ready
-const MOCK_PROJECTS: Project[] = [
-  {
-    id: "1",
-    name: "Engineering",
-    key: "ENG",
-    description: "Core platform development",
-    workspaceId: "ws-1",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    _count: { issues: 12, sprints: 2 },
-  },
-  {
-    id: "2",
-    name: "Design System",
-    key: "DS",
-    description: "Component library and tokens",
-    workspaceId: "ws-1",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    _count: { issues: 5, sprints: 1 },
-  },
-];
-
-export async function getProjects(workspaceId: string): Promise<Project[]> {
-  // TODO: replace with real API call
-  // const { data } = await apiClient.get<{ data: Project[] }>(
-  //   `/workspaces/${workspaceId}/projects`
-  // );
-  // return data.data;
-  return MOCK_PROJECTS;
-}
-
-export async function createProject(
-  workspaceId: string,
-  dto: CreateProjectDto
-): Promise<Project> {
-  // TODO: replace with real API call
-  // const { data } = await apiClient.post<{ data: Project }>(
-  //   `/workspaces/${workspaceId}/projects`,
-  //   dto
-  // );
-  // return data.data;
-  const newProject: Project = {
-    id: String(Date.now()),
-    ...dto,
-    workspaceId,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    _count: { issues: 0, sprints: 0 },
-  };
-  return newProject;
+export async function getProjects(workspaceId: string): Promise<ApiResponse<Project[]>> {
+	return api.get<Project[]>("/projects", inWorkspace(workspaceId));
 }
 ```
+
+`createProject`, `updateProject` (PATCH) and `deleteProject` follow the same pattern.
 
 ---
 

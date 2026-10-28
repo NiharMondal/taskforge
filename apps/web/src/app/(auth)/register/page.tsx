@@ -6,8 +6,9 @@ import {
   CardTitle,
 } from "@heroui/react";
 import type { Metadata } from "next";
-import Link from "next/link";
+import { Suspense } from "react";
 
+import AuthSwitchLink from "@/features/auth/components/auth-switch-link";
 import { RegisterForm } from "@/features/auth/components/register-form";
 
 export const metadata: Metadata = {
@@ -25,13 +26,16 @@ export default function RegisterPage() {
       </CardHeader>
 
       <CardContent className="flex flex-col gap-6">
-        <RegisterForm />
+        {/* useSearchParams() in RegisterForm and AuthSwitchLink requires a Suspense boundary. */}
+        <Suspense fallback={null}>
+          <RegisterForm />
+        </Suspense>
 
         <p className="text-center text-sm text-muted">
           Already have an account?{" "}
-          <Link href="/login" className="font-medium text-accent hover:underline">
-            Sign in
-          </Link>
+          <Suspense fallback={null}>
+            <AuthSwitchLink href="/login">Sign in</AuthSwitchLink>
+          </Suspense>
         </p>
       </CardContent>
     </Card>

@@ -4,15 +4,23 @@ import { PrismaService } from "@/prisma/prisma.service";
 import {
   ConflictException,
   Injectable,
-  NotFoundException,
   UnauthorizedException,
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
+import { seedSystemRoles } from "../roles/system-roles";
 import { AuthProvider, WorkspaceRole } from "generated/prisma/enums";
 import { GoogleAuthDto } from "./dto/google-auth.dto";
 import { LoginDto } from "./dto/login.dto";
 import { RegisterDto } from "./dto/register.dto";
 import { GoogleTokenVerifier } from "./google-token-verifier";
+
+/**
+ * A bcrypt hash (cost 12, like real ones) of a random string nobody knows.
+ * Compared against when no account matches, so a miss takes as long as a
+ * wrong password.
+ */
+const DUMMY_PASSWORD_HASH =
+  "$2b$12$6MwxTD0GzVe2z674jsvmmeLb5GTNHDmOUK.7tFq.31DEnwDm1nLSq";
 
 @Injectable()
 export class AuthService {
@@ -63,12 +71,14 @@ export class AuthService {
         },
       });
 
-      // 4. Create Membership
+      // 4. Seed its roles and make the user the OWNER
+      const roleIds = await seedSystemRoles(tx, workspace.id);
       await tx.membership.create({
         data: {
           userId: user.id,
           workspaceId: workspace.id,
           role: WorkspaceRole.OWNER,
+          roleId: roleIds[WorkspaceRole.OWNER],
         },
       });
 
@@ -91,30 +101,37 @@ export class AuthService {
     };
   }
 
+  /**
+   * Password sign-in. Starts from the EMAIL sign-in method (`Auth`), matched
+   * through its user's email — the email itself lives on `User`.
+   *
+   * Every failure is the same 401, and an unknown email still pays for a
+   * bcrypt comparison, so neither the response nor its timing tells a caller
+   * whether an address is registered (or only signs in with Google).
+   */
   async signIn(dto: LoginDto) {
-    const user = await this.prisma.user.findFirst({
+    const auth = await this.prisma.auth.findFirst({
       where: {
-        email: { equals: normalizeEmail(dto.email), mode: "insensitive" },
+        provider: AuthProvider.EMAIL,
+        // Case-insensitive because rows created before emails were normalized
+        // may be mixed-case.
+        user: {
+          email: { equals: normalizeEmail(dto.email), mode: "insensitive" },
+        },
       },
-      include: {
-        auths: { where: { provider: AuthProvider.EMAIL } },
-      },
+      include: { user: true },
     });
-
-    if (!user) throw new NotFoundException("User not found");
-
-    // A Google-only account has no EMAIL row, so there is no password to check.
-    const password = user.auths[0]?.password;
-    if (!password) {
-      throw new UnauthorizedException("Password is not set for this account");
-    }
 
     const isPasswordValid = await passwordUtils.comparePassword(
       dto.password,
-      password,
+      auth?.password ?? DUMMY_PASSWORD_HASH,
     );
 
-    if (!isPasswordValid) throw new UnauthorizedException("Invalid password");
+    if (!auth?.password || !isPasswordValid) {
+      throw new UnauthorizedException("Invalid email or password");
+    }
+
+    const { user } = auth;
 
     const token = this.jwtService.sign({
       sub: user.id,
@@ -138,7 +155,8 @@ export class AuthService {
    * token Google has signed — never from the request body. Accounts are matched
    * on Google's stable `sub` first; the email is only used to link a Google
    * login to an existing account, and only because Google vouched for it
-   * (`email_verified`).
+   * (`email_verified`). Linking to an account whose email was never verified
+   * removes its password, since anyone could have registered that address.
    */
   async googleSignIn(dto: GoogleAuthDto) {
     const identity = await this.googleTokenVerifier.verify(dto.idToken);
@@ -177,12 +195,30 @@ export class AuthService {
         );
       }
 
-      await this.prisma.auth.create({
-        data: {
-          provider: AuthProvider.GOOGLE,
-          providerId: googleId,
-          userId: existingUser.id,
-        },
+      // Google has just proven this person owns the email. If nobody had
+      // before, the account's password was set by whoever registered the
+      // address — not necessarily its owner (account pre-hijacking). Drop it so
+      // that person can't keep a way in; the owner signs in with Google.
+      const emailWasUnverified = !existingUser.emailVerifiedAt;
+
+      await this.prisma.$transaction(async (tx) => {
+        if (emailWasUnverified) {
+          await tx.auth.deleteMany({
+            where: { userId: existingUser.id, provider: AuthProvider.EMAIL },
+          });
+          await tx.user.update({
+            where: { id: existingUser.id },
+            data: { emailVerifiedAt: new Date() },
+          });
+        }
+
+        await tx.auth.create({
+          data: {
+            provider: AuthProvider.GOOGLE,
+            providerId: googleId,
+            userId: existingUser.id,
+          },
+        });
       });
 
       return this.googleSession(existingUser, picture);
@@ -195,6 +231,7 @@ export class AuthService {
           name,
           email,
           avatarUrl: picture ?? null,
+          emailVerifiedAt: new Date(),
         },
       });
 
@@ -212,11 +249,13 @@ export class AuthService {
         },
       });
 
+      const roleIds = await seedSystemRoles(tx, workspace.id);
       await tx.membership.create({
         data: {
           userId: newUser.id,
           workspaceId: workspace.id,
           role: WorkspaceRole.OWNER,
+          roleId: roleIds[WorkspaceRole.OWNER],
         },
       });
 

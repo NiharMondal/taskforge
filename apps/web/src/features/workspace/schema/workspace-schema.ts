@@ -1,8 +1,18 @@
 import { z } from "zod";
 
+// Limits mirror the backend's CreateWorkspaceDto / UpdateWorkspaceDto.
 export const workspaceSchema = z.object({
-	name: z.string().min(1, "Name is required"),
-	description: z.string().nullable().optional(),
+	name: z
+		.string()
+		.trim()
+		.min(1, "Name is required")
+		.min(3, "Name must be at least 3 characters")
+		.max(100, "Name must be at most 100 characters"),
+	description: z
+		.string()
+		.max(500, "Description must be at most 500 characters")
+		.nullable()
+		.optional(),
 });
 
 export type TWorkspaceFormValues = z.infer<typeof workspaceSchema>;

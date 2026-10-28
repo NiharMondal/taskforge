@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { WorkspaceRole } from "generated/prisma/enums";
+import { seedSystemRoles } from "../roles/system-roles";
 import { CreateWorkspaceDto } from "./dto/create-workspace.dto";
 import { UpdateWorkspaceDto } from "./dto/update-workspace.dto";
 
@@ -22,11 +23,13 @@ export class WorkspaceService {
         },
       });
 
+      const roleIds = await seedSystemRoles(tx, workspace.id);
       await tx.membership.create({
         data: {
           userId,
           workspaceId: workspace.id,
           role: WorkspaceRole.OWNER,
+          roleId: roleIds[WorkspaceRole.OWNER],
         },
       });
 

@@ -1,3 +1,4 @@
+import AuthSwitchLink from "@/features/auth/components/auth-switch-link";
 import LoginForm from "@/features/auth/components/login-form";
 import {
   Card,
@@ -7,7 +8,6 @@ import {
   CardTitle,
 } from "@heroui/react";
 import type { Metadata } from "next";
-import Link from "next/link";
 import { Suspense } from "react";
 
 
@@ -31,9 +31,10 @@ export default function LoginPage() {
 
         <p className="text-center text-sm text-muted">
           Don&apos;t have an account?{" "}
-          <Link href="/register" className="font-medium text-accent hover:underline">
-            Create one
-          </Link>
+          {/* useSearchParams() in AuthSwitchLink requires a Suspense boundary. */}
+          <Suspense fallback={null}>
+            <AuthSwitchLink href="/register">Create one</AuthSwitchLink>
+          </Suspense>
         </p>
       </CardContent>
     </Card>

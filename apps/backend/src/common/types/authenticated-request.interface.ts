@@ -1,8 +1,9 @@
 import { Request } from "express";
-import { WorkspaceRole } from "generated/prisma/enums";
+import type { WorkspaceAccess } from "../permissions/workspace-access";
 
 export interface AuthenticatedRequest extends Request {
   user: { sub: string };
   workspaceId?: string;
-  membershipRole?: WorkspaceRole;
+  /** Set by WorkspaceGuard / PermissionsGuard (see resolveWorkspaceAccess). */
+  access?: WorkspaceAccess;
 }

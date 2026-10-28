@@ -1,6 +1,8 @@
 import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
+import { accessAs } from "@/common/permissions/test-access";
 import { WorkspaceGuard } from "@/common/guards/workspace.guard";
 import { HttpExceptionFilter } from "@/lib/http-exception.filter";
+import { PrismaService } from "@/prisma/prisma.service";
 import {
   CanActivate,
   ExecutionContext,
@@ -20,7 +22,7 @@ const allowAsWorkspaceAdmin: CanActivate = {
     const req = context.switchToHttp().getRequest<Record<string, unknown>>();
     req.user = { sub: "user-admin", email: "admin@example.com" };
     req.workspaceId = "ws-1";
-    req.membershipRole = WorkspaceRole.ADMIN;
+    req.access = accessAs(WorkspaceRole.ADMIN, { userId: "user-admin" });
     return true;
   },
 };
@@ -35,7 +37,11 @@ describe("SprintController (HTTP validation)", () => {
 
     const moduleRef = await Test.createTestingModule({
       controllers: [SprintController],
-      providers: [{ provide: SprintService, useValue: service }],
+      providers: [
+        { provide: SprintService, useValue: service },
+        // PermissionsGuard's dependency; unused since the fake guard sets access.
+        { provide: PrismaService, useValue: {} },
+      ],
     })
       .overrideGuard(JwtAuthGuard)
       .useValue(allowAsWorkspaceAdmin)
@@ -60,13 +66,9 @@ describe("SprintController (HTTP validation)", () => {
         .send({ goal: "Ship the board" })
         .expect(200);
 
-      expect(service.updateSprint).toHaveBeenCalledWith(
-        "ws-1",
-        "p-1",
-        "s-1",
-        WorkspaceRole.ADMIN,
-        { goal: "Ship the board" },
-      );
+      expect(service.updateSprint).toHaveBeenCalledWith("ws-1", "p-1", "s-1", {
+        goal: "Ship the board",
+      });
     });
 
     it("lets the goal be cleared with null", async () => {
@@ -75,13 +77,19 @@ describe("SprintController (HTTP validation)", () => {
         .send({ goal: null })
         .expect(200);
 
-      expect(service.updateSprint).toHaveBeenCalledWith(
-        "ws-1",
-        "p-1",
-        "s-1",
-        WorkspaceRole.ADMIN,
-        { goal: null },
-      );
+      expect(service.updateSprint).toHaveBeenCalledWith("ws-1", "p-1", "s-1", {
+        goal: null,
+      });
+    });
+
+    it("rejects null for the name, whose column can't be null", async () => {
+      // `@IsOptional()` used to let this through to Prisma and a 500.
+      await request(server())
+        .patch("/projects/p-1/sprints/s-1")
+        .send({ name: null })
+        .expect(400);
+
+      expect(service.updateSprint).not.toHaveBeenCalled();
     });
 
     it("still rejects malformed fields", async () => {

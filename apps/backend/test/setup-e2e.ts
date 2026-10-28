@@ -11,10 +11,12 @@ if (!url) {
 }
 
 const dbName = new URL(url).pathname.replace(/^\//, "");
-if (!/(e2e|test)/i.test(dbName)) {
+// A whole word, not a substring: "latest" or "contest" must not pass.
+if (!/(^|[_-])(e2e|tests?)([_-]|$)/i.test(dbName)) {
   throw new Error(
     `Refusing to run e2e tests against "${dbName}". Use a database whose name ` +
-      `contains "e2e" or "test", e.g. DATABASE_URL=.../taskforge_e2e pnpm test:e2e`,
+      `has "e2e" or "test" as a word (e.g. taskforge_e2e, test_taskforge), ` +
+      `e.g. DATABASE_URL=.../taskforge_e2e pnpm test:e2e`,
   );
 }
 

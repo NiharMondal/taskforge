@@ -13,7 +13,7 @@ pnpm lint       # run ESLint
 pnpm add <pkg>  # install packages (always use pnpm, not npm/yarn)
 ```
 
-No test runner is configured — there are no tests to run. Type-check with `npx tsc --noEmit`.
+No test runner is configured — there are no tests to run. Type-check with `pnpm typecheck` (`next typegen` then `tsc --noEmit`; plain `tsc` misses the generated route types).
 
 Requires `.env.local` (copy `.env.example`): `NEXT_PUBLIC_API_URL` (backend base, defaults to `http://localhost:5001/api/v1`), `AUTH_SECRET`, `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` (Google sign-in; without them the OAuth redirect carries `client_id=undefined`), plus `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME` / `NEXT_PUBLIC_CLOUDINARY_PRESET_NAME` for avatar upload. The API base URL default lives once, in `src/lib/api-url.ts`.
 
@@ -21,10 +21,8 @@ Path alias: `@/*` → `./src/*`.
 
 ## Reference docs (read before designing anything)
 
-The backend lives alongside this app at `../backend/` (see the root `CLAUDE.md`). Its `prisma/schema.prisma` and `src/modules/*/` controllers are the source of truth; the copies below predate the monorepo and drift:
+The backend lives alongside this app at `../backend/` (see the root `CLAUDE.md`). Its `prisma/schema.prisma` (data model) and `src/modules/*/` controllers (routes and payloads) are the contract — read them directly. Types in `features/*/types/` mirror them by hand. **Every update is PATCH**, never PUT.
 
-- `.claude/schema.prisma` — copy of the backend data model. Types in `features/*/types/` mirror it.
-- `.claude/BACK_END_API.md` — endpoint map. **Every update is PATCH**, never PUT.
 - `.claude/AI_GUIDE.md` — project-level architectural rules (workspace scoping, optimistic updates, no monolithic components).
 - `.claude/FORM_GUIDE.md` — the canonical form pattern with a worked example.
 - `.claude/migrations/` — historical schema-change notes from the two-repo era (all applied).
@@ -38,7 +36,7 @@ This is a **Next.js 16** App Router project (not Next.js 13/14/15 — APIs may d
 
 ### Multi-tenant model
 
-Every workspace is a tenant. The active workspace is stored in `localStorage` (`taskforge.activeWorkspaceId`) and surfaced via `useWorkspace()` (from `src/features/workspace/context/workspace-context.tsx`). Every API request carries it as `x-workspace-id` — the axios interceptor in `src/lib/axios.ts` attaches it automatically. Switching workspaces calls `queryClient.invalidateQueries()` to drop all cached server data.
+Every workspace is a tenant. The active workspace is stored in `localStorage` (`taskforge.activeWorkspaceId`) and surfaced via `useWorkspace()` (from `src/features/workspace/context/workspace-context.tsx`). Every API request carries it as `x-workspace-id`. **Workspace-scoped API functions take `workspaceId` as their first argument and pass `inWorkspace(workspaceId)` (`src/lib/axios.ts`) as the request config** — the hook supplies the same id it keys the cache by, so a response can only land in the cache entry of the workspace it was fetched for. The interceptor only falls back to the active workspace for requests that don't name one. Switching workspaces invalidates nothing: the new workspace's queries load under their own keys, and invalidating would refetch the old workspace's still-mounted queries (which is how B's data once got stored under A's key).
 
 Auth tokens identify the *user*; the workspace header identifies the *tenant*. A user belongs to many workspaces, so the header **is** the workspace switch. Issue/project query keys include both `workspaceId` and `projectId` so cache entries never leak across tenants or projects.
 
@@ -116,12 +114,12 @@ Mutations use `.message` from the envelope for toast feedback. Every rejection i
 
 - Lane order comes from `BOARD_STATUSES` (all statuses except `BACKLOG`; backlog is triage and appears on the list view only).
 - Card position persists as `Issue.rank`, a fractional index (`fractional-indexing`) computed by `features/issues/lib/rank.ts`. `rankBetween(prev, next)` returns `undefined` on invalid bounds so the caller can fall back to a status-only PATCH; `compareIssueRank` sorts un-ranked rows last. Moving a card is a single-row PATCH — no renumbering.
-- A drag may only cross to an **adjacent** lane, measured from the lane the drag started in.
+- A drag may only land back in its starting lane or in one of that lane's `STATUS_TRANSITIONS` (`features/issues/constants.ts`) — the same rule as the status Selects. The backend enforces the same map (`apps/backend/src/modules/issues/status-transitions.ts`) on every `PATCH` that changes `status`, so change both together.
 - `BoardView` mirrors server data into local column state and resyncs by reference comparison during render (not an effect), so an in-progress drag is never clobbered. The stable `EMPTY_ISSUES` constant exists to keep that comparison from looping.
 
 ### Roles and permissions
 
-The JWT has no role — it comes from the membership roster. `useWorkspacePermissions()` (`features/memberships/hooks/`) returns the viewer's flags (`canCreateIssue`, `canEditIssueFields`, `canChangeIssueStatus`, `canMarkIssueDone`, `canManageProjects`, `canManageSprints`), computed by `getPermissions` in `features/memberships/lib/permissions.ts`. That file mirrors the backend rules (create/delete and project/sprint writes are OWNER/ADMIN; a MEMBER may change `status` — never to `DONE` — and board `rank`; a VIEWER is read-only), so **change both together**. Which roster row is "me" comes from the access token's `sub` (what the backend authorizes as), not the cached session id. Flags are all `false` *while loading*; if the role still can't be determined afterwards (roster failed, user not on it) the hook **fails open** (`UNRESTRICTED_PERMISSIONS`, `isRoleKnown: false`, plus a dev-only `[permissions]` console warning) so a lookup problem never locks an owner out. Hide or disable controls with these flags rather than letting users hit a 403 toast — but they are UX only; the backend is the authority.
+The JWT has no role — it comes from the membership roster. `useWorkspacePermissions()` (`features/memberships/hooks/`) returns the viewer's flags (`canCreateIssue`, `canEditIssueFields`, `canChangeIssueStatus`, `canMarkIssueDone`, `canDeleteIssue`, `canManageProjects`, `canManageSprints`, `canDeleteWorkspace`), computed by `getPermissions` in `features/memberships/lib/permissions.ts`. That file mirrors the backend rules (create/delete and project/sprint writes are OWNER/ADMIN; a MEMBER may change `status` — never to `DONE` — and board `rank`; a VIEWER is read-only), so **change both together**. Which roster row is "me" comes from the access token's `sub` (what the backend authorizes as), not the cached session id. Flags are all `false` *while loading*; if the role still can't be determined afterwards (roster failed, user not on it) the hook **fails open** (`UNRESTRICTED_PERMISSIONS`, `isRoleKnown: false`, plus a dev-only `[permissions]` console warning) so a lookup problem never locks an owner out. Hide or disable controls with these flags rather than letting users hit a 403 toast — but they are UX only; the backend is the authority.
 
 ### Rendering user HTML
 
@@ -154,7 +152,7 @@ Rich text is TipTap (`@tiptap/react` + `starter-kit`) via `src/components/ui/Ric
 
 ### Image upload (Cloudinary)
 
-Two-phase, per `spec/cloudinary.md`: the browser uploads directly to Cloudinary via an unsigned preset into a `temp/` folder (`uploadToCloudinary` in `src/lib/cloudinary.ts`), then sends `{ avatarUrl, avatarPublicId }` to the backend, which *promotes* the asset on save. Unsaved temp assets are cleaned up through the backend's `/cloudinary/delete-temp` (best-effort; the frontend never holds the API secret).
+Two-phase, per `spec/cloudinary.md`: the browser uploads directly to Cloudinary via an unsigned preset into the user's own temp folder, `temp/user-avatar/<userId>` (`uploadToCloudinary` in `src/lib/cloudinary.ts`; the backend's delete-temp only accepts that folder), then sends `{ avatarUrl, avatarPublicId }` to the backend, which *promotes* the asset on save. Removing a saved avatar sends `avatarPublicId: null`, which clears both fields and deletes the stored asset. Unsaved temp assets are cleaned up through the backend's `/cloudinary/delete-temp` (best-effort; the frontend never holds the API secret).
 
 ### UI library
 

@@ -42,11 +42,17 @@ pnpm add next-auth
 # 📁 File Structure
 
 ```
-/app/api/auth/[...nextauth]/route.ts
-/lib/auth.ts
-/lib/api-client.ts
-/middleware.ts
+src/app/api/auth/[...nextauth]/route.ts
+src/lib/auth.ts          # providers, jwt/session callbacks (Node runtime)
+src/lib/auth.config.ts   # Edge-safe subset + route authorization
+src/proxy.ts             # Next 16's replacement for middleware.ts
+src/lib/axios.ts         # the `api` client; attaches the Bearer token
+src/lib/auth-token.ts    # token-getter seam registered by src/provider/auth-provider.tsx
 ```
+
+> Implementation note: this spec predates the code. Where its samples differ from the files above
+> (they use the v4 `next-auth/middleware` API and a `fetch` wrapper that was never built), the
+> files are the truth.
 
 ---
 
@@ -236,45 +242,24 @@ export default async function Dashboard() {
 
 ---
 
-## Middleware (Optional but Recommended)
+## Proxy (`src/proxy.ts`)
 
-## `/middleware.ts`
-
-```ts
-import { withAuth } from "next-auth/middleware";
-
-export default withAuth({
-  pages: {
-    signIn: "/login",
-  },
-});
-
-export const config = {
-  matcher: ["/dashboard/:path*"],
-};
-```
+Next 16 renamed `middleware.ts` to `proxy.ts`. It runs Auth.js with the Edge-safe
+`src/lib/auth.config.ts`, whose `authorized` callback lets `/login`, `/register` and `/api/auth`
+through, sends signed-in users away from the auth pages, and redirects everyone else without a
+session to `/login?callbackUrl=<requested url>`. It is a UX guard only; the `(dashboard)` layout
+re-checks the session and the backend is the real boundary.
 
 ---
 
 # 🌐 API Client (CRITICAL)
 
-## `/lib/api-client.ts`
+## `src/lib/axios.ts`
 
-```ts
-import { getSession } from "next-auth/react";
-
-export async function apiFetch(url: string, options: any = {}) {
-  const session = await getSession();
-
-  return fetch(url, {
-    ...options,
-    headers: {
-      ...options.headers,
-      Authorization: `Bearer ${session?.accessToken}`,
-    },
-  });
-}
-```
+Every request goes through the `api` wrapper in `src/lib/axios.ts`. Its request interceptor sets
+`Authorization: Bearer <accessToken>` from the token getter that `src/provider/auth-provider.tsx`
+registers in `src/lib/auth-token.ts` (the token kept from `useSession()`), so `axios.ts` never
+imports next-auth. A backend `401` signs the user out.
 
 ---
 

@@ -108,7 +108,7 @@ Each feature should have:
 
 # Reference
 
-- Follow `schema.prisma` for backend data type
+- Follow `apps/backend/prisma/schema.prisma` for backend data types, and the controllers in `apps/backend/src/modules/` for routes
 -
 
 ---

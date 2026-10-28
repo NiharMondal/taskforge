@@ -1,12 +1,15 @@
-import { IsOptional, IsString, IsDateString } from "class-validator";
+import { IsOptionalNonNull } from "@/common/decorators/is-optional-non-null.decorator";
+import { IsDateString, IsOptional, IsString, MaxLength } from "class-validator";
 
 export class UpdateSprintDto {
-  @IsOptional()
+  @IsOptionalNonNull()
   @IsString()
+  @MaxLength(100)
   name?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(500)
   goal?: string;
 
   @IsOptional()

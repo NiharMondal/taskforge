@@ -2,10 +2,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
   createWorkspace,
+  deleteWorkspace,
   getWorkspaces,
   updateWorkspace,
 } from "../api/workspace-api";
 import type { TWorkspaceFormValues } from "../schema/workspace-schema";
+import type { Workspace } from "../types/workspace-types";
 
 /** Centralized query keys for the workspace feature. */
 export const workspaceKeys = {
@@ -58,6 +60,28 @@ export function useUpdateWorkspace() {
     mutationFn: ({ workspaceId, dto }: UpdateWorkspaceVars) =>
       updateWorkspace(workspaceId, dto),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: workspaceKeys.all });
+    },
+  });
+}
+
+/**
+ * Delete a workspace. It is dropped from the cached list on success, so
+ * `WorkspaceProvider` falls back to another workspace on the same render, and
+ * every query keyed by its id is removed (their requests would now 403).
+ */
+export function useDeleteWorkspace() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (workspaceId: string) => deleteWorkspace(workspaceId),
+    onSuccess: (_res, workspaceId) => {
+      queryClient.setQueryData<Workspace[]>(workspaceKeys.all, (old) =>
+        old?.filter((workspace) => workspace.id !== workspaceId),
+      );
+      queryClient.removeQueries({
+        predicate: (query) => query.queryKey.includes(workspaceId),
+      });
       queryClient.invalidateQueries({ queryKey: workspaceKeys.all });
     },
   });

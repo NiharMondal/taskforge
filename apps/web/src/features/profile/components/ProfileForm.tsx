@@ -13,6 +13,8 @@ import {
 import { profileSchema, type TProfileFormValues } from "../schema/profile-schema";
 
 type Props = {
+	/** Temp uploads go under the user's own folder, the only one the backend's delete-temp accepts. */
+	userId: string;
 	defaultValues: TProfileFormValues;
 	/** Read-only — email is not editable from the profile UI. */
 	email: string;
@@ -39,6 +41,7 @@ function initialsOf(name: string): string {
 }
 
 export default function ProfileForm({
+	userId,
 	defaultValues,
 	email,
 	onSubmit,
@@ -66,7 +69,7 @@ export default function ProfileForm({
 				publicIdName="avatarPublicId"
 				label="Profile photo"
 				fallback={initialsOf(watchedName || "")}
-				folder="temp/user-avatar"
+				folder={`temp/user-avatar/${userId}`}
 			/>
 
 			<FormTextField

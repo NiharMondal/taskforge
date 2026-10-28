@@ -1,18 +1,32 @@
 import { passwordUtils } from "@/common/utils/password";
-import { normalizeEmail } from "@/helper";
+import { generateToken, hashToken, normalizeEmail } from "@/helper";
+import { MailService } from "@/modules/mail/mail.service";
 import { PrismaService } from "@/prisma/prisma.service";
 import {
+  BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { JwtService } from "@nestjs/jwt";
+import type { Prisma } from "generated/prisma/client";
 import { seedSystemRoles } from "../roles/system-roles";
 import { AuthProvider, WorkspaceRole } from "generated/prisma/enums";
+import { alreadyRegisteredEmail, verificationEmail } from "./auth-emails";
+import {
+  ACCESS_TOKEN_TTL_SECONDS,
+  EMAIL_VERIFICATION_TTL_HOURS,
+  VERIFICATION_EMAILS_PER_WINDOW,
+  VERIFICATION_EMAIL_WINDOW_MS,
+} from "./auth.constants";
 import { GoogleAuthDto } from "./dto/google-auth.dto";
 import { LoginDto } from "./dto/login.dto";
 import { RegisterDto } from "./dto/register.dto";
 import { GoogleTokenVerifier } from "./google-token-verifier";
+import { RefreshTokenService } from "./refresh-token.service";
 
 /**
  * A bcrypt hash (cost 12, like real ones) of a random string nobody knows.
@@ -22,83 +36,168 @@ import { GoogleTokenVerifier } from "./google-token-verifier";
 const DUMMY_PASSWORD_HASH =
   "$2b$12$6MwxTD0GzVe2z674jsvmmeLb5GTNHDmOUK.7tFq.31DEnwDm1nLSq";
 
+type SessionUser = {
+  id: string;
+  name: string;
+  email: string;
+  avatarUrl: string | null;
+};
+
+const invalidVerificationLink = () =>
+  new BadRequestException(
+    "This link is invalid or has expired. Sign up again to get a new one.",
+  );
+
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
     private googleTokenVerifier: GoogleTokenVerifier,
+    private refreshTokens: RefreshTokenService,
+    private mail: MailService,
+    private config: ConfigService,
   ) {}
 
+  /**
+   * Start a password sign-up. Nothing is created yet: the address gets an
+   * email whose link (`verifyEmail`) creates the account. An address that
+   * already has an account gets a "you already have one" email instead, and
+   * the response is the same either way, so it doesn't reveal which
+   * addresses are registered.
+   */
   async register(dto: RegisterDto) {
-    const { name, password } = dto;
     const email = normalizeEmail(dto.email);
+    // Hashed before anything else, so a taken address answers as slowly as a
+    // new one.
+    const passwordHash = await passwordUtils.hashPassword(dto.password);
 
     // Case-insensitive because rows created before emails were normalized may
     // be mixed-case.
     const existingUser = await this.prisma.user.findFirst({
       where: { email: { equals: email, mode: "insensitive" } },
+      select: { name: true, emailVerifiedAt: true },
     });
 
-    if (existingUser) {
-      throw new ConflictException("Email already in use");
+    if (existingUser?.emailVerifiedAt) {
+      this.sendInBackground(
+        email,
+        alreadyRegisteredEmail({
+          name: existingUser.name,
+          url: this.appUrl("/login"),
+        }),
+      );
+      return { email };
+    }
+    // An unverified `existingUser` was registered before verification existed;
+    // following this sign-up's link takes it over (see `verifyEmail`).
+
+    const now = Date.now();
+    const recent = await this.prisma.pendingRegistration.count({
+      where: {
+        email,
+        createdAt: { gt: new Date(now - VERIFICATION_EMAIL_WINDOW_MS) },
+      },
+    });
+    if (recent >= VERIFICATION_EMAILS_PER_WINDOW) {
+      // Quietly, like every other outcome; the earlier links still work.
+      return { email };
     }
 
-    const passwordHash = await passwordUtils.hashPassword(password);
-
-    const result = await this.prisma.$transaction(async (tx) => {
-      // 1. Create User
-      const user = await tx.user.create({
-        data: {
-          name,
-          email,
-        },
-      });
-
-      // 2. Create the EMAIL sign-in method
-      await tx.auth.create({
-        data: {
-          provider: AuthProvider.EMAIL,
-          password: passwordHash,
-          userId: user.id,
-        },
-      });
-
-      // 3. Create Workspace
-      const workspace = await tx.workspace.create({
-        data: {
-          name: `${name}'s Workspace`,
-        },
-      });
-
-      // 4. Seed its roles and make the user the OWNER
-      const roleIds = await seedSystemRoles(tx, workspace.id);
-      await tx.membership.create({
-        data: {
-          userId: user.id,
-          workspaceId: workspace.id,
-          role: WorkspaceRole.OWNER,
-          roleId: roleIds[WorkspaceRole.OWNER],
-        },
-      });
-
-      return {
-        user,
-        workspace,
-      };
+    const token = generateToken();
+    await this.prisma.pendingRegistration.deleteMany({
+      where: { email, expiresAt: { lte: new Date(now) } },
+    });
+    await this.prisma.pendingRegistration.create({
+      data: {
+        email,
+        name: dto.name,
+        passwordHash,
+        tokenHash: hashToken(token),
+        expiresAt: new Date(now + EMAIL_VERIFICATION_TTL_HOURS * 3_600_000),
+      },
     });
 
-    return {
-      user: {
-        id: result.user.id,
-        name: result.user.name,
-        email: result.user.email,
-      },
-      workspace: {
-        id: result.workspace.id,
-        name: result.workspace.name,
-      },
-    };
+    this.sendInBackground(
+      email,
+      verificationEmail({
+        name: dto.name,
+        url: this.appUrl(`/verify-email?token=${encodeURIComponent(token)}`),
+      }),
+    );
+    return { email };
+  }
+
+  /**
+   * Finish a sign-up from the emailed link: create the account (user, EMAIL
+   * auth, workspace, OWNER membership) with that sign-up's name and password,
+   * and sign in. Following the link proves the address, so every other
+   * pending sign-up for it is dropped — including one an impostor started.
+   */
+  async verifyEmail(token: string) {
+    const pending = await this.prisma.pendingRegistration.findUnique({
+      where: { tokenHash: hashToken(token) },
+    });
+    if (!pending || pending.expiresAt <= new Date()) {
+      throw invalidVerificationLink();
+    }
+
+    const user = await this.prisma.$transaction(async (tx) => {
+      // Claim the link: a second click (or a concurrent one) finds it gone.
+      const claimed = await tx.pendingRegistration.deleteMany({
+        where: { id: pending.id },
+      });
+      if (claimed.count === 0) throw invalidVerificationLink();
+      await tx.pendingRegistration.deleteMany({
+        where: { email: pending.email },
+      });
+
+      const existing = await tx.user.findFirst({
+        where: { email: { equals: pending.email, mode: "insensitive" } },
+      });
+
+      if (existing?.emailVerifiedAt) {
+        // Someone signed up with Google in the meantime.
+        throw new ConflictException(
+          "This email already has an account. Sign in instead.",
+        );
+      }
+
+      if (existing) {
+        // A password account registered before verification existed, by
+        // whoever typed this address. Its owner has now proven it: their name
+        // and password replace the old ones, and every session on it ends.
+        await tx.auth.upsert({
+          where: {
+            userId_provider: {
+              userId: existing.id,
+              provider: AuthProvider.EMAIL,
+            },
+          },
+          create: {
+            provider: AuthProvider.EMAIL,
+            password: pending.passwordHash,
+            userId: existing.id,
+          },
+          update: { password: pending.passwordHash },
+        });
+        await this.refreshTokens.revokeAllForUser(existing.id, tx);
+        return tx.user.update({
+          where: { id: existing.id },
+          data: { name: pending.name, emailVerifiedAt: new Date() },
+        });
+      }
+
+      return this.createAccount(
+        tx,
+        { name: pending.name, email: pending.email },
+        { provider: AuthProvider.EMAIL, password: pending.passwordHash },
+      );
+    });
+
+    return this.session(user);
   }
 
   /**
@@ -131,21 +230,16 @@ export class AuthService {
       throw new UnauthorizedException("Invalid email or password");
     }
 
-    const { user } = auth;
+    // Only accounts registered before verification existed get here
+    // unverified. Their password may not be the address owner's; registering
+    // again sends a link that replaces it.
+    if (!auth.user.emailVerifiedAt) {
+      throw new ForbiddenException(
+        "Confirm your email address first: sign up again with this email and we'll send you a link.",
+      );
+    }
 
-    const token = this.jwtService.sign({
-      sub: user.id,
-      email: user.email,
-    });
-    return {
-      accessToken: token,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        avatarUrl: user.avatarUrl,
-      },
-    };
+    return this.session(auth.user);
   }
 
   /**
@@ -156,7 +250,8 @@ export class AuthService {
    * on Google's stable `sub` first; the email is only used to link a Google
    * login to an existing account, and only because Google vouched for it
    * (`email_verified`). Linking to an account whose email was never verified
-   * removes its password, since anyone could have registered that address.
+   * removes its password and ends its sessions, since anyone could have
+   * registered that address.
    */
   async googleSignIn(dto: GoogleAuthDto) {
     const identity = await this.googleTokenVerifier.verify(dto.idToken);
@@ -175,7 +270,7 @@ export class AuthService {
     });
 
     if (linked) {
-      return this.googleSession(linked.user, picture);
+      return this.session(linked.user, picture);
     }
 
     // An account with this (Google-verified) email already exists: link it.
@@ -197,8 +292,8 @@ export class AuthService {
 
       // Google has just proven this person owns the email. If nobody had
       // before, the account's password was set by whoever registered the
-      // address — not necessarily its owner (account pre-hijacking). Drop it so
-      // that person can't keep a way in; the owner signs in with Google.
+      // address — not necessarily its owner (account pre-hijacking). Drop it
+      // and end that person's sessions; the owner signs in with Google.
       const emailWasUnverified = !existingUser.emailVerifiedAt;
 
       await this.prisma.$transaction(async (tx) => {
@@ -210,6 +305,7 @@ export class AuthService {
             where: { id: existingUser.id },
             data: { emailVerifiedAt: new Date() },
           });
+          await this.refreshTokens.revokeAllForUser(existingUser.id, tx);
         }
 
         await tx.auth.create({
@@ -221,58 +317,81 @@ export class AuthService {
         });
       });
 
-      return this.googleSession(existingUser, picture);
+      return this.session(existingUser, picture);
     }
 
     // First time we see this person: user + GOOGLE auth + workspace + membership.
-    const result = await this.prisma.$transaction(async (tx) => {
-      const newUser = await tx.user.create({
-        data: {
-          name,
-          email,
-          avatarUrl: picture ?? null,
-          emailVerifiedAt: new Date(),
-        },
-      });
+    const newUser = await this.prisma.$transaction((tx) =>
+      this.createAccount(
+        tx,
+        { name, email, avatarUrl: picture ?? null },
+        { provider: AuthProvider.GOOGLE, providerId: googleId },
+      ),
+    );
 
-      await tx.auth.create({
-        data: {
-          provider: AuthProvider.GOOGLE,
-          providerId: googleId,
-          userId: newUser.id,
-        },
-      });
-
-      const workspace = await tx.workspace.create({
-        data: {
-          name: `${name}'s Workspace`,
-        },
-      });
-
-      const roleIds = await seedSystemRoles(tx, workspace.id);
-      await tx.membership.create({
-        data: {
-          userId: newUser.id,
-          workspaceId: workspace.id,
-          role: WorkspaceRole.OWNER,
-          roleId: roleIds[WorkspaceRole.OWNER],
-        },
-      });
-
-      return { user: newUser, workspace };
-    });
-
-    return this.googleSession(result.user, picture);
+    return this.session(newUser, picture);
   }
 
   /**
-   * The session payload for a Google sign-in. A stored (uploaded) avatar wins
-   * over Google's picture so signing in doesn't clobber a custom one.
+   * Exchange a refresh token for a new access token and a new refresh token
+   * (the old one stops working; see RefreshTokenService).
    */
-  private googleSession(
-    user: { id: string; name: string; email: string; avatarUrl: string | null },
-    picture?: string,
+  async refresh(refreshToken: string) {
+    const { userId, familyId } = await this.refreshTokens.consume(refreshToken);
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true },
+    });
+    if (!user) {
+      throw new UnauthorizedException("Your session has ended. Sign in again.");
+    }
+    return this.issueTokens(user, familyId);
+  }
+
+  /** Sign out: the refresh token and every token rotated from it stop working. */
+  async logout(refreshToken: string) {
+    await this.refreshTokens.revoke(refreshToken);
+  }
+
+  /**
+   * A new account with one sign-in method, its own workspace (with the
+   * built-in roles) and the OWNER membership. Its email is verified: both
+   * callers have proven it.
+   */
+  private async createAccount(
+    tx: Prisma.TransactionClient,
+    user: { name: string; email: string; avatarUrl?: string | null },
+    auth: { provider: AuthProvider; password?: string; providerId?: string },
   ) {
+    const newUser = await tx.user.create({
+      data: { ...user, emailVerifiedAt: new Date() },
+    });
+
+    await tx.auth.create({ data: { ...auth, userId: newUser.id } });
+
+    const workspace = await tx.workspace.create({
+      data: { name: `${user.name}'s Workspace` },
+    });
+
+    const roleIds = await seedSystemRoles(tx, workspace.id);
+    await tx.membership.create({
+      data: {
+        userId: newUser.id,
+        workspaceId: workspace.id,
+        role: WorkspaceRole.OWNER,
+        roleId: roleIds[WorkspaceRole.OWNER],
+      },
+    });
+
+    return newUser;
+  }
+
+  /**
+   * The payload of every sign-in: the user and a fresh token pair. A stored
+   * (uploaded) avatar wins over Google's picture so signing in doesn't clobber
+   * a custom one.
+   */
+  private async session(user: SessionUser, picture?: string) {
     return {
       user: {
         id: user.id,
@@ -280,7 +399,48 @@ export class AuthService {
         email: user.email,
         avatarUrl: user.avatarUrl ?? picture ?? null,
       },
-      accessToken: this.jwtService.sign({ sub: user.id, email: user.email }),
+      ...(await this.issueTokens(user)),
     };
+  }
+
+  /** An access token, and a refresh token in `familyId` (or a new family). */
+  private async issueTokens(
+    user: { id: string; email: string },
+    familyId?: string,
+  ) {
+    const accessToken = this.jwtService.sign({
+      sub: user.id,
+      email: user.email,
+    });
+    const refreshToken = await this.refreshTokens.issue(user.id, familyId);
+    return {
+      accessToken,
+      accessTokenExpiresAt: new Date(
+        Date.now() + ACCESS_TOKEN_TTL_SECONDS * 1000,
+      ).toISOString(),
+      refreshToken,
+    };
+  }
+
+  private appUrl(path: string) {
+    const base = this.config.get<string>("APP_URL") ?? "http://localhost:3000";
+    return `${base.replace(/\/+$/, "")}${path}`;
+  }
+
+  /**
+   * Mail goes out after the response, so how long SMTP takes doesn't reveal
+   * which email was sent. A failure is logged; the user can register again.
+   */
+  private sendInBackground(
+    to: string,
+    email: { subject: string; text: string; html: string },
+  ) {
+    void this.mail.sendMail({ to, ...email }).catch((error: unknown) => {
+      this.logger.error(
+        `Failed to send "${email.subject}" to ${to}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    });
   }
 }

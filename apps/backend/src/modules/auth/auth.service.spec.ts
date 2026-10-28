@@ -1,10 +1,20 @@
 import { passwordUtils } from "@/common/utils/password";
 import { PrismaService } from "@/prisma/prisma.service";
-import { ConflictException, UnauthorizedException } from "@nestjs/common";
+import { hashToken } from "@/helper";
+import { MailService } from "@/modules/mail/mail.service";
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Logger,
+  UnauthorizedException,
+} from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { JwtService } from "@nestjs/jwt";
 import { AuthProvider, WorkspaceRole } from "generated/prisma/enums";
 import { AuthService } from "./auth.service";
 import { GoogleIdentity, GoogleTokenVerifier } from "./google-token-verifier";
+import { RefreshTokenService } from "./refresh-token.service";
 
 const identity: GoogleIdentity = {
   sub: "google-sub-1",
@@ -22,8 +32,20 @@ let prisma: {
     findFirst: jest.Mock;
     create: jest.Mock;
     deleteMany: jest.Mock;
+    upsert: jest.Mock;
   };
-  user: { findFirst: jest.Mock; create: jest.Mock; update: jest.Mock };
+  user: {
+    findFirst: jest.Mock;
+    findUnique: jest.Mock;
+    create: jest.Mock;
+    update: jest.Mock;
+  };
+  pendingRegistration: {
+    count: jest.Mock;
+    findUnique: jest.Mock;
+    create: jest.Mock;
+    deleteMany: jest.Mock;
+  };
   workspace: { create: jest.Mock };
   role: { createManyAndReturn: jest.Mock };
   membership: { create: jest.Mock };
@@ -31,7 +53,22 @@ let prisma: {
 };
 let verifier: { verify: jest.Mock };
 let jwt: { sign: jest.Mock };
+let refreshTokens: {
+  issue: jest.Mock;
+  consume: jest.Mock;
+  revoke: jest.Mock;
+  revokeAllForUser: jest.Mock;
+};
+let mail: { sendMail: jest.Mock };
 let service: AuthService;
+
+/** The emails sent, as `{ to, subject, text }`. */
+const sentMail = () =>
+  (
+    mail.sendMail.mock.calls as [
+      { to: string; subject: string; text: string },
+    ][]
+  ).map(([m]) => m);
 
 /** The system roles seeded for the new workspace, by key. */
 const seededKeys = () =>
@@ -48,9 +85,11 @@ beforeEach(() => {
       findFirst: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockResolvedValue({}),
       deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
+      upsert: jest.fn().mockResolvedValue({}),
     },
     user: {
       findFirst: jest.fn().mockResolvedValue(null),
+      findUnique: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockResolvedValue({
         id: "user-new",
         name: "Alice",
@@ -74,6 +113,12 @@ beforeEach(() => {
       ),
     },
     membership: { create: jest.fn().mockResolvedValue({}) },
+    pendingRegistration: {
+      count: jest.fn().mockResolvedValue(0),
+      findUnique: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockResolvedValue({}),
+      deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
     $transaction: jest.fn(),
   };
   prisma.$transaction.mockImplementation((cb: (tx: unknown) => unknown) =>
@@ -81,35 +126,164 @@ beforeEach(() => {
   );
   verifier = { verify: jest.fn().mockResolvedValue(identity) };
   jwt = { sign: jest.fn().mockReturnValue("signed.jwt") };
+  refreshTokens = {
+    issue: jest.fn().mockResolvedValue("refresh-token"),
+    consume: jest.fn(),
+    revoke: jest.fn().mockResolvedValue(undefined),
+    revokeAllForUser: jest.fn().mockResolvedValue(undefined),
+  };
+  mail = { sendMail: jest.fn().mockResolvedValue({}) };
 
   service = new AuthService(
     prisma as unknown as PrismaService,
     jwt as unknown as JwtService,
     verifier as unknown as GoogleTokenVerifier,
+    refreshTokens as unknown as RefreshTokenService,
+    mail as unknown as MailService,
+    { get: () => "https://app.example/" } as unknown as ConfigService,
   );
 });
 
 describe("AuthService.register", () => {
   const dto = { name: "Bob", email: " Bob@Example.com ", password: "secret1" };
 
+  /** The token in the emailed link. */
+  const linkToken = () =>
+    /verify-email\?token=([0-9a-f]{64})/.exec(sentMail()[0].text)?.[1];
+
+  it("creates no account: it stores a pending sign-up and emails its link", async () => {
+    const result = await service.register(dto);
+
+    expect(result).toEqual({ email: "bob@example.com" });
+    expect(prisma.user.create).not.toHaveBeenCalled();
+    expect(prisma.auth.create).not.toHaveBeenCalled();
+    expect(prisma.workspace.create).not.toHaveBeenCalled();
+
+    expect(sentMail()).toHaveLength(1);
+    expect(sentMail()[0].to).toBe("bob@example.com");
+    expect(sentMail()[0].text).toContain(
+      "https://app.example/verify-email?token=",
+    );
+
+    // Only the token's hash is stored, never the token itself.
+    const { data } = (
+      prisma.pendingRegistration.create.mock.calls as [
+        { data: { email: string; name: string; tokenHash: string } },
+      ][]
+    )[0][0];
+    expect(data).toMatchObject({ email: "bob@example.com", name: "Bob" });
+    expect(data.tokenHash).toBe(hashToken(linkToken()!));
+  });
+
+  it("stores a hash, never the plain password", async () => {
+    await service.register(dto);
+
+    const { data } = (
+      prisma.pendingRegistration.create.mock.calls as [
+        { data: { passwordHash: string } },
+      ][]
+    )[0][0];
+    expect(data.passwordHash).not.toBe(dto.password);
+    await expect(
+      passwordUtils.comparePassword(dto.password, data.passwordHash),
+    ).resolves.toBe(true);
+  });
+
+  it("answers a taken address the same way, and emails its owner instead", async () => {
+    prisma.user.findFirst.mockResolvedValue({
+      name: "Bobby",
+      emailVerifiedAt: new Date("2026-10-01"),
+    });
+
+    const result = await service.register(dto);
+
+    expect(result).toEqual({ email: "bob@example.com" });
+    expect(prisma.user.findFirst).toHaveBeenCalledWith({
+      where: { email: { equals: "bob@example.com", mode: "insensitive" } },
+      select: { name: true, emailVerifiedAt: true },
+    });
+    expect(prisma.pendingRegistration.create).not.toHaveBeenCalled();
+    expect(sentMail()).toHaveLength(1);
+    expect(sentMail()[0].subject).toBe("You already have a TaskForge account");
+    expect(sentMail()[0].text).not.toContain("verify-email");
+  });
+
+  it("starts a sign-up for an unverified account registered before verification", async () => {
+    prisma.user.findFirst.mockResolvedValue({
+      name: "Bob",
+      emailVerifiedAt: null,
+    });
+
+    await service.register(dto);
+
+    expect(prisma.pendingRegistration.create).toHaveBeenCalled();
+    expect(sentMail()[0].text).toContain("verify-email?token=");
+  });
+
+  it("sends nothing past the per-address limit, without saying so", async () => {
+    prisma.pendingRegistration.count.mockResolvedValue(3);
+
+    const result = await service.register(dto);
+
+    expect(result).toEqual({ email: "bob@example.com" });
+    expect(prisma.pendingRegistration.create).not.toHaveBeenCalled();
+    expect(mail.sendMail).not.toHaveBeenCalled();
+  });
+
+  it("still answers when the email can't be sent, and logs it", async () => {
+    const logError = jest
+      .spyOn(Logger.prototype, "error")
+      .mockImplementation(() => undefined);
+    mail.sendMail.mockRejectedValue(new Error("SMTP down"));
+
+    await expect(service.register(dto)).resolves.toEqual({
+      email: "bob@example.com",
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(logError).toHaveBeenCalledWith(expect.stringContaining("SMTP down"));
+    logError.mockRestore();
+  });
+});
+
+describe("AuthService.verifyEmail", () => {
+  const token = "a".repeat(64);
+  const pending = {
+    id: "pending-1",
+    email: "bob@example.com",
+    name: "Bob",
+    passwordHash: "$2b$12$hash",
+    tokenHash: hashToken(token),
+    expiresAt: new Date(Date.now() + 60_000),
+  };
+
   beforeEach(() => {
+    prisma.pendingRegistration.findUnique.mockResolvedValue(pending);
     prisma.user.create.mockResolvedValue({
       id: "user-bob",
       name: "Bob",
       email: "bob@example.com",
+      avatarUrl: null,
     });
   });
 
-  it("creates the user (with email), an EMAIL auth, a workspace and OWNER membership", async () => {
-    const result = await service.register(dto);
+  it("looks the sign-up up by the token's hash", async () => {
+    await service.verifyEmail(token);
+
+    expect(prisma.pendingRegistration.findUnique).toHaveBeenCalledWith({
+      where: { tokenHash: hashToken(token) },
+    });
+  });
+
+  it("creates a verified user, its EMAIL auth, a workspace and OWNER membership, and signs in", async () => {
+    const session = await service.verifyEmail(token);
 
     expect(prisma.user.create).toHaveBeenCalledWith({
-      data: { name: "Bob", email: "bob@example.com" },
+      data: { name: "Bob", email: "bob@example.com", emailVerifiedAt: anyDate },
     });
     expect(prisma.auth.create).toHaveBeenCalledWith({
       data: {
         provider: AuthProvider.EMAIL,
-        password: expect.any(String) as string,
+        password: "$2b$12$hash",
         userId: "user-bob",
       },
     });
@@ -122,35 +296,99 @@ describe("AuthService.register", () => {
         roleId: "role-OWNER",
       },
     });
-    expect(result.user).toEqual({
-      id: "user-bob",
-      name: "Bob",
-      email: "bob@example.com",
+    expect(session).toMatchObject({
+      user: { id: "user-bob", email: "bob@example.com" },
+      accessToken: "signed.jwt",
+      refreshToken: "refresh-token",
     });
   });
 
-  it("stores a hash, never the plain password", async () => {
-    await service.register(dto);
+  it("uses the link once and drops every other sign-up for the address", async () => {
+    await service.verifyEmail(token);
 
-    const { data } = (prisma.auth.create.mock.calls as unknown[][])[0][0] as {
-      data: { password: string };
-    };
-    expect(data.password).not.toBe(dto.password);
-    await expect(
-      passwordUtils.comparePassword(dto.password, data.password),
-    ).resolves.toBe(true);
+    expect(prisma.pendingRegistration.deleteMany).toHaveBeenCalledWith({
+      where: { id: "pending-1" },
+    });
+    expect(prisma.pendingRegistration.deleteMany).toHaveBeenCalledWith({
+      where: { email: "bob@example.com" },
+    });
   });
 
-  it("rejects an email that is already taken, case-insensitively", async () => {
-    prisma.user.findFirst.mockResolvedValue({ id: "user-old" });
+  it("refuses an unknown, expired or already-used link", async () => {
+    prisma.pendingRegistration.findUnique.mockResolvedValueOnce(null);
+    await expect(service.verifyEmail(token)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
 
-    await expect(service.register(dto)).rejects.toBeInstanceOf(
+    prisma.pendingRegistration.findUnique.mockResolvedValueOnce({
+      ...pending,
+      expiresAt: new Date(Date.now() - 1),
+    });
+    await expect(service.verifyEmail(token)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+
+    // A concurrent click claimed it first.
+    prisma.pendingRegistration.deleteMany.mockResolvedValueOnce({ count: 0 });
+    await expect(service.verifyEmail(token)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+
+    expect(prisma.user.create).not.toHaveBeenCalled();
+    expect(jwt.sign).not.toHaveBeenCalled();
+  });
+
+  it("refuses when the address got an account in the meantime", async () => {
+    prisma.user.findFirst.mockResolvedValue({
+      id: "user-g",
+      emailVerifiedAt: new Date(),
+    });
+
+    await expect(service.verifyEmail(token)).rejects.toBeInstanceOf(
       ConflictException,
     );
-    expect(prisma.user.findFirst).toHaveBeenCalledWith({
-      where: { email: { equals: "bob@example.com", mode: "insensitive" } },
+    expect(prisma.user.create).not.toHaveBeenCalled();
+    expect(prisma.auth.upsert).not.toHaveBeenCalled();
+  });
+
+  it("hands an unverified older account to whoever proved the address", async () => {
+    prisma.user.findFirst.mockResolvedValue({
+      id: "user-old",
+      name: "Someone",
+      email: "Bob@Example.com",
+      emailVerifiedAt: null,
     });
-    expect(prisma.$transaction).not.toHaveBeenCalled();
+    prisma.user.update.mockResolvedValue({
+      id: "user-old",
+      name: "Bob",
+      email: "Bob@Example.com",
+      avatarUrl: null,
+    });
+
+    const session = await service.verifyEmail(token);
+
+    expect(prisma.auth.upsert).toHaveBeenCalledWith({
+      where: {
+        userId_provider: { userId: "user-old", provider: AuthProvider.EMAIL },
+      },
+      create: {
+        provider: AuthProvider.EMAIL,
+        password: "$2b$12$hash",
+        userId: "user-old",
+      },
+      update: { password: "$2b$12$hash" },
+    });
+    expect(refreshTokens.revokeAllForUser).toHaveBeenCalledWith(
+      "user-old",
+      prisma,
+    );
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: "user-old" },
+      data: { name: "Bob", emailVerifiedAt: anyDate },
+    });
+    expect(prisma.user.create).not.toHaveBeenCalled();
+    expect(prisma.workspace.create).not.toHaveBeenCalled();
+    expect(session.user.id).toBe("user-old");
   });
 });
 
@@ -160,6 +398,7 @@ describe("AuthService.signIn", () => {
     name: "Bob",
     email: "bob@example.com",
     avatarUrl: null,
+    emailVerifiedAt: new Date("2026-10-01") as Date | null,
   };
   /** The EMAIL Auth row the lookup returns, with its user. */
   const emailAuth = (password: string) => ({
@@ -193,6 +432,35 @@ describe("AuthService.signIn", () => {
       email: "bob@example.com",
     });
     expect(session.user.email).toBe("bob@example.com");
+  });
+
+  it("returns an access token, its expiry and a refresh token", async () => {
+    prisma.auth.findFirst.mockResolvedValue(
+      emailAuth(await passwordUtils.hashPassword("secret1")),
+    );
+
+    const before = Date.now();
+    const session = await signIn("bob@example.com", "secret1");
+
+    expect(session.accessToken).toBe("signed.jwt");
+    expect(session.refreshToken).toBe("refresh-token");
+    expect(refreshTokens.issue).toHaveBeenCalledWith("user-bob", undefined);
+    const expiresIn = Date.parse(session.accessTokenExpiresAt) - before;
+    expect(expiresIn).toBeGreaterThanOrEqual(15 * 60_000);
+    expect(expiresIn).toBeLessThan(16 * 60_000);
+  });
+
+  it("refuses the right password on an account whose email was never confirmed", async () => {
+    prisma.auth.findFirst.mockResolvedValue({
+      ...emailAuth(await passwordUtils.hashPassword("secret1")),
+      user: { ...bob, emailVerifiedAt: null },
+    });
+
+    await expect(signIn("bob@example.com", "secret1")).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    expect(jwt.sign).not.toHaveBeenCalled();
+    expect(refreshTokens.issue).not.toHaveBeenCalled();
   });
 
   describe("gives every failure the same answer", () => {
@@ -402,6 +670,11 @@ describe("AuthService.googleSignIn", () => {
         where: { id: "user-5" },
         data: { emailVerifiedAt: anyDate },
       });
+      // ...and whoever set that password is signed out everywhere.
+      expect(refreshTokens.revokeAllForUser).toHaveBeenCalledWith(
+        "user-5",
+        prisma,
+      );
       expect(prisma.auth.create).toHaveBeenCalled();
     });
 
@@ -415,6 +688,7 @@ describe("AuthService.googleSignIn", () => {
 
       expect(prisma.auth.deleteMany).not.toHaveBeenCalled();
       expect(prisma.user.update).not.toHaveBeenCalled();
+      expect(refreshTokens.revokeAllForUser).not.toHaveBeenCalled();
       expect(prisma.auth.create).toHaveBeenCalledWith({
         data: {
           provider: AuthProvider.GOOGLE,
@@ -482,5 +756,49 @@ describe("AuthService.googleSignIn", () => {
         email: "alice@example.com",
       });
     });
+  });
+});
+
+describe("AuthService.refresh", () => {
+  it("issues a new pair in the spent token's family", async () => {
+    refreshTokens.consume.mockResolvedValue({
+      userId: "user-bob",
+      familyId: "family-1",
+    });
+    prisma.user.findUnique.mockResolvedValue({
+      id: "user-bob",
+      email: "bob@example.com",
+    });
+
+    const tokens = await service.refresh("old-token");
+
+    expect(refreshTokens.consume).toHaveBeenCalledWith("old-token");
+    expect(refreshTokens.issue).toHaveBeenCalledWith("user-bob", "family-1");
+    expect(jwt.sign).toHaveBeenCalledWith({
+      sub: "user-bob",
+      email: "bob@example.com",
+    });
+    expect(tokens).toMatchObject({
+      accessToken: "signed.jwt",
+      refreshToken: "refresh-token",
+    });
+  });
+
+  it("passes on a rejected token without issuing anything", async () => {
+    refreshTokens.consume.mockRejectedValue(new UnauthorizedException());
+
+    await expect(service.refresh("bad")).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
+    expect(jwt.sign).not.toHaveBeenCalled();
+    expect(refreshTokens.issue).not.toHaveBeenCalled();
+  });
+});
+
+describe("AuthService.logout", () => {
+  it("revokes the refresh token's session", async () => {
+    await service.logout("the-token");
+
+    expect(refreshTokens.revoke).toHaveBeenCalledWith("the-token");
   });
 });

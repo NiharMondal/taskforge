@@ -10,23 +10,41 @@ import {
   Post,
   UseGuards,
 } from "@nestjs/common";
-import { ThrottlerGuard } from "@nestjs/throttler";
+import { SkipThrottle, ThrottlerGuard } from "@nestjs/throttler";
 import { GoogleAuthDto } from "./dto/google-auth.dto";
 import { LoginDto } from "./dto/login.dto";
+import { RefreshTokenDto } from "./dto/refresh-token.dto";
+import { VerifyEmailDto } from "./dto/verify-email.dto";
 
 @Controller("auth")
 @UseGuards(ThrottlerGuard)
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  /**
+   * Starts a sign-up: 202 whether or not the address is new (see
+   * AuthService.register). The account is created by `verify-email`.
+   */
   @Post("register")
-  @HttpCode(HttpStatus.CREATED)
+  @HttpCode(HttpStatus.ACCEPTED)
   @Public()
   async register(@Body() dto: RegisterDto) {
     const result = await this.authService.register(dto);
     return sendResponse({
-      statusCode: HttpStatus.CREATED,
-      message: "Registered successfully",
+      statusCode: HttpStatus.ACCEPTED,
+      message: "Check your email for a link to finish signing up",
+      data: result,
+    });
+  }
+
+  @Post("verify-email")
+  @HttpCode(HttpStatus.OK)
+  @Public()
+  async verifyEmail(@Body() dto: VerifyEmailDto) {
+    const result = await this.authService.verifyEmail(dto.token);
+    return sendResponse({
+      statusCode: HttpStatus.OK,
+      message: "Email confirmed",
       data: result,
     });
   }
@@ -52,6 +70,36 @@ export class AuthController {
       statusCode: HttpStatus.OK,
       message: "Google login successfully",
       data: result,
+    });
+  }
+
+  // Refresh and logout carry a 256-bit random token, so there is nothing to
+  // guess; and the web app sends them from its server for every user, which
+  // would share one per-client budget.
+  @Post("refresh")
+  @HttpCode(HttpStatus.OK)
+  @Public()
+  @SkipThrottle()
+  async refresh(@Body() dto: RefreshTokenDto) {
+    const result = await this.authService.refresh(dto.refreshToken);
+    return sendResponse({
+      statusCode: HttpStatus.OK,
+      message: "Session refreshed",
+      data: result,
+    });
+  }
+
+  /** Revokes the refresh token's session. 200 even for an unknown token. */
+  @Post("logout")
+  @HttpCode(HttpStatus.OK)
+  @Public()
+  @SkipThrottle()
+  async logout(@Body() dto: RefreshTokenDto) {
+    await this.authService.logout(dto.refreshToken);
+    return sendResponse({
+      statusCode: HttpStatus.OK,
+      message: "Signed out",
+      data: null,
     });
   }
 }

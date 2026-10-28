@@ -215,8 +215,16 @@ await fetch(`${API_URL}/auth/register`, {
 });
 ```
 
-After registration:
-→ Redirect to login
+After registration nothing exists yet: `POST /auth/register` answers 202 for any address (taken or
+not) and emails a link to `/verify-email?token=…`. The register form swaps itself for a "check your
+email" notice with **Send again**. The link's page waits for a click (mail scanners open links),
+then signs in through the Auth.js `email-verification` Credentials provider, which posts the token
+to `POST /auth/verify-email`; the backend creates the account and returns a session. Where the
+person was going (`callbackUrl`, e.g. an invite link) is kept in `localStorage` in between, so it
+only survives if the link is opened in the same browser.
+
+Login with the right password on an account registered before verification existed is a 403,
+shown as "Confirm your email first" (code `email_unverified`).
 
 ---
 
@@ -245,8 +253,9 @@ export default async function Dashboard() {
 ## Proxy (`src/proxy.ts`)
 
 Next 16 renamed `middleware.ts` to `proxy.ts`. It runs Auth.js with the Edge-safe
-`src/lib/auth.config.ts`, whose `authorized` callback lets `/login`, `/register` and `/api/auth`
-through, sends signed-in users away from the auth pages, and redirects everyone else without a
+`src/lib/auth.config.ts`, whose `authorized` callback lets `/login`, `/register`, `/verify-email`
+and `/api/auth` through (the matcher skips `/api/auth` altogether), treats a session whose refresh
+token was refused (`session.error`) as signed out, sends signed-in users away from the auth pages, and redirects everyone else without a
 session to `/login?callbackUrl=<requested url>`. It is a UX guard only; the `(dashboard)` layout
 re-checks the session and the backend is the real boundary.
 
@@ -259,7 +268,23 @@ re-checks the session and the backend is the real boundary.
 Every request goes through the `api` wrapper in `src/lib/axios.ts`. Its request interceptor sets
 `Authorization: Bearer <accessToken>` from the token getter that `src/provider/auth-provider.tsx`
 registers in `src/lib/auth-token.ts` (the token kept from `useSession()`), so `axios.ts` never
-imports next-auth. A backend `401` signs the user out.
+imports next-auth.
+
+## Token renewal
+
+The backend access token lasts 15 minutes; the refresh token (30 days, replaced on every use) lives
+only in the encrypted Auth.js JWT cookie and never in the client session. The `jwt` callback in
+`auth.config.ts` exchanges it (`POST /auth/refresh`, plain `fetch` in `lib/backend-session.ts`
+because the proxy runs on the Edge) once the access token has under 5 minutes left. Open tabs
+re-read the session every 4 minutes (`SessionProvider refetchInterval`), so it renews in time.
+
+A backend `401` on a signed request asks the auth layer for a new token
+(`useSession().update({ refreshAccessToken: true })`, which forces the exchange), retries once,
+and signs the user out if that fails. A refused refresh token sets `session.error =
+"SessionExpired"`, which also signs the user out.
+
+A Server Component's `auth()` can't save a renewed cookie, so the backend accepts a just-replaced
+refresh token for 60 seconds instead of treating it as stolen.
 
 ---
 
@@ -270,6 +295,9 @@ import { signOut } from "next-auth/react";
 
 await signOut({ callbackUrl: "/login" });
 ```
+
+Auth.js's `events.signOut` (in `lib/auth.ts`) also posts the refresh token to `POST /auth/logout`,
+so the backend session ends with the cookie.
 
 ---
 
@@ -287,16 +315,23 @@ await signOut({ callbackUrl: "/login" });
 
 ## Login Response
 
+`POST /auth/login`, `/auth/google` and `/auth/verify-email` all return:
+
 ```json
 {
   "user": {
     "id": "string",
     "name": "string",
-    "email": "string"
+    "email": "string",
+    "avatarUrl": "string | null"
   },
-  "accessToken": "jwt"
+  "accessToken": "jwt",
+  "accessTokenExpiresAt": "ISO timestamp",
+  "refreshToken": "64 hex characters"
 }
 ```
+
+`POST /auth/refresh` returns the last three fields.
 
 ---
 
@@ -312,7 +347,6 @@ await signOut({ callbackUrl: "/login" });
 
 # 🔥 Future Enhancements
 
-* Refresh token handling
 * Axios interceptor instead of fetch
 * Role-based UI rendering (non-secure, UX only)
 * Session persistence optimization

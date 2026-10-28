@@ -1,3 +1,4 @@
+import { VALIDATION_PIPE_OPTIONS } from "@/app.setup";
 import { HttpExceptionFilter } from "@/lib/http-exception.filter";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
@@ -36,9 +37,7 @@ describe("UserController (HTTP)", () => {
       next();
     });
     app.useGlobalFilters(new HttpExceptionFilter());
-    app.useGlobalPipes(
-      new ValidationPipe({ whitelist: true, transform: true }),
-    );
+    app.useGlobalPipes(new ValidationPipe(VALIDATION_PIPE_OPTIONS));
     await app.init();
   });
 
@@ -113,13 +112,13 @@ describe("UserController (HTTP)", () => {
       expect(userService.update).toHaveBeenCalledWith(me, { name: "Renamed" });
     });
 
-    it("strips emailVerified, which is not a column, instead of 500ing", async () => {
+    it("rejects fields it doesn't accept, such as emailVerified, instead of 500ing", async () => {
       await request(server())
         .patch("/users/me")
         .send({ name: "Renamed", emailVerified: true })
-        .expect(200);
+        .expect(400);
 
-      expect(userService.update).toHaveBeenCalledWith(me, { name: "Renamed" });
+      expect(userService.update).not.toHaveBeenCalled();
     });
   });
 });

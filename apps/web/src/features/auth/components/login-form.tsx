@@ -36,7 +36,9 @@ export default function LoginForm() {
 				toast.danger(
 					res.code === "invalid_credentials"
 						? "Invalid Credentials"
-						: "Something went wrong. Please try again.",
+						: res.code === "email_unverified"
+							? "Confirm your email first: sign up again with this address and we'll email you a link."
+							: "Something went wrong. Please try again.",
 				);
 				return;
 			}

@@ -19,9 +19,10 @@ export default auth;
 
 export const config = {
   /**
-   * Run on everything except Next internals and static assets. Auth API routes
-   * are matched but treated as public by the `authorized` callback so the
-   * session/callback endpoints keep working.
+   * Run on everything except Next internals, static assets and the Auth.js
+   * routes. Those are public anyway, and reading the session here as well
+   * would renew an expiring backend token twice for one `/api/auth/session`
+   * request.
    */
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:png|jpg|jpeg|svg|gif|webp|ico)$).*)"],
+  matcher: ["/((?!api/auth|_next/static|_next/image|favicon.ico|.*\\.(?:png|jpg|jpeg|svg|gif|webp|ico)$).*)"],
 };

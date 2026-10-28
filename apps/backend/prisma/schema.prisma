@@ -66,6 +66,45 @@ enum AuthProvider {
 // One row per way a user can sign in. EMAIL rows carry the password hash;
 // provider rows (GOOGLE, ...) carry the provider's stable account id. The email
 // itself is identity, not a credential, so it lives on `User`.
+// A password sign-up waiting for its email to be confirmed. No User exists
+// until the link in the email is followed (POST /auth/verify-email), so an
+// address nobody has proven gets no account, token or workspace. Several may
+// be pending for one email; whichever link is followed wins, with its own
+// password, and the rest are deleted.
+model PendingRegistration {
+  id           String   @id @default(uuid())
+  email        String
+  name         String
+  passwordHash String
+  // SHA-256 of the token in the emailed link; the token itself is never stored.
+  tokenHash    String   @unique
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  @@index([email])
+}
+
+// One refresh token. Each use replaces it with a new one in the same family
+// (one family per sign-in); presenting a replaced token after the grace period
+// means it leaked, and revokes the whole family. See RefreshTokenService.
+model RefreshToken {
+  id         String    @id @default(uuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  familyId   String
+  // SHA-256 of the token; the token itself is never stored.
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  // Set when this token was exchanged for a new one.
+  replacedAt DateTime?
+  // Set on sign-out, on reuse, and when the account's password is dropped.
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+  @@index([familyId])
+}
+
 model Auth {
   id         String       @id @default(uuid())
   provider   AuthProvider
@@ -88,9 +127,11 @@ model User {
   email           String    @unique
   avatarUrl       String?
   avatarPublicId  String?
-  // When someone proved they own `email` (today: a Google sign-in). Null means
-  // nobody has — e.g. a password registration — and a first Google sign-in
-  // then drops that password (see AuthService.googleSignIn).
+  // When someone proved they own `email`: a Google sign-in, or the link in the
+  // verification email that finishes a password registration. Null only on
+  // password accounts registered before verification existed; they can't sign
+  // in with a password until they register again, and a first Google sign-in
+  // drops that password (see AuthService.googleSignIn).
   emailVerifiedAt DateTime?
 
   createdAt DateTime @default(now())
@@ -101,8 +142,9 @@ model User {
   createdIssues  Issue[]      @relation("CreatedIssues")
   assignedIssues Issue[]      @relation("AssignedIssues")
 
-  comments  Comment[]
-  auditLogs AuditLog[]
+  comments      Comment[]
+  auditLogs     AuditLog[]
+  refreshTokens RefreshToken[]
 }
 
 //// WORKSPACE (TENANT ROOT)

@@ -36,6 +36,13 @@ describe("Tenancy (e2e)", () => {
     password: "secret123",
   };
 
+  /** Signs up in the sign-up and session tests only. */
+  const dave = {
+    name: "Dave",
+    email: `dave-${run}@e2e.test`,
+    password: "secret123",
+  };
+
   let aliceToken: string;
   let bobToken: string;
   let aliceWs: string;
@@ -56,25 +63,45 @@ describe("Tenancy (e2e)", () => {
     return headers;
   };
 
+  const mail = { sendMail: jest.fn().mockResolvedValue(undefined) };
+  /** Every workspace a sign-up created, for cleanup. */
+  const createdWorkspaces: string[] = [];
+
+  /** The token in the last verification link emailed to `email`. */
+  const verificationToken = (email: string) => {
+    const sent = (mail.sendMail.mock.calls as [{ to: string; text: string }][])
+      .map(([m]) => m)
+      .filter((m) => m.to === email)
+      .pop();
+    const token = /verify-email\?token=([0-9a-f]{64})/.exec(sent?.text ?? "");
+    if (!token) throw new Error(`No verification link was sent to ${email}`);
+    return token[1];
+  };
+
+  /** Register, follow the emailed link, and find the new workspace. */
   const signUp = async (user: typeof alice) => {
-    const registered = await api()
-      .post("/api/v1/auth/register")
-      .send(user)
-      .expect(201);
-    const loggedIn = await api()
-      .post("/api/v1/auth/login")
-      .send({ email: user.email, password: user.password })
+    await api().post("/api/v1/auth/register").send(user).expect(202);
+    const verified = await api()
+      .post("/api/v1/auth/verify-email")
+      .send({ token: verificationToken(user.email) })
       .expect(200);
-    return {
-      token: data<{ accessToken: string }>(loggedIn).accessToken,
-      workspaceId: data<{ workspace: { id: string } }>(registered).workspace.id,
-    };
+    const { accessToken, refreshToken } = data<{
+      accessToken: string;
+      refreshToken: string;
+    }>(verified);
+    const workspaces = await api()
+      .get("/api/v1/workspaces")
+      .set(as(accessToken))
+      .expect(200);
+    const workspaceId = data<{ id: string }[]>(workspaces)[0].id;
+    createdWorkspaces.push(workspaceId);
+    return { token: accessToken, refreshToken, workspaceId };
   };
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(MailService)
-      .useValue({ sendMail: jest.fn().mockResolvedValue(undefined) })
+      .useValue(mail)
       .compile();
 
     app = configureApp(
@@ -112,10 +139,12 @@ describe("Tenancy (e2e)", () => {
     // Workspaces cascade to projects, issues, memberships and invitations;
     // users cascade to their Auth rows.
     await prisma.workspace.deleteMany({
-      where: { id: { in: [aliceWs, bobWs] } },
+      where: { id: { in: createdWorkspaces } },
     });
-    await prisma.user.deleteMany({
-      where: { email: { in: [alice.email, bob.email, carol.email] } },
+    const emails = [alice.email, bob.email, carol.email, dave.email];
+    await prisma.user.deleteMany({ where: { email: { in: emails } } });
+    await prisma.pendingRegistration.deleteMany({
+      where: { email: { in: emails } },
     });
     await app.close();
   });
@@ -129,6 +158,104 @@ describe("Tenancy (e2e)", () => {
       .get("/api/v1/projects")
       .set("x-workspace-id", aliceWs)
       .expect(401);
+  });
+
+  describe("signing up and sessions", () => {
+    it("creates nothing until the emailed link is followed", async () => {
+      await api().post("/api/v1/auth/register").send(dave).expect(202);
+
+      await expect(
+        prisma.user.count({ where: { email: dave.email } }),
+      ).resolves.toBe(0);
+      await expect(
+        prisma.pendingRegistration.count({ where: { email: dave.email } }),
+      ).resolves.toBe(1);
+      // Not even the password works before the address is confirmed.
+      await api()
+        .post("/api/v1/auth/login")
+        .send({ email: dave.email, password: dave.password })
+        .expect(401);
+    });
+
+    it("answers a taken address exactly like a new one", async () => {
+      const res = await api()
+        .post("/api/v1/auth/register")
+        .send({ ...alice, password: "different1" })
+        .expect(202);
+
+      expect(data(res)).toEqual({ email: alice.email });
+      await expect(
+        prisma.pendingRegistration.count({ where: { email: alice.email } }),
+      ).resolves.toBe(0);
+      // Alice's password is untouched.
+      await api()
+        .post("/api/v1/auth/login")
+        .send({ email: alice.email, password: alice.password })
+        .expect(200);
+    });
+
+    it("signs in from the link once, then by password", async () => {
+      const token = verificationToken(dave.email);
+      await api().post("/api/v1/auth/verify-email").send({ token }).expect(200);
+      await api().post("/api/v1/auth/verify-email").send({ token }).expect(400);
+
+      const user = await prisma.user.findUniqueOrThrow({
+        where: { email: dave.email },
+        include: { memberships: true },
+      });
+      expect(user.emailVerifiedAt).not.toBeNull();
+      createdWorkspaces.push(...user.memberships.map((m) => m.workspaceId));
+
+      await api()
+        .post("/api/v1/auth/login")
+        .send({ email: dave.email, password: dave.password })
+        .expect(200);
+    });
+
+    it("rotates refresh tokens, and sign-out ends the session", async () => {
+      const login = await api()
+        .post("/api/v1/auth/login")
+        .send({ email: dave.email, password: dave.password })
+        .expect(200);
+      const first = data<{ refreshToken: string }>(login).refreshToken;
+
+      const refreshed = await api()
+        .post("/api/v1/auth/refresh")
+        .send({ refreshToken: first })
+        .expect(200);
+      const second = data<{ accessToken: string; refreshToken: string }>(
+        refreshed,
+      );
+      expect(second.refreshToken).not.toBe(first);
+      await api()
+        .get("/api/v1/workspaces")
+        .set(as(second.accessToken))
+        .expect(200);
+
+      await api()
+        .post("/api/v1/auth/logout")
+        .send({ refreshToken: second.refreshToken })
+        .expect(200);
+      // The whole family is gone, including the token it was rotated from.
+      await api()
+        .post("/api/v1/auth/refresh")
+        .send({ refreshToken: second.refreshToken })
+        .expect(401);
+      await api()
+        .post("/api/v1/auth/refresh")
+        .send({ refreshToken: first })
+        .expect(401);
+    });
+
+    it("rejects a body key the route doesn't declare", async () => {
+      const res = await api()
+        .post("/api/v1/projects")
+        .set(as(aliceToken, aliceWs))
+        .send({ name: "Gemini", key: "GEM" })
+        .expect(400);
+
+      expect(res.body).toMatchObject({ success: false, statusCode: 400 });
+    });
   });
 
   it("registering creates the user, an EMAIL sign-in and an OWNER membership", async () => {

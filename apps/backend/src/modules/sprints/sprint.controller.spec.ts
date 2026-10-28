@@ -1,3 +1,4 @@
+import { VALIDATION_PIPE_OPTIONS } from "@/app.setup";
 import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
 import { accessAs } from "@/common/permissions/test-access";
 import { WorkspaceGuard } from "@/common/guards/workspace.guard";
@@ -51,9 +52,7 @@ describe("SprintController (HTTP validation)", () => {
 
     app = moduleRef.createNestApplication();
     app.useGlobalFilters(new HttpExceptionFilter());
-    app.useGlobalPipes(
-      new ValidationPipe({ whitelist: true, transform: true }),
-    );
+    app.useGlobalPipes(new ValidationPipe(VALIDATION_PIPE_OPTIONS));
     await app.init();
   });
 

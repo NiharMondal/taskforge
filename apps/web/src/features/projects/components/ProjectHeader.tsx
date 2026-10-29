@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 
 import { cn } from "@heroui/react";
+import { Settings } from "lucide-react";
 import Link from "next/link";
 
 import Breadcrumbs from "@/components/ui/breadcrumbs";
@@ -32,7 +33,14 @@ export default function ProjectHeader({
 	active,
 	actions,
 }: ProjectHeaderProps) {
-	const tabs: { key: ProjectTab; label: string; href: string }[] = [
+	const tabs: {
+		key: ProjectTab;
+		label: string;
+		href: string;
+		icon?: ReactNode;
+		/** Pushed to the right edge of the tab bar (project configuration, not a view). */
+		trailing?: boolean;
+	}[] = [
 		{ key: "activeSprint", label: "Active Sprint", href: `/projects/${projectId}/active-sprint` },
 		{
 			key: "backlog",
@@ -44,6 +52,8 @@ export default function ProjectHeader({
 			key: "workflow",
 			label: "Workflow",
 			href: `/projects/${projectId}/workflow`,
+			icon: <Settings className="size-4" />,
+			trailing: true,
 		},
 	];
 	const activeTab = tabs.find((tab) => tab.key === active);
@@ -75,12 +85,14 @@ export default function ProjectHeader({
 						href={tab.href}
 						aria-current={tab.key === active ? "page" : undefined}
 						className={cn(
-							"-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors",
+							"-mb-px flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition-colors",
+							tab.trailing && "ml-auto",
 							tab.key === active
 								? "border-accent text-foreground"
 								: "border-transparent text-muted hover:text-foreground",
 						)}
 					>
+						{tab.icon}
 						{tab.label}
 					</Link>
 				))}

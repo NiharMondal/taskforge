@@ -35,3 +35,11 @@ const placeholders: Record<string, string> = {
 for (const [key, value] of Object.entries(placeholders)) {
   process.env[key] ??= value;
 }
+
+// Billing never reaches Stripe here, even when the developer's .env has test
+// keys (set values override the file). Without a price, checkout answers 503;
+// the placeholder key and secret only let the webhook check signatures, which
+// needs no network.
+process.env.STRIPE_SECRET_KEY = "sk_test_e2e_placeholder";
+process.env.STRIPE_WEBHOOK_SECRET = "whsec_e2e_placeholder";
+process.env.STRIPE_PRO_PRICE_ID = "";

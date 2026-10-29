@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { billingKeys } from "@/features/billing/hooks/use-billing";
 import { workspaceKeys } from "@/features/workspace/hooks/use-workspaces";
 
 import {
@@ -49,7 +50,8 @@ export function useInvitations(workspaceId: string, enabled = true) {
 /**
  * Invite an email into the active workspace. Callers receive the full
  * `ApiResponse` envelope (for the toast message); the invitation list is
- * refetched so the new PENDING row appears.
+ * refetched so the new PENDING row appears, and billing because a pending
+ * invitation holds a seat.
  */
 export function useCreateInvitation(workspaceId: string) {
   const queryClient = useQueryClient();
@@ -61,6 +63,7 @@ export function useCreateInvitation(workspaceId: string) {
       queryClient.invalidateQueries({
         queryKey: invitationKeys.list(workspaceId),
       });
+      queryClient.invalidateQueries({ queryKey: billingKeys.detail(workspaceId) });
     },
   });
 }
@@ -81,7 +84,10 @@ export function useAcceptInvitation() {
   });
 }
 
-/** Revoke a pending invitation; the list refetches to show it as REVOKED. */
+/**
+ * Revoke a pending invitation; the list refetches to show it as REVOKED, and
+ * billing to free its seat.
+ */
 export function useRevokeInvitation(workspaceId: string) {
   const queryClient = useQueryClient();
 
@@ -92,6 +98,7 @@ export function useRevokeInvitation(workspaceId: string) {
       queryClient.invalidateQueries({
         queryKey: invitationKeys.list(workspaceId),
       });
+      queryClient.invalidateQueries({ queryKey: billingKeys.detail(workspaceId) });
     },
   });
 }

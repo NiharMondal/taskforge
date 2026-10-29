@@ -49,6 +49,19 @@ enum SubscriptionPlan {
   ENTERPRISE
 }
 
+// Stripe's subscription statuses, one for one. ACTIVE, TRIALING and PAST_DUE
+// keep a paid plan in force (`effectivePlan` in @taskforge/shared).
+enum SubscriptionStatus {
+  ACTIVE
+  TRIALING
+  PAST_DUE
+  UNPAID
+  CANCELED
+  INCOMPLETE
+  INCOMPLETE_EXPIRED
+  PAUSED
+}
+
 enum InvitationStatus {
   PENDING
   ACCEPTED
@@ -404,22 +417,37 @@ model Invitation {
 
 //// SUBSCRIPTION (SAAS LAYER)
 
+// One per workspace, written by the billing module (`spec/billing-spec.md`).
+// No row means FREE. `status` is null while only the Stripe customer exists
+// (checkout started, nothing subscribed yet); the webhook writes the rest.
 model Subscription {
   id          String @id @default(uuid())
   workspaceId String @unique
 
-  plan   SubscriptionPlan @default(FREE)
-  status String?
+  plan   SubscriptionPlan    @default(FREE)
+  status SubscriptionStatus?
 
-  stripeCustomerId     String?
-  stripeSubscriptionId String?
+  stripeCustomerId     String? @unique
+  stripeSubscriptionId String? @unique
 
-  currentPeriodEnd DateTime?
+  // Stripe's quantity: members billed for.
+  seats             Int?
+  currentPeriodEnd  DateTime?
+  cancelAtPeriodEnd Boolean   @default(false)
+  trialEndsAt       DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+// Stripe webhook events already applied. Stripe may deliver an event more than
+// once; its id is recorded in the same transaction that applies it.
+model StripeEvent {
+  id          String   @id
+  type        String
+  processedAt DateTime @default(now())
 }
 
 //// AUDIT LOGS

@@ -1,4 +1,5 @@
 import {
+	CreditCard,
 	ShieldCheck,
 	SlidersHorizontal,
 	Tag,
@@ -24,6 +25,7 @@ export const SETTINGS_TABS: SettingsTab[] = [
 	{ href: "/settings/roles", label: "Roles", icon: ShieldCheck },
 	{ href: "/settings/general", label: "General", icon: SlidersHorizontal },
 	{ href: "/settings/labels", label: "Labels", icon: Tag },
+	{ href: "/settings/billing", label: "Billing", icon: CreditCard },
 	{ href: "/settings/profile", label: "Profile", icon: User },
 ];
 

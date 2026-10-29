@@ -16,6 +16,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { WorkspaceRole } from "generated/prisma/enums";
+import { BillingService } from "../billing/billing.service";
 import {
   findSystemRole,
   resolveAssignableRole,
@@ -29,7 +30,10 @@ const ASSIGNED_ROLE_SUMMARY = {
 
 @Injectable()
 export class MembershipService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private billing: BillingService,
+  ) {}
   /** The roster, longest-standing members first. */
   async findAllByWorkspaceId(workspaceId: string, query: PaginationQueryDto) {
     return new PrismaQueryBuilder(query, {
@@ -146,7 +150,7 @@ export class MembershipService {
   ) {
     await this.getTarget(workspaceId, targetUserId, actor);
 
-    return this.prisma.membership.delete({
+    const removed = await this.prisma.membership.delete({
       where: {
         userId_workspaceId: {
           userId: targetUserId,
@@ -154,6 +158,8 @@ export class MembershipService {
         },
       },
     });
+    await this.billing.syncSeats(workspaceId);
+    return removed;
   }
 
   /**
@@ -228,7 +234,7 @@ export class MembershipService {
       throw new BadRequestException("You can't leave your only workspace");
     }
 
-    return this.prisma.membership.delete({
+    const left = await this.prisma.membership.delete({
       where: {
         userId_workspaceId: {
           userId: actor.userId,
@@ -236,6 +242,8 @@ export class MembershipService {
         },
       },
     });
+    await this.billing.syncSeats(actor.workspaceId);
+    return left;
   }
 
   /**

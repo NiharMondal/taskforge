@@ -30,7 +30,7 @@ The schema still has four models that no code uses:
 | `Comment` | none | none |
 | `Label` / `IssueLabel` | none | none |
 | `AuditLog` | none | none |
-| `Subscription` | none | none ("Upgrade Plan" goes nowhere) |
+| `Subscription` | none | none ("Upgrade Plan" goes nowhere) — built since, see item 6 |
 
 ---
 
@@ -175,6 +175,11 @@ A suggested order, each as its own PR:
    > - **Web.** Permission flags now come from `GET /memberships/me`, so the web keeps no copy of the role rules. That fixes the MEMBER drift: members see "create issue" and can edit issues they reported or are assigned to (`canEditIssue`, per issue, also in the backlog). The new **Settings → Roles** tab lists the roles. Custom roles can be created from scratch or copied from any role, then edited and deleted; built-ins are view-only, and permissions the viewer doesn't hold are greyed out. The Members tab and the invite form pick from the real role list, offering only roles the viewer could hand out and locking members with more access. `isManager` is gone, replaced by `canManageWorkspace`, `canManageMembers`, `canManageInvitations` and `canManageRoles`.
    > - Not checked: the e2e run (left to CI) and the UI in a browser.
 6. **Billing.**
+   > **Status: done (2026-10-29) on branch `feat/stripe-billing-with-per-seat-pro-plan`, cut from `refactor/shared-package`. Not committed yet.** Plan, reasoning and the review that revised it: `docs/billing-plan-2026-10-29.md`.
+   > - **Model.** The workspace pays; its owner (new owner-only `billing:manage`, no migration) upgrades. Free: 5 members including pending invitations, built-in roles only, and at most 2 Free workspaces owned per person. Pro: per member per month through Stripe Checkout (14-day trial on a workspace's first checkout), unlimited members, custom roles. Enterprise is set by hand. The limits live in `@taskforge/shared` (`plans.ts`) and the backend refuses past them with a 402 `PLAN_LIMIT`.
+   > - **Backend.** `src/modules/billing/`: `GET /billing`, `POST /billing/checkout`, `POST /billing/portal` and the signed `POST /billing/webhook`, which applies each event once (`StripeEvent`) and re-reads the subscription from Stripe so delivery order doesn't matter. Seats follow the roster (accept, remove, leave), a second checkout's subscription is canceled, and deleting a workspace cancels its subscription first. Migration `20261029180000_stripe_billing` (status enum, Stripe columns unique, `StripeEvent`; applied to the local dev database). Stripe keys are optional (`503` without). Spec: `apps/backend/spec/billing-spec.md`.
+   > - **Web.** Settings → Billing (plan, usage meter, plan cards, upgrade and "Manage billing", banners for a failed payment, an upcoming cancellation and "Activating Pro…" after checkout). A 402 shows a toast with an Upgrade button; the invite button and "New role" disable themselves with a hint at the limit; the workspace switcher shows a Pro badge. The browser no longer counts workspaces.
+   > - **Checked:** unit tests (497), e2e against a local Postgres (58, including a Stripe-signed webhook), lint, typecheck, build, and the migration diff. **Not checked:** a real Stripe test-mode checkout, the portal and the past-due card, and the UI in a browser.
 
 Still open from the gap audit, small enough to pick up alongside any of these:
 

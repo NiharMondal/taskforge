@@ -2,6 +2,7 @@
 
 import { ListBox, Select, Spinner } from "@heroui/react";
 
+import { ProBadge } from "@/features/billing/components/ProBadge";
 import { useWorkspace } from "@/features/workspace/context/workspace-context";
 
 /**
@@ -56,7 +57,10 @@ export default function WorkspaceSwitcher() {
 							id={ws.id}
 							textValue={ws.name}
 						>
-							{ws.name}
+							<span className="flex min-w-0 items-center gap-2">
+								<span className="truncate">{ws.name}</span>
+								<ProBadge plan={ws.plan} />
+							</span>
 							<ListBox.ItemIndicator />
 						</ListBox.Item>
 					))}

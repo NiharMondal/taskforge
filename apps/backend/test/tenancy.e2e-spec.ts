@@ -6,6 +6,7 @@ import { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { Prisma } from "generated/prisma/client";
 import { randomUUID } from "crypto";
+import Stripe from "stripe";
 import request, { Response } from "supertest";
 import { App } from "supertest/types";
 
@@ -33,6 +34,13 @@ describe("Tenancy (e2e)", () => {
   const carol = {
     name: "Carol",
     email: `carol-${run}@e2e.test`,
+    password: "secret123",
+  };
+
+  /** Signs up in the billing tests only, to own workspaces from scratch. */
+  const erin = {
+    name: "Erin",
+    email: `erin-${run}@e2e.test`,
     password: "secret123",
   };
 
@@ -105,7 +113,9 @@ describe("Tenancy (e2e)", () => {
       .compile();
 
     app = configureApp(
-      moduleRef.createNestApplication<INestApplication<App>>(),
+      moduleRef.createNestApplication<INestApplication<App>>({
+        rawBody: true,
+      }),
     );
     await app.init();
     prisma = app.get(PrismaService);
@@ -141,7 +151,13 @@ describe("Tenancy (e2e)", () => {
     await prisma.workspace.deleteMany({
       where: { id: { in: createdWorkspaces } },
     });
-    const emails = [alice.email, bob.email, carol.email, dave.email];
+    const emails = [
+      alice.email,
+      bob.email,
+      carol.email,
+      dave.email,
+      erin.email,
+    ];
     await prisma.user.deleteMany({ where: { email: { in: emails } } });
     await prisma.pendingRegistration.deleteMany({
       where: { email: { in: emails } },
@@ -1021,6 +1037,16 @@ describe("Tenancy (e2e)", () => {
       bobUserId = (
         await prisma.user.findUniqueOrThrow({ where: { email: bob.email } })
       ).id;
+      // Custom roles are a Pro feature (the "billing" block checks Free).
+      await prisma.subscription.upsert({
+        where: { workspaceId: aliceWs },
+        create: { workspaceId: aliceWs, plan: "PRO", status: "ACTIVE" },
+        update: { plan: "PRO", status: "ACTIVE" },
+      });
+    });
+
+    afterAll(async () => {
+      await prisma.subscription.deleteMany({ where: { workspaceId: aliceWs } });
     });
 
     it("lets any member list the roles, built-ins first", async () => {
@@ -1197,6 +1223,157 @@ describe("Tenancy (e2e)", () => {
         .get("/api/v1/projects")
         .set(as(bobToken, aliceWs))
         .expect(403);
+    });
+  });
+
+  describe("billing and plan limits (no Stripe keys)", () => {
+    type Billing = {
+      plan: string;
+      billingEnabled: boolean;
+      limits: { members: number | null; customRoles: boolean };
+      usage: { members: number; pendingInvitations: number };
+    };
+    const billing = async () =>
+      data<Billing>(
+        await api().get("/api/v1/billing").set(as(bobToken, bobWs)).expect(200),
+      );
+    const invite = (email: string) =>
+      api()
+        .post("/api/v1/invitations")
+        .set(as(bobToken, bobWs))
+        .send({ email, role: "MEMBER" });
+    const makePro = (workspaceId: string) =>
+      prisma.subscription.upsert({
+        where: { workspaceId },
+        create: { workspaceId, plan: "PRO", status: "ACTIVE" },
+        update: { plan: "PRO", status: "ACTIVE" },
+      });
+
+    afterAll(async () => {
+      await prisma.subscription.deleteMany({ where: { workspaceId: bobWs } });
+    });
+
+    it("shows any member the plan, its limits and the usage", async () => {
+      await expect(billing()).resolves.toMatchObject({
+        plan: "FREE",
+        billingEnabled: false,
+        limits: { members: 5, customRoles: false },
+      });
+    });
+
+    it("402s an invitation past the Free plan's 5 seats", async () => {
+      const { usage } = await billing();
+      const free = 5 - usage.members - usage.pendingInvitations;
+      for (let i = 0; i < free; i++) {
+        await invite(`seat-${i}-${run}@e2e.test`).expect(201);
+      }
+
+      const res = await invite(`one-too-many-${run}@e2e.test`).expect(402);
+      expect(res.body).toMatchObject({
+        success: false,
+        statusCode: 402,
+        code: "PLAN_LIMIT",
+        limit: "members",
+      });
+    });
+
+    it("402s a custom role on Free", async () => {
+      const res = await api()
+        .post("/api/v1/roles")
+        .set(as(bobToken, bobWs))
+        .send({ name: "Triage", permissions: [] })
+        .expect(402);
+      expect(res.body).toMatchObject({
+        code: "PLAN_LIMIT",
+        limit: "customRoles",
+      });
+    });
+
+    it("lifts both limits on Pro, and lists the workspace as Pro", async () => {
+      await makePro(bobWs);
+
+      await invite(`one-too-many-${run}@e2e.test`).expect(201);
+      await api()
+        .post("/api/v1/roles")
+        .set(as(bobToken, bobWs))
+        .send({ name: "Triage", permissions: [] })
+        .expect(201);
+
+      const workspaces = data<{ id: string; plan: string }[]>(
+        await api().get("/api/v1/workspaces").set(as(bobToken)).expect(200),
+      );
+      expect(workspaces.find((w) => w.id === bobWs)?.plan).toBe("PRO");
+    });
+
+    it("caps the Free workspaces one person owns at 2; Pro ones don't count", async () => {
+      const { token, workspaceId: first } = await signUp(erin);
+      const create = (name: string) =>
+        api().post("/api/v1/workspaces").set(as(token)).send({ name });
+
+      const second = data<{ id: string }>(await create("Erin Two").expect(201));
+      createdWorkspaces.push(second.id);
+
+      const res = await create("Erin Three").expect(402);
+      expect(res.body).toMatchObject({
+        code: "PLAN_LIMIT",
+        limit: "ownedWorkspaces",
+      });
+
+      await makePro(first);
+      const third = data<{ id: string }>(
+        await create("Erin Three").expect(201),
+      );
+      createdWorkspaces.push(third.id);
+    });
+
+    it("answers checkout with a 503 when Stripe isn't configured", async () => {
+      await api()
+        .post("/api/v1/billing/checkout")
+        .set(as(bobToken, bobWs))
+        .expect(503);
+    });
+
+    it("keeps the webhook public but refuses an unsigned body", async () => {
+      await api()
+        .post("/api/v1/billing/webhook")
+        .send({ type: "customer.subscription.deleted" })
+        .expect(400);
+    });
+
+    it("checks the signature against the raw body, and applies an event once", async () => {
+      const id = `evt_e2e_${run}`;
+      const payload = JSON.stringify({
+        id,
+        object: "event",
+        type: "customer.created",
+        data: { object: { id: "cus_e2e", object: "customer" } },
+      });
+      const signature = new Stripe(
+        "sk_test_unused",
+      ).webhooks.generateTestHeaderString({
+        payload,
+        secret: process.env.STRIPE_WEBHOOK_SECRET!,
+      });
+      const post = (body: string) =>
+        api()
+          .post("/api/v1/billing/webhook")
+          .set("content-type", "application/json")
+          .set("stripe-signature", signature)
+          .send(body);
+
+      try {
+        // Re-serialized JSON (here, extra whitespace) no longer matches.
+        await post(payload.replace(":", ": ")).expect(400);
+
+        await post(payload).expect(200);
+        const again = await post(payload).expect(200);
+        expect(data(again)).toEqual({ received: true, duplicate: true });
+        await expect(prisma.stripeEvent.count({ where: { id } })).resolves.toBe(
+          1,
+        );
+      } finally {
+        await prisma.stripeEvent.deleteMany({ where: { id } });
+      }
     });
   });
 });

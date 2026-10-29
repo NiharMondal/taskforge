@@ -9,6 +9,7 @@ import {
   WorkspaceAccess,
 } from "@/common/permissions/workspace-access";
 import { PaginationQueryDto } from "@/common/dto/pagination-query.dto";
+import { assertCanAddMember } from "@/common/plans/plan-limits";
 import PrismaQueryBuilder from "@/lib/PrismQueryBuilder";
 import { PrismaService } from "@/prisma/prisma.service";
 import {
@@ -21,6 +22,7 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { InvitationStatus, WorkspaceRole } from "generated/prisma/enums";
+import { BillingService } from "../billing/billing.service";
 import { MailService } from "../mail/mail.service";
 import { SYSTEM_ROLE_NAMES } from "@taskforge/shared";
 import { findSystemRole, resolveAssignableRole } from "../roles/system-roles";
@@ -52,6 +54,7 @@ export class InvitationService {
     private prisma: PrismaService,
     private mail: MailService,
     private config: ConfigService,
+    private billing: BillingService,
   ) {}
 
   /** `invitation:manage` is checked on the route. */
@@ -109,6 +112,10 @@ export class InvitationService {
         "A pending invitation already exists for this email",
       );
     }
+
+    // The invitation reserves a seat, so the plan is checked here and not on
+    // accept. A re-sent expired or revoked one holds no seat until now.
+    await assertCanAddMember(this.prisma, workspaceId);
 
     const token = generateToken();
     const expiresAt = futureDate(); // By Default 7 Days
@@ -255,7 +262,7 @@ export class InvitationService {
       throw new ConflictException("You are already a member of this workspace");
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const accepted = await this.prisma.$transaction(async (tx) => {
       // Claim the invitation first, and only if it is still the one checked
       // above: PENDING, unexpired, same token. Between that check and now it
       // may have been revoked, re-sent (new token, maybe a new role) or
@@ -296,6 +303,10 @@ export class InvitationService {
 
       return { workspaceId: invitation.workspaceId, membership };
     });
+
+    // After the commit: a Stripe failure must not undo the membership.
+    await this.billing.syncSeats(accepted.workspaceId);
+    return accepted;
   }
 
   /** `invitation:manage` is checked on the route. */

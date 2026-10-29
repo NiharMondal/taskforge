@@ -13,10 +13,13 @@ import {
 	toast,
 } from "@heroui/react";
 import { Copy, Eye, Pencil, Plus, Trash2 } from "lucide-react";
+import Link from "next/link";
 
 import ConfirmModal from "@/components/ui/confirm-modal";
 import ErrorAlert from "@/components/ui/error-alert";
 import MyModal from "@/components/ui/my-modal";
+import { useBilling } from "@/features/billing/hooks/use-billing";
+import { BILLING_PATH, useErrorToast } from "@/features/billing/lib/plan-limit";
 import { useWorkspacePermissions } from "@/features/memberships/hooks/use-workspace-permissions";
 import { holdsAll } from "@/features/memberships/lib/permissions";
 import RoleForm from "@/features/roles/components/RoleForm";
@@ -62,6 +65,8 @@ const copyName = (role: Role) =>
  * from any role) and edits or deletes them; the four built-ins are read-only.
  * Roles holding a permission the viewer lacks can be viewed, not changed — the
  * backend's no-escalation rule. Members are given roles on the Members tab.
+ * Creating one is a Pro feature: on Free, "New role" and "Copy" are disabled
+ * with an upgrade hint, while existing custom roles stay editable.
  */
 export default function RolesSettings() {
 	const { activeWorkspaceId } = useWorkspace();
@@ -75,6 +80,11 @@ export default function RolesSettings() {
 	} = useRoles(workspaceId);
 	const permissions = useWorkspacePermissions();
 	const { canManageRoles } = permissions;
+	const { data: billing } = useBilling(workspaceId);
+	// Unknown until billing loads; the backend's 402 covers that moment.
+	const canCreateCustom = billing?.limits.customRoles ?? true;
+	const canCreate = canManageRoles && canCreateCustom;
+	const showError = useErrorToast();
 
 	const [dialog, setDialog] = useState<Dialog>(null);
 	const close = () => setDialog(null);
@@ -99,7 +109,7 @@ export default function RolesSettings() {
 			close();
 			return true;
 		} catch (err) {
-			toast.danger(getApiErrorMessage(err, "Failed to save role"));
+			showError(err, "Failed to save role");
 			return false;
 		}
 	};
@@ -155,13 +165,24 @@ export default function RolesSettings() {
 					</CardDescription>
 				</div>
 				{canManageRoles && (
-					<Button
-						size="sm"
-						onPress={() => setDialog({ kind: "create", from: null })}
-					>
-						<Plus className="size-4" />
-						New role
-					</Button>
+					<div className="flex flex-col items-end gap-1">
+						<Button
+							size="sm"
+							isDisabled={!canCreateCustom}
+							onPress={() => setDialog({ kind: "create", from: null })}
+						>
+							<Plus className="size-4" />
+							New role
+						</Button>
+						{!canCreateCustom && (
+							<p className="text-xs text-muted">
+								Custom roles are part of Pro.{" "}
+								<Link href={BILLING_PATH} className="text-accent hover:underline">
+									Upgrade
+								</Link>
+							</p>
+						)}
+					</div>
 				)}
 			</CardHeader>
 			<CardContent>
@@ -205,7 +226,7 @@ export default function RolesSettings() {
 											<Eye className="size-3.5" />
 										</Button>
 									)}
-									{canManageRoles && role.systemKey !== "OWNER" && (
+									{canCreate && role.systemKey !== "OWNER" && (
 										<Button
 											isIconOnly
 											size="sm"

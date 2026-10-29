@@ -52,6 +52,8 @@ export const OWNER_ONLY_PERMISSIONS = [
   "workspace:delete",
   /** Hand the workspace to another member (`POST /memberships/transfer-ownership`). */
   "workspace:transfer",
+  /** Start a Pro checkout and open the Stripe billing portal (`/billing/*`). */
+  "billing:manage",
 ] as const;
 
 export type GrantablePermission = (typeof GRANTABLE_PERMISSIONS)[number];

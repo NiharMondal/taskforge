@@ -1,18 +1,32 @@
 import { PaginationQueryDto } from "@/common/dto/pagination-query.dto";
+import { assertCanOwnAnotherFreeWorkspace } from "@/common/plans/plan-limits";
 import PrismaQueryBuilder from "@/lib/PrismQueryBuilder";
 import { PrismaService } from "@/prisma/prisma.service";
 import { Injectable, NotFoundException } from "@nestjs/common";
+import { effectivePlan } from "@taskforge/shared";
+import type { Prisma, Subscription, Workspace } from "generated/prisma/client";
 import { WorkspaceRole } from "generated/prisma/enums";
+import { BillingService } from "../billing/billing.service";
 import { seedSystemRoles } from "../roles/system-roles";
 import { CreateWorkspaceDto } from "./dto/create-workspace.dto";
 import { UpdateWorkspaceDto } from "./dto/update-workspace.dto";
 
+/** A `GET /workspaces` row before its subscription becomes `plan`. */
+type WorkspaceRow = Workspace & {
+  subscription: Pick<Subscription, "plan" | "status"> | null;
+};
+
 @Injectable()
 export class WorkspaceService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private billing: BillingService,
+  ) {}
 
-  // create workspace
+  // create workspace — the caller's Free workspaces are capped (402)
   async create(userId: string, dto: CreateWorkspaceDto) {
+    await assertCanOwnAnotherFreeWorkspace(this.prisma, userId);
+
     const result = await this.prisma.$transaction(async (tx) => {
       const workspace = await tx.workspace.create({
         data: {
@@ -37,16 +51,26 @@ export class WorkspaceService {
     return result;
   }
 
-  // get user workspace
+  // get user workspace, each with the plan it is on now
   async getUserWorkspaces(userId: string, query: PaginationQueryDto) {
-    return new PrismaQueryBuilder(query, {
-      defaultField: "createdAt",
-      defaultOrder: "desc",
-    })
-      .withDefaultFilter({ memberships: { some: { userId } } })
-      .paginate()
-      .sort()
-      .execute(this.prisma.workspace);
+    const { data, metaData } =
+      await new PrismaQueryBuilder<Prisma.WorkspaceWhereInput>(query, {
+        defaultField: "createdAt",
+        defaultOrder: "desc",
+      })
+        .withDefaultFilter({ memberships: { some: { userId } } })
+        .paginate()
+        .sort()
+        .include({ subscription: { select: { plan: true, status: true } } })
+        .execute(this.prisma.workspace);
+
+    return {
+      data: (data as WorkspaceRow[]).map(({ subscription, ...workspace }) => ({
+        ...workspace,
+        plan: effectivePlan(subscription),
+      })),
+      metaData,
+    };
   }
 
   // get single workspace — WorkspaceGuard has already proven membership
@@ -72,8 +96,10 @@ export class WorkspaceService {
     });
   }
 
-  // delete workspace (only admin)
+  // delete workspace (owner only). A paid subscription is canceled first; if
+  // Stripe can't be reached the delete is refused rather than left billing.
   async delete(workspaceId: string) {
+    await this.billing.cancelForDeletion(workspaceId);
     return this.prisma.workspace.delete({
       where: { id: workspaceId },
     });

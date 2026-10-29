@@ -2,7 +2,11 @@
 
 ## Context
 
-TaskForge is a team tool, but nobody can pay for it yet. The schema already has a `Subscription` model (one per workspace, plans `FREE` / `PRO` / `ENTERPRISE`, Stripe columns), but no code reads or writes it. The web's "Upgrade Plan" button only links to `/settings`. Its "2 workspaces" limit is checked in the browser only; the backend doesn't enforce it. This plan answers the basic questions (what to charge for, who pays, how they pay), then lists the build steps. Once approved, it is also saved as `docs/billing-plan-2026-10-29.md`.
+TaskForge is a team tool, but nobody can pay for it yet. The schema already has a `Subscription` model (one per workspace, plans `FREE` / `PRO` / `ENTERPRISE`, Stripe columns), but no code reads or writes it. The web's "Upgrade Plan" button only links to `/settings`. Its "2 workspaces" limit is checked in the browser only (and counts every workspace you belong to, not the ones you own); the backend doesn't enforce it. This plan answers the basic questions (what to charge for, who pays, how they pay), then lists the build steps.
+
+> **Revised 2026-10-29, before implementation.** The first draft predated the `@taskforge/shared` refactor, so its file references for the permission catalog and the web's owner-only list were stale; they are corrected below. The review also added: plan limits in `@taskforge/shared` (the web's plan cards show the same numbers), a status enum covering every Stripe status, webhooks that re-read the subscription from Stripe (so event order doesn't matter), one trial per workspace, a guard against a second subscription from a double checkout, and the edge cases listed under "Known gaps".
+
+> **Status: built (2026-10-29)** on `feat/stripe-billing-with-per-seat-pro-plan`, as revised here. The implemented contract is `apps/backend/spec/billing-spec.md`; what was and wasn't verified is in `docs/next-feature-2026-10-28.md`, item 6.
 
 ---
 
@@ -40,7 +44,7 @@ Why these limits:
 - **Custom roles** (just built) are a typical paid feature: only bigger teams need them.
 - **The 2-free-workspaces cap** stops a 20-person team from splitting into four 5-person workspaces to avoid paying.
 
-Optional at launch: a **14-day Pro trial** at checkout (one Stripe setting). The plan includes it; drop it if you prefer.
+Optional at launch: a **14-day Pro trial** at checkout (one Stripe setting). The plan includes it; drop it if you prefer. A workspace gets the trial **once**: one that has had a Stripe subscription before checks out without it, so canceling and re-subscribing doesn't buy another free fortnight.
 
 ### How does the user pay?
 
@@ -64,12 +68,14 @@ Owner → Settings → Billing → "Upgrade to Pro"
 - **A payment fails:** Stripe retries for about two weeks (`past_due`). The workspace stays Pro meanwhile, and the Billing page shows a "payment failed, update your card" banner.
 - **The subscription is canceled or ends:** the workspace goes back to Free. **No data is deleted and nobody is removed.** If it is over the Free limits, nobody new can be invited until it is under them, and no new custom roles can be created. Existing members and custom roles keep working.
 - **A Pro workspace is deleted:** its Stripe subscription is canceled at once, so the owner isn't charged for a workspace that no longer exists.
+- **Ownership is transferred:** the new owner holds `billing:manage` from then on. The Stripe customer belongs to the workspace, so the card and invoices stay where they are; the new owner changes the card in the portal.
+- **Someone checks out twice** (two tabs, or a double click before the first webhook lands): the second subscription is canceled at once by the webhook that reports it, and only the first is kept.
 
 ---
 
 ## Part 2 — Implementation
 
-One new branch (e.g. `feat/stripe-billing-with-per-seat-pro-plan`), stacked on the custom-roles branch, which the new limits depend on.
+One new branch, `feat/stripe-billing-with-per-seat-pro-plan`, cut from `refactor/shared-package`: that branch already carries custom roles (which the limits depend on) and the shared package (which the limits and permission key go into).
 
 ### 0. Your one-time Stripe setup (test mode, free)
 
@@ -79,32 +85,35 @@ One new branch (e.g. `feat/stripe-billing-with-per-seat-pro-plan`), stacked on t
 4. Install the Stripe CLI and run `stripe listen --forward-to localhost:5001/api/v1/billing/webhook` while developing. It prints the webhook signing secret.
 5. Put these in `apps/backend/.env` (and add them to `.env.example`): `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRO_PRICE_ID`.
 
-Like `GOOGLE_CLIENT_ID`, these are read lazily: copy the `config.get` plus `ServiceUnavailableException` pattern in `apps/backend/src/modules/auth/google-token-verifier.ts:33-39`. The backend boots without them; the checkout and portal routes answer 503, and the Free limits still apply.
+Like `GOOGLE_CLIENT_ID`, these are read lazily: copy the `config.get` plus `ServiceUnavailableException` pattern in `apps/backend/src/modules/auth/google-token-verifier.ts:33-38`. The backend boots without them; the checkout and portal routes answer 503, and the Free limits still apply.
 
 ### 1. Database (one migration)
 
 `apps/backend/prisma/schema.prisma`, model `Subscription`:
-- `status` becomes an enum `SubscriptionStatus` (`ACTIVE`, `TRIALING`, `PAST_DUE`, `CANCELED`, `INCOMPLETE`), mapped from Stripe's statuses.
+- `status` becomes a nullable enum `SubscriptionStatus` that mirrors every Stripe status: `ACTIVE`, `TRIALING`, `PAST_DUE`, `UNPAID`, `CANCELED`, `INCOMPLETE`, `INCOMPLETE_EXPIRED`, `PAUSED`. `null` means a Stripe customer was created (checkout started) but no subscription exists yet. No code writes the old `String` column, so the migration drops and re-adds it.
 - Add `seats Int?`, `cancelAtPeriodEnd Boolean @default(false)`, `trialEndsAt DateTime?`.
 - `stripeCustomerId` and `stripeSubscriptionId` become `@unique`.
 - New model `StripeEvent { id String @id; type String; processedAt DateTime @default(now()) }`, so each webhook event is applied once (Stripe may deliver one twice).
 - No backfill: a workspace with no `Subscription` row is on Free.
+- The new enum goes into `packages/shared/src/enums.ts` too (`SUBSCRIPTION_STATUS_VALUES`, plus `SUBSCRIPTION_PLAN_VALUES`), and into `shared-enums.spec.ts`.
 
 ### 2. Plans and limits — one place for the rules
 
-New `apps/backend/src/common/plans/plans.ts`:
+The numbers live in **`@taskforge/shared`** (`packages/shared/src/plans.ts`), because the web's plan cards show the same limits the backend enforces:
 - `PLAN_LIMITS = { FREE: { members: 5, customRoles: false }, PRO: { members: null, customRoles: true }, ENTERPRISE: …same as PRO }` and `FREE_OWNED_WORKSPACES = 2`.
 - `effectivePlan(subscription)`: PRO/ENTERPRISE while the status is `ACTIVE`, `TRIALING` or `PAST_DUE`, else FREE.
-- `getWorkspacePlan(db, workspaceId)` and `assertWithinPlan(...)`. A limit hit throws **HTTP 402** with `{ message, code: "PLAN_LIMIT", limit }`, so the web can tell "upgrade needed" apart from "not allowed" (403). `HttpExceptionFilter` (`apps/backend/src/lib/http-exception.filter.ts:43-52`) already spreads an object response, so `code` reaches the client unchanged.
+- `PLAN_LIMIT_ERROR_CODE = "PLAN_LIMIT"`.
+
+The backend's checks go in `apps/backend/src/common/plans/plan-limits.ts`: `getWorkspacePlan(db, workspaceId)` and one `assert…` per limit. A limit hit throws **HTTP 402** with `{ message, code: "PLAN_LIMIT", limit }`, so the web can tell "upgrade needed" apart from "not allowed" (403). `HttpExceptionFilter` (`apps/backend/src/lib/http-exception.filter.ts:43-52`) already spreads an object response, so `code` reaches the client unchanged.
 
 Where the limits are checked (the existing services, each before its write):
-- **Members:** `InvitationService.sendInvitation` (`invitation.service.ts:56`), counting members plus live pending invitations. Accepting an invitation (`acceptInvitation`, :207) is not re-checked: the invitation already reserved the seat.
-- **Custom roles:** `RoleService.create` (`roles/role.service.ts:77`).
-- **Owned free workspaces:** `WorkspaceService.create` (`workspace/workspace.service.ts:17`) counts OWNER memberships whose workspace is on Free. Registration and first Google sign-in (`AuthService.createAccount`, `auth.service.ts:361`) create the user's first workspace and aren't checked.
+- **Members:** `InvitationService.sendInvitation` (`invitation.service.ts:58`), counting members plus live pending invitations (not counting the invitation being replaced when an expired or revoked one is re-sent). Accepting an invitation (`acceptInvitation`, :213) is not re-checked: the invitation already reserved the seat.
+- **Custom roles:** `RoleService.create` (`roles/role.service.ts:77`). Editing, deleting and assigning existing custom roles stay allowed on Free, so a workspace that drops back keeps working.
+- **Owned free workspaces:** `WorkspaceService.create` (`workspace/workspace.service.ts:15`) counts OWNER memberships whose workspace is on Free. Registration and first Google sign-in (`AuthService.createAccount`, `auth.service.ts:361`) create the user's first workspace and aren't checked.
 
 ### 3. Who may manage billing
 
-Add `billing:manage` to `OWNER_ONLY_PERMISSIONS` (`apps/backend/src/common/permissions/permissions.ts`). It's never stored on a role, so no migration is needed, the same as `workspace:delete`. Mirror it in the web's `OwnerOnlyPermission` type (`apps/web/src/features/roles/constants.ts:28`), add a `canManageBilling` flag in `permissionsFrom` (`apps/web/src/features/memberships/lib/permissions.ts:65`), and add the key to the owner-only list hardcoded in `UNRESTRICTED_PERMISSIONS` (:109).
+Add `billing:manage` to `OWNER_ONLY_PERMISSIONS` in `packages/shared/src/permissions.ts`. It's never stored on a role, so no migration is needed, the same as `workspace:delete`. The web picks it up from there: `OwnerOnlyPermission` and `UNRESTRICTED_PERMISSIONS` (built from `ALL_PERMISSIONS`) need no edit. Only add a `canManageBilling` flag in `permissionsFrom` (`apps/web/src/features/memberships/lib/permissions.ts:63`).
 
 ### 4. Backend module `apps/backend/src/modules/billing/`
 
@@ -116,12 +125,15 @@ Add `billing:manage` to `OWNER_ONLY_PERMISSIONS` (`apps/backend/src/common/permi
 | `GET /billing` | any member | plan, status, seats, renewal or end date, `cancelAtPeriodEnd`, and usage against the limits (members 4/5, custom roles allowed?) |
 | `POST /billing/checkout` | `billing:manage` | creates or reuses the workspace's Stripe customer (`metadata.workspaceId`), then a Checkout Session (`mode: subscription`, Pro price, `quantity` = members, 14-day trial, success and cancel URLs under `/settings/billing`); returns `{ url }`. 409 if already Pro. |
 | `POST /billing/portal` | `billing:manage` | creates a Customer Portal session; returns `{ url }` |
-| `POST /billing/webhook` | public, signature-checked, not throttled | handles `checkout.session.completed`, `customer.subscription.created/updated/deleted` and `invoice.payment_failed`: skip if `StripeEvent` already has the id, otherwise upsert `Subscription` by the workspace id in the metadata, in one transaction |
+| `POST /billing/webhook` | public, signature-checked, not throttled (only the auth routes are) | handles `checkout.session.completed`, `customer.subscription.created/updated/deleted/paused/resumed` and `invoice.payment_failed`/`invoice.paid`: skip if `StripeEvent` already has the id, otherwise update `Subscription` for the workspace named in the subscription's metadata, recording the event id in the same transaction |
 
-- The webhook needs the **raw request body** to check Stripe's signature: `NestFactory.create(AppModule, { rawBody: true })` (`apps/backend/src/main.ts:7`) and `createNestApplication({ rawBody: true })` in `test/tenancy.e2e-spec.ts:107`, then read `req.rawBody` in the webhook handler.
-- **Seat sync** (`BillingService.syncSeats(workspaceId)`): after a membership is created (`InvitationService.acceptInvitation`) or removed (`MembershipService.removeMember` :131, `leave` :206), if the workspace has a Stripe subscription, set its item quantity to the member count, with proration. It runs after the database write; a failure is logged and doesn't undo the membership. Every webhook also stores Stripe's current quantity, so a missed update shows up. (Role changes and ownership transfer don't change the count.)
-- **Workspace delete:** `WorkspaceService.delete` (:94) is a plain delete that cascades to `Subscription`. It first cancels the Stripe subscription immediately; if that fails, the delete is refused with a 502 so the owner isn't left paying.
-- `GET /workspaces` (`getUserWorkspaces`, :43) includes `subscription { plan, status }` so the web can show which workspaces are Pro.
+- **The webhook re-reads the subscription from Stripe** (`subscriptions.retrieve`) instead of trusting the event's copy. Stripe doesn't guarantee delivery order, so an old `updated` arriving after a `deleted` would otherwise resurrect a canceled plan. Since Stripe's 2025 API versions, the period end is on the subscription *item* (`items.data[0].current_period_end`), and an invoice names its subscription under `parent.subscription_details.subscription`.
+- **A second subscription** for a workspace whose stored one is still live (`ACTIVE`/`TRIALING`/`PAST_DUE`) is canceled at once instead of stored.
+- An event for a workspace that no longer exists is recorded and ignored.
+- The webhook needs the **raw request body** to check Stripe's signature: `NestFactory.create(AppModule, { rawBody: true })` (`apps/backend/src/main.ts:7`) and `createNestApplication({ rawBody: true })` in `test/tenancy.e2e-spec.ts:108`, then read `req.rawBody` in the webhook handler.
+- **Seat sync** (`BillingService.syncSeats(workspaceId)`): after a membership is created (`InvitationService.acceptInvitation`) or removed (`MembershipService.removeMember` :142, `leave` :217), if the workspace has a live Stripe subscription, set its item quantity to the member count, with proration. It runs after the database write; a failure is logged and doesn't undo the membership. Every webhook also stores Stripe's current quantity, so a missed update shows up. (Role changes and ownership transfer don't change the count.) `BillingModule` exports `BillingService`; the invitation and membership modules import it.
+- **Workspace delete:** `WorkspaceService.delete` (:76) is a plain delete that cascades to `Subscription`. If the workspace has a live Stripe subscription, it first cancels it immediately; if Stripe refuses, the delete is a 502, and if the Stripe keys aren't set, a 503, so the owner isn't left paying.
+- `GET /workspaces` (`getUserWorkspaces`, :41) adds each workspace's effective `plan` (`FREE`/`PRO`/`ENTERPRISE`) so the web can show which workspaces are Pro.
 
 ### 5. Web
 
@@ -134,7 +146,7 @@ Add `billing:manage` to `OWNER_ONLY_PERMISSIONS` (`apps/backend/src/common/permi
   - People who can't manage billing see the plan and "Ask the workspace owner to upgrade".
   - Back from checkout (`?checkout=success`): "Activating Pro…", re-reading `GET /billing` every 2s for up to ~30s until the webhook lands.
 - **Upgrade prompts:** a 402 `PLAN_LIMIT` from inviting, creating a role or creating a workspace shows a toast with an "Upgrade" link to `/settings/billing`. The invite button and "New role" show a hint when the limit is already reached (read from `GET /billing`).
-- **Workspace limit:** `CreateWorkspaceButton` stops counting in the browser (`FREE_PLAN_WORKSPACE_LIMIT` in `apps/web/src/features/workspace/constants.ts`). It relies on the backend's 402, and its Upgrade button links to `/settings/billing`.
+- **Workspace limit:** `CreateWorkspaceButton` stops counting in the browser (`FREE_PLAN_WORKSPACE_LIMIT` in `apps/web/src/features/workspace/constants.ts` goes; the number comes from `FREE_OWNED_WORKSPACES` in `@taskforge/shared`). The form opens as usual; a 402 from the backend shows the upgrade prompt, linking to `/settings/billing`.
 - A small **Pro** badge next to Pro workspaces in `components/layout/WorkspaceSwitcher.tsx` (`GET /workspaces` gains each workspace's `plan`).
 
 ### 6. Docs
@@ -153,6 +165,12 @@ Add `billing:manage` to `OWNER_ONLY_PERMISSIONS` (`apps/backend/src/common/permi
   - Cancel in the portal and check it returns to Free at period end.
   - Use card `4000 0000 0000 0341` to see the past-due banner.
 - `pnpm lint:check`, `pnpm typecheck`, `pnpm build`, and CI's migration diff.
+
+## Known gaps (accepted for launch)
+
+- **Two invitations sent at the same moment** to a Free workspace at 4/5 can both pass the check and end at 6/5. The count isn't locked; at worst a Free workspace ends one seat over, which only blocks its next invite.
+- **Ownership transfer isn't checked against the 2-free-workspaces cap**, so someone can end up owning more than two Free workspaces by receiving them. The cap is about creating workspaces, not holding them.
+- **Seat sync is best-effort.** If Stripe is unreachable when a member joins, the quantity catches up at the next sync (any later join or leave) and the next webhook stores what Stripe has.
 
 ## Open numbers (easy to change later; nothing else depends on them)
 

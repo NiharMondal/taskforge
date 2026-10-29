@@ -9,6 +9,7 @@ import {
   updateMembership,
 } from "../api/membership-api";
 import type { Member } from "../types/membership-types";
+import { billingKeys } from "@/features/billing/hooks/use-billing";
 import { roleKeys } from "@/features/roles/hooks/use-roles";
 import type { RoleSummary } from "@/features/roles/types/role-types";
 import { workspaceKeys } from "@/features/workspace/hooks/use-workspaces";
@@ -101,7 +102,7 @@ export function useUpdateMembershipRole(workspaceId: string) {
 /**
  * Remove a member from the active workspace with an optimistic cache write: the
  * row disappears immediately, is restored if the DELETE fails, and the roster
- * refetches on settle.
+ * (and the seat count on billing) refetches on settle.
  */
 export function useRemoveMembership(workspaceId: string) {
   const queryClient = useQueryClient();
@@ -129,6 +130,7 @@ export function useRemoveMembership(workspaceId: string) {
 
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: key });
+      queryClient.invalidateQueries({ queryKey: billingKeys.detail(workspaceId) });
     },
   });
 }

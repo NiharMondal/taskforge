@@ -7,7 +7,9 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { PlanLimitException } from "@/common/plans/plan-limits";
 import { InvitationStatus, WorkspaceRole } from "generated/prisma/enums";
+import { BillingService } from "../billing/billing.service";
 import { MailService } from "../mail/mail.service";
 import { InvitationService } from "./invitation.service";
 
@@ -28,7 +30,7 @@ describe("InvitationService", () => {
   const invitee = { userId: "user-77" };
 
   let prisma: {
-    membership: { findUnique: jest.Mock; create: jest.Mock };
+    membership: { findUnique: jest.Mock; create: jest.Mock; count: jest.Mock };
     invitation: {
       findFirst: jest.Mock;
       findUnique: jest.Mock;
@@ -41,9 +43,11 @@ describe("InvitationService", () => {
     workspace: { findUnique: jest.Mock };
     user: { findFirst: jest.Mock; findUnique: jest.Mock };
     role: { findFirst: jest.Mock };
+    subscription: { findUnique: jest.Mock };
     $transaction: jest.Mock;
   };
   let mail: { sendMail: jest.Mock };
+  let billing: { syncSeats: jest.Mock };
   let service: InvitationService;
 
   beforeEach(() => {
@@ -51,6 +55,7 @@ describe("InvitationService", () => {
       membership: {
         findUnique: jest.fn(),
         create: jest.fn().mockResolvedValue({ id: "m-1" }),
+        count: jest.fn().mockResolvedValue(1),
       },
       invitation: {
         findFirst: jest.fn().mockResolvedValue(null),
@@ -70,6 +75,8 @@ describe("InvitationService", () => {
       },
       // No Role rows by default: the enum's default permissions apply.
       role: { findFirst: jest.fn().mockResolvedValue(null) },
+      // No Subscription row: the Free plan.
+      subscription: { findUnique: jest.fn().mockResolvedValue(null) },
       $transaction: jest.fn(),
     };
     // The actor is an ADMIN unless a test says otherwise; everyone else is not
@@ -87,10 +94,12 @@ describe("InvitationService", () => {
     );
 
     mail = { sendMail: jest.fn().mockResolvedValue({}) };
+    billing = { syncSeats: jest.fn().mockResolvedValue(undefined) };
     service = new InvitationService(
       prisma as unknown as PrismaService,
       mail as unknown as MailService,
       { get: () => "http://localhost:3000" } as unknown as ConfigService,
+      billing as unknown as BillingService,
     );
   });
 
@@ -100,6 +109,66 @@ describe("InvitationService", () => {
       role?: WorkspaceRole;
       roleId?: string;
     }) => service.sendInvitation(workspaceId, adminAccess, dto);
+
+    describe("the plan's member limit", () => {
+      it("402s on Free when members and live invitations fill the 5 seats", async () => {
+        prisma.membership.count.mockResolvedValue(3);
+        prisma.invitation.count.mockResolvedValue(2);
+
+        const error = await send({ email: "bob@example.com" }).catch(
+          (e: unknown) => e,
+        );
+
+        expect(error).toBeInstanceOf(PlanLimitException);
+        expect((error as PlanLimitException).getResponse()).toMatchObject({
+          statusCode: 402,
+          code: "PLAN_LIMIT",
+          limit: "members",
+        });
+        expect(prisma.invitation.upsert).not.toHaveBeenCalled();
+        // Only live invitations hold a seat, and only this workspace's.
+        expect(prisma.invitation.count).toHaveBeenCalledWith({
+          where: {
+            workspaceId,
+            status: InvitationStatus.PENDING,
+            expiresAt: { gt: expect.any(Date) as Date },
+          },
+        });
+      });
+
+      it("invites the fifth seat on Free", async () => {
+        prisma.membership.count.mockResolvedValue(3);
+        prisma.invitation.count.mockResolvedValue(1);
+
+        await send({ email: "bob@example.com" });
+
+        expect(prisma.invitation.upsert).toHaveBeenCalled();
+      });
+
+      it("has no limit on Pro", async () => {
+        prisma.subscription.findUnique.mockResolvedValue({
+          plan: "PRO",
+          status: "ACTIVE",
+        });
+        prisma.membership.count.mockResolvedValue(40);
+
+        await send({ email: "bob@example.com" });
+
+        expect(prisma.invitation.upsert).toHaveBeenCalled();
+      });
+
+      it("applies the Free limit once a Pro subscription has lapsed", async () => {
+        prisma.subscription.findUnique.mockResolvedValue({
+          plan: "PRO",
+          status: "CANCELED",
+        });
+        prisma.membership.count.mockResolvedValue(5);
+
+        await expect(send({ email: "bob@example.com" })).rejects.toBeInstanceOf(
+          PlanLimitException,
+        );
+      });
+    });
 
     it("checks membership for the user who owns that email", async () => {
       prisma.user.findFirst.mockResolvedValue({
@@ -363,6 +432,15 @@ describe("InvitationService", () => {
         id: invitee.userId,
         email: "bob@example.com",
       });
+    });
+
+    it("bills the new seat after the membership is committed", async () => {
+      await service.acceptInvitation(token, invitee.userId);
+
+      expect(billing.syncSeats).toHaveBeenCalledWith(workspaceId);
+      expect(prisma.membership.create.mock.invocationCallOrder[0]).toBeLessThan(
+        billing.syncSeats.mock.invocationCallOrder[0],
+      );
     });
 
     it("finds the caller by User.id (the JWT subject)", async () => {

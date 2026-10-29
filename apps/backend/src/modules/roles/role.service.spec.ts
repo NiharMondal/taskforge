@@ -1,6 +1,7 @@
 import { GRANTABLE_PERMISSIONS } from "@taskforge/shared";
 import { accessAs } from "@/common/permissions/test-access";
 import { WorkspaceAccess } from "@/common/permissions/workspace-access";
+import { PlanLimitException } from "@/common/plans/plan-limits";
 import { PrismaService } from "@/prisma/prisma.service";
 import {
   ConflictException,
@@ -38,6 +39,7 @@ let prisma: {
   };
   membership: { count: jest.Mock };
   invitation: { count: jest.Mock; updateMany: jest.Mock };
+  subscription: { findUnique: jest.Mock };
   $transaction: jest.Mock;
 };
 let service: RoleService;
@@ -55,6 +57,12 @@ beforeEach(() => {
     invitation: {
       count: jest.fn().mockResolvedValue(0),
       updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+    },
+    // Custom roles are a Pro feature; most tests run on Pro.
+    subscription: {
+      findUnique: jest
+        .fn()
+        .mockResolvedValue({ plan: "PRO", status: "ACTIVE" }),
     },
     $transaction: jest.fn(),
   };
@@ -160,6 +168,24 @@ describe("RoleService.create", () => {
         permissions: ["issue:delete"],
       }),
     ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.role.create).not.toHaveBeenCalled();
+  });
+
+  it("402s on the Free plan", async () => {
+    prisma.subscription.findUnique.mockResolvedValue(null);
+
+    const error = await service
+      .create(workspaceId, admin, { name: "Triage", permissions: [] })
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(PlanLimitException);
+    expect((error as PlanLimitException).getResponse()).toMatchObject({
+      code: "PLAN_LIMIT",
+      limit: "customRoles",
+    });
+    expect(prisma.subscription.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { workspaceId } }),
+    );
     expect(prisma.role.create).not.toHaveBeenCalled();
   });
 });

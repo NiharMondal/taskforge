@@ -8,7 +8,14 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { WorkspaceRole } from "generated/prisma/enums";
+import { BillingService } from "../billing/billing.service";
 import { MembershipService } from "./membership.service";
+
+/** Seat sync: billing is checked after each removal, never before. */
+const billing = { syncSeats: jest.fn().mockResolvedValue(undefined) };
+const asBilling = billing as unknown as BillingService;
+
+beforeEach(() => billing.syncSeats.mockClear());
 
 describe("MembershipService.findAllByWorkspaceId", () => {
   let prisma: { membership: { findMany: jest.Mock; count: jest.Mock } };
@@ -21,7 +28,10 @@ describe("MembershipService.findAllByWorkspaceId", () => {
         count: jest.fn().mockResolvedValue(0),
       },
     };
-    service = new MembershipService(prisma as unknown as PrismaService);
+    service = new MembershipService(
+      prisma as unknown as PrismaService,
+      asBilling,
+    );
   });
 
   it("scopes the roster, and its count, to the caller's workspace", async () => {
@@ -133,7 +143,10 @@ describe("MembershipService role changes and removal", () => {
       // No Role rows by default: the enum's default permissions apply.
       role: { findFirst: jest.fn().mockResolvedValue(null) },
     };
-    service = new MembershipService(prisma as unknown as PrismaService);
+    service = new MembershipService(
+      prisma as unknown as PrismaService,
+      asBilling,
+    );
   });
 
   describe("updateRole", () => {
@@ -311,6 +324,7 @@ describe("MembershipService role changes and removal", () => {
           userId_workspaceId: { userId: "user-member", workspaceId },
         },
       });
+      expect(billing.syncSeats).toHaveBeenCalledWith(workspaceId);
     });
 
     it("404s a user who is not in this workspace", async () => {
@@ -325,6 +339,7 @@ describe("MembershipService role changes and removal", () => {
         service.removeMember(workspaceId, "user-owner", adminAccess),
       ).rejects.toBeInstanceOf(ForbiddenException);
       expect(prisma.membership.delete).not.toHaveBeenCalled();
+      expect(billing.syncSeats).not.toHaveBeenCalled();
     });
   });
 
@@ -430,7 +445,10 @@ describe("MembershipService ownership transfer and leaving", () => {
     prisma.$transaction.mockImplementation((cb: (tx: unknown) => unknown) =>
       cb(prisma),
     );
-    service = new MembershipService(prisma as unknown as PrismaService);
+    service = new MembershipService(
+      prisma as unknown as PrismaService,
+      asBilling,
+    );
   });
 
   describe("transferOwnership", () => {
@@ -484,6 +502,7 @@ describe("MembershipService ownership transfer and leaving", () => {
           userId_workspaceId: { userId: "user-member", workspaceId },
         },
       });
+      expect(billing.syncSeats).toHaveBeenCalledWith(workspaceId);
     });
 
     it("refuses the owner", async () => {

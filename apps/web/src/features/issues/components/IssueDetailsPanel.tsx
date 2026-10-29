@@ -17,11 +17,9 @@ import {
 	type Permissions,
 } from "@/features/memberships/lib/permissions";
 
-import {
-	ISSUE_PRIORITIES,
-	statusOptionsFor,
-	typeOptionsFor,
-} from "../constants";
+import { useWorkflow } from "@/features/workflow/hooks/use-workflow";
+
+import { ISSUE_PRIORITIES, typeOptionsFor } from "../constants";
 import {
 	issueDetailsSchema,
 	TIssueDetailsValues,
@@ -32,6 +30,8 @@ import Avatar from "@/components/ui/avatar";
 import { ICommonUserEntity } from "@/types/common";
 
 type Props = {
+	workspaceId: string;
+	projectId: string;
 	defaultValues: TIssueDetailsValues;
 	onSubmit: (values: TIssueDetailsValues) => Promise<boolean | void>;
 	isSubmitting: boolean;
@@ -53,6 +53,8 @@ type Props = {
  * reporter. Saved on its own, independent of the content form on the left.
  */
 export default function IssueDetailsPanel({
+	workspaceId,
+	projectId,
 	defaultValues,
 	onSubmit,
 	isSubmitting,
@@ -72,12 +74,15 @@ export default function IssueDetailsPanel({
 
 	// Derived from the *saved* status, not the form's live value: recomputing on
 	// selection would let one save walk the issue several stages down the flow.
-	// Options the viewer's role may not move the issue to (e.g. DONE for a
-	// MEMBER) are dropped; a lone entry disables the control.
-	const statusOptions = statusOptionsFor(defaultValues.status).filter(
+	// Options the viewer's role may not move the issue to (e.g. a completed
+	// status for a MEMBER) are dropped; a lone entry disables the control.
+	const { view: workflow } = useWorkflow(workspaceId, projectId);
+	const statusOptions = (
+		workflow?.optionsFrom(defaultValues.statusId) ?? []
+	).filter(
 		(s) =>
-			s.value === defaultValues.status ||
-			canSetIssueStatus(permissions, s.value),
+			s.id === defaultValues.statusId ||
+			canSetIssueStatus(permissions, s.category),
 	);
 	const canSave = canEditFields || permissions.canChangeIssueStatus;
 	// A sub-issue's type is SUBTASK for good, so its Select is display only.
@@ -95,14 +100,14 @@ export default function IssueDetailsPanel({
 				<h4 className="text-sm font-semibold mb-4">Details</h4>
 				<FormWrapper methods={methods} onSubmit={handleSubmit}>
 					<FormSelect
-						name="status"
+						name="statusId"
 						label="Status"
 						placeholder="Select status"
 						className="bg-accent text-accent-foreground"
-						isDisabled={statusOptions.length === 1}
+						isDisabled={statusOptions.length <= 1}
 						options={statusOptions.map((s) => ({
-							value: s.value,
-							label: s.label,
+							value: s.id,
+							label: s.name,
 						}))}
 					/>
 					<FormSelect

@@ -33,10 +33,10 @@ import EndSprintModal from "@/features/sprint/components/EndSprintModal";
 import SprintSummaryCard from "@/features/sprint/components/SprintSummaryCard";
 import { useSprints } from "@/features/sprint/hooks/use-sprints";
 import type { Sprint } from "@/features/sprint/types/sprint-types";
+import { useWorkflow } from "@/features/workflow/hooks/use-workflow";
+import type { WorkflowStatus } from "@/features/workflow/types/workflow-types";
 import { useWorkspace } from "@/features/workspace/context/workspace-context";
-import { isAllowedTransition } from "@taskforge/shared";
 
-import { BOARD_STATUSES } from "../../constants";
 import { useIssues, useUpdateIssue } from "../../hooks/use-issues";
 import {
 	EMPTY_FILTERS,
@@ -45,7 +45,7 @@ import {
 	type IssueFilters,
 } from "../../lib/issue-filters";
 import { compareIssueRank, rankBetween } from "../../lib/rank";
-import type { Issue, IssueStatus } from "../../types/issue-types";
+import type { Issue } from "../../types/issue-types";
 import CreateIssueModal from "../CreateIssueModal";
 import IssueDetailModal from "../IssueDetailModal";
 import IssueFilterBar from "../IssueFilterBar";
@@ -53,38 +53,31 @@ import BoardColumn from "./BoardColumn";
 import IssueCardBody from "./IssueCardBody";
 import { useBoolean } from "ahooks";
 
-type Columns = Record<IssueStatus, Issue[]>;
+/** Cards per lane, keyed by workflow status id. */
+type Columns = Record<string, Issue[]>;
 
-/**
- * Whether a drag that started in `from` may end in `to`: back in its own lane,
- * or one of its legal next statuses (`isAllowedTransition`, shared with the
- * API) — the same rule as the status Selects on the list and detail views.
- * Measured against the lane the drag *started* in, not the card's live mid-drag
- * lane, so it can't be walked through several steps in a single drag.
- */
-const canDropInto = (from: IssueStatus, to: IssueStatus): boolean =>
-	isAllowedTransition(from, to);
-
-// Stable empty reference for the loading/disabled window. A fresh `[]` literal
-// each render would make the render-time resync below fire every render (it
-// compares by reference), looping until React throws "Too many re-renders".
+// Stable empty references for the loading/disabled window. A fresh `[]`
+// literal each render would make the render-time resync below fire every
+// render (it compares by reference), looping until React throws "Too many
+// re-renders".
 const EMPTY_ISSUES: Issue[] = [];
+const EMPTY_LANES: WorkflowStatus[] = [];
 
 /**
- * Bucket a flat issue list into one array per status (empty columns included),
- * each lane sorted by fractional rank so order matches what was persisted.
+ * Bucket a flat issue list into one array per lane (empty lanes included),
+ * each sorted by fractional rank so order matches what was persisted.
  */
-function groupByStatus(issues: Issue[]): Columns {
-	const columns = Object.fromEntries(
-		BOARD_STATUSES.map((s) => [s.value, [] as Issue[]]),
-	) as Columns;
-	// Backlog issues have no board lane (the board starts at To Do), so the
-	// optional chaining below quietly skips them — they surface on the list view.
+function groupByStatus(issues: Issue[], lanes: WorkflowStatus[]): Columns {
+	const columns: Columns = Object.fromEntries(
+		lanes.map((s) => [s.id, [] as Issue[]]),
+	);
+	// Issues in a backlog status have no board lane, so the optional chaining
+	// below quietly skips them — they surface on the backlog and list views.
 	for (const issue of issues) {
-		columns[issue.status]?.push(issue);
+		columns[issue.statusId]?.push(issue);
 	}
-	for (const status of Object.keys(columns) as IssueStatus[]) {
-		columns[status].sort(compareIssueRank);
+	for (const lane of Object.values(columns)) {
+		lane.sort(compareIssueRank);
 	}
 	return columns;
 }
@@ -160,6 +153,11 @@ export default function BoardView({ projectId }: { projectId: string }) {
 	const { data: labels = [] } = useLabels(workspaceId);
 	const permissions = useWorkspacePermissions();
 
+	const workflowQuery = useWorkflow(workspaceId, projectId);
+	const workflow = workflowQuery.view;
+	// The project's non-backlog statuses, in column order.
+	const lanes = workflow?.boardStatuses ?? EMPTY_LANES;
+
 	const sprintsQuery = useSprints(workspaceId, projectId);
 	const activeSprint = sprintsQuery.data?.find((s) => s.isActive);
 	const activeSprintId = activeSprint?.id;
@@ -194,19 +192,22 @@ export default function BoardView({ projectId }: { projectId: string }) {
 	// — including the optimistic write on drop — regroup. Drags don't trigger a
 	// refetch, so an in-progress drag is never clobbered mid-move.
 	const [columns, setColumns] = useState<Columns>(() =>
-		groupByStatus(visibleIssues),
+		groupByStatus(visibleIssues, lanes),
 	);
 	const [syncedIssues, setSyncedIssues] = useState(visibleIssues);
+	const [syncedLanes, setSyncedLanes] = useState(lanes);
 	const [activeId, setActiveId] = useState<string | null>(null);
 	// Only the id: the modal reads the issue from the live list, so it shows
 	// saves and refetches, and closes if the issue is deleted.
 	const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
 	const selectedIssue = issues.find((i) => i.id === selectedIssueId) ?? null;
-	const draggedFrom = useRef<IssueStatus | null>(null);
+	const draggedFrom = useRef<string | null>(null);
 
-	if (visibleIssues !== syncedIssues) {
+	// The workflow can load after the issues, or change under them.
+	if (visibleIssues !== syncedIssues || lanes !== syncedLanes) {
 		setSyncedIssues(visibleIssues);
-		setColumns(groupByStatus(visibleIssues));
+		setSyncedLanes(lanes);
+		setColumns(groupByStatus(visibleIssues, lanes));
 	}
 
 	const assigneeNames = useMemo(() => {
@@ -227,18 +228,18 @@ export default function BoardView({ projectId }: { projectId: string }) {
 
 	const activeIssue = useMemo(() => {
 		if (!activeId) return null;
-		for (const { value } of BOARD_STATUSES) {
-			const found = columns[value].find((i) => i.id === activeId);
+		for (const lane of Object.values(columns)) {
+			const found = lane.find((i) => i.id === activeId);
 			if (found) return found;
 		}
 		return null;
 	}, [activeId, columns]);
 
 	/** Which status lane an id lives in — id may be a card id or a column id. */
-	const findContainer = (id: string): IssueStatus | undefined => {
-		if (id in columns) return id as IssueStatus;
-		return (Object.keys(columns) as IssueStatus[]).find((status) =>
-			columns[status].some((issue) => issue.id === id),
+	const findContainer = (id: string): string | undefined => {
+		if (id in columns) return id;
+		return Object.keys(columns).find((statusId) =>
+			columns[statusId].some((issue) => issue.id === id),
 		);
 	};
 
@@ -259,14 +260,20 @@ export default function BoardView({ projectId }: { projectId: string }) {
 		const to = findContainer(overId);
 		if (!from || !to || from === to) return;
 
-		// Refuse lanes the viewer's role can't move a card into (MEMBER → DONE),
-		// so the card never visibly lands somewhere the PATCH would 403.
-		if (!canSetIssueStatus(permissions, to)) return;
+		// Refuse lanes the viewer's role can't move a card into (MEMBER → a
+		// completed status), so the card never visibly lands somewhere the
+		// PATCH would 403.
+		const target = workflow?.byId.get(to);
+		if (!workflow || !target || !canSetIssueStatus(permissions, target.category))
+			return;
 
 		// Only the origin lane (to drop it back where it started) and the
-		// workflow's next statuses from there.
+		// statuses the project's workflow allows from there — the same rule as
+		// the status Selects, and what the API enforces. Measured against the
+		// lane the drag *started* in, not the card's live mid-drag lane, so it
+		// can't be walked through several steps in a single drag.
 		const origin = draggedFrom.current ?? from;
-		if (!canDropInto(origin, to)) return;
+		if (!workflow.canMove(origin, to)) return;
 
 		setColumns((prev) => {
 			const fromItems = prev[from];
@@ -282,7 +289,7 @@ export default function BoardView({ projectId }: { projectId: string }) {
 				[from]: fromItems.filter((i) => i.id !== activeId),
 				[to]: [
 					...toItems.slice(0, insertAt),
-					{ ...moved, status: to },
+					{ ...moved, statusId: to, status: target },
 					...toItems.slice(insertAt),
 				],
 			};
@@ -316,7 +323,7 @@ export default function BoardView({ projectId }: { projectId: string }) {
 			: items;
 
 		const idx = ordered.findIndex((i) => i.id === activeId);
-		const fullLane = groupByStatus(issues)[container].filter(
+		const fullLane = groupByStatus(issues, lanes)[container].filter(
 			(i) => i.id !== activeId,
 		);
 		const newRank = rankForPosition(ordered, idx, fullLane);
@@ -333,7 +340,7 @@ export default function BoardView({ projectId }: { projectId: string }) {
 		// changes nothing), so put the lane back rather than show an order that
 		// will vanish on the next refetch.
 		if (!laneChanged && positionChanged && !newRank) {
-			setColumns(groupByStatus(visibleIssues));
+			setColumns(groupByStatus(visibleIssues, lanes));
 			toast.danger(
 				"Couldn’t save this card’s position. Try dropping it somewhere else.",
 			);
@@ -345,7 +352,7 @@ export default function BoardView({ projectId }: { projectId: string }) {
 				{
 					issueId: activeId,
 					dto: {
-						status: container,
+						statusId: container,
 						...(newRank && { rank: newRank }),
 					},
 				},
@@ -387,16 +394,17 @@ export default function BoardView({ projectId }: { projectId: string }) {
 				}
 			/>
 
-			{isError || sprintsQuery.isError ? (
+			{isError || sprintsQuery.isError || workflowQuery.isError ? (
 				<ErrorAlert
 					title="Couldn’t load the board"
 					description="Check your connection and try again."
 					onRetry={() => {
 						refetch();
 						sprintsQuery.refetch();
+						workflowQuery.refetch();
 					}}
 				/>
-			) : isLoading || sprintsQuery.isLoading ? (
+			) : isLoading || sprintsQuery.isLoading || workflowQuery.isLoading ? (
 				<div className="flex items-center gap-2 py-12 text-muted">
 					<Spinner size="sm" />
 					Loading board…
@@ -424,7 +432,9 @@ export default function BoardView({ projectId }: { projectId: string }) {
 				<>
 				<SprintSummaryCard
 					sprint={activeSprint}
-					doneCount={issues.filter((i) => i.status === "DONE").length}
+					doneCount={
+						issues.filter((i) => i.status.category === "COMPLETED").length
+					}
 					totalCount={issues.length}
 					canManage={permissions.canManageSprints}
 					onEnd={() => setEndingSprint(activeSprint)}
@@ -459,12 +469,11 @@ export default function BoardView({ projectId }: { projectId: string }) {
 					    tallest one rather than being clipped at its edge. */}
 					<div className="-mb-6 min-h-80 flex-1 overflow-auto">
 						<div className="flex min-h-full w-max gap-4 pb-2">
-							{BOARD_STATUSES.map(({ value, label }) => (
+							{lanes.map((status) => (
 								<BoardColumn
-									key={value}
-									status={value}
-									label={label}
-									issues={columns[value]}
+									key={status.id}
+									status={status}
+									issues={columns[status.id] ?? EMPTY_ISSUES}
 									assigneeNames={assigneeNames}
 									onOpenIssue={(issue) =>
 										setSelectedIssueId(issue.id)
@@ -499,8 +508,8 @@ export default function BoardView({ projectId }: { projectId: string }) {
 				members={members}
 				projectId={projectId}
 				// Created from the board, an issue joins the sprint on screen, in
-				// To Do (there is no BACKLOG lane, so it would vanish otherwise).
-				defaultStatus="TODO"
+				// the first lane (backlog statuses have none, so it would vanish).
+				defaultStatusId={workflow?.firstUnstarted?.id}
 				defaultSprintId={activeSprintId}
 			/>
 

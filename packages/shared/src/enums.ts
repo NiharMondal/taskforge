@@ -13,18 +13,17 @@ export const WORKSPACE_ROLE_VALUES = [
 ] as const;
 export type WorkspaceRole = (typeof WORKSPACE_ROLE_VALUES)[number];
 
-/** Ordered as work flows, backlog to done. */
-export const ISSUE_STATUS_VALUES = [
+/**
+ * What a workflow status means to the code, whatever the project calls it
+ * (see `workflow.ts`). Ordered as work flows.
+ */
+export const STATUS_CATEGORY_VALUES = [
   "BACKLOG",
-  "TODO",
-  "IN_PROGRESS",
-  "IN_REVIEW",
-  "QA_REQUESTED",
-  "QA_FAILED",
-  "DEPLOYED",
-  "DONE",
+  "UNSTARTED",
+  "STARTED",
+  "COMPLETED",
 ] as const;
-export type IssueStatus = (typeof ISSUE_STATUS_VALUES)[number];
+export type StatusCategory = (typeof STATUS_CATEGORY_VALUES)[number];
 
 export const ISSUE_PRIORITY_VALUES = ["LOW", "MEDIUM", "HIGH", "URGENT"] as const;
 export type IssuePriority = (typeof ISSUE_PRIORITY_VALUES)[number];

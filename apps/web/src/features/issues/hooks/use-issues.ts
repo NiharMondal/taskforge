@@ -15,6 +15,8 @@ import type {
 import { labelKeys } from "@/features/labels/hooks/use-labels";
 import type { Label } from "@/features/labels/types/label-types";
 import { projectKeys } from "@/features/projects/hooks/use-projects";
+import { workflowKeys } from "@/features/workflow/hooks/use-workflow";
+import type { Workflow } from "@/features/workflow/types/workflow-types";
 
 /**
  * Centralized query keys for the issues feature. Keyed by workspace AND project:
@@ -118,11 +120,23 @@ export function useUpdateIssue(workspaceId: string, projectId: string) {
 			const labels = allLabels
 				? allLabels.filter((l) => labelIds.includes(l.id))
 				: undefined;
+			// Likewise a new `statusId` needs its status's name and color, from the
+			// cached workflow.
+			const status =
+				fields.statusId &&
+				queryClient
+					.getQueryData<Workflow>(workflowKeys.detail(workspaceId, projectId))
+					?.statuses.find((s) => s.id === fields.statusId);
 
 			queryClient.setQueryData<Issue[]>(key, (old) =>
 				old?.map((issue) =>
 					issue.id === issueId
-						? { ...issue, ...fields, ...(labels && { labels }) }
+						? {
+								...issue,
+								...fields,
+								...(labels && { labels }),
+								...(status && { status }),
+							}
 						: issue,
 				),
 			);

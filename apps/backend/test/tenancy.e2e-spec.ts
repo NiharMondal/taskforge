@@ -56,6 +56,8 @@ describe("Tenancy (e2e)", () => {
   let aliceWs: string;
   let bobWs: string;
   let projectId: string;
+  /** Apollo's workflow statuses (the default workflow), by name. */
+  let statusIds: Record<string, string>;
   let issueId: string;
   /** Alice's comment on `issueId`. */
   let commentId: string;
@@ -85,6 +87,24 @@ describe("Tenancy (e2e)", () => {
     if (!token) throw new Error(`No verification link was sent to ${email}`);
     return token[1];
   };
+
+  type Workflow = {
+    statuses: { id: string; name: string; isDefault: boolean }[];
+    transitions: { fromStatusId: string; toStatusId: string }[];
+  };
+  /** A project's workflow, as Alice reads it. */
+  const workflowOf = async (id: string) =>
+    data<Workflow>(
+      await api()
+        .get(`/api/v1/projects/${id}/workflow`)
+        .set(as(aliceToken, aliceWs))
+        .expect(200),
+    );
+  /** A project's status ids by name. */
+  const statusIdsOf = async (id: string) =>
+    Object.fromEntries(
+      (await workflowOf(id)).statuses.map((s) => [s.name, s.id]),
+    );
 
   /** Register, follow the emailed link, and find the new workspace. */
   const signUp = async (user: typeof alice) => {
@@ -129,11 +149,12 @@ describe("Tenancy (e2e)", () => {
       .send({ name: "Apollo" })
       .expect(201);
     projectId = data<{ id: string }>(project).id;
+    statusIds = await statusIdsOf(projectId);
 
     const issue = await api()
       .post(`/api/v1/projects/${projectId}/issues`)
       .set(as(aliceToken, aliceWs))
-      .send({ title: "Launch", status: "TODO" })
+      .send({ title: "Launch", statusId: statusIds["To Do"] })
       .expect(201);
     issueId = data<{ id: string }>(issue).id;
 
@@ -446,7 +467,7 @@ describe("Tenancy (e2e)", () => {
       await api()
         .patch(issueUrl)
         .set(as(bobToken, aliceWs))
-        .send({ status: "IN_PROGRESS" })
+        .send({ statusId: statusIds["In Progress"] })
         .expect(200);
       await api()
         .patch(issueUrl)
@@ -515,7 +536,7 @@ describe("Tenancy (e2e)", () => {
       const created = await api()
         .post(`/api/v1/projects/${projectId}/issues`)
         .set(as(bobToken, aliceWs))
-        .send({ title: "Bob's task", status: "TODO" })
+        .send({ title: "Bob's task", statusId: statusIds["To Do"] })
         .expect(201);
       const url = `/api/v1/projects/${projectId}/issues/${data<{ id: string }>(created).id}`;
 
@@ -527,7 +548,7 @@ describe("Tenancy (e2e)", () => {
       await api()
         .patch(url)
         .set(as(bobToken, aliceWs))
-        .send({ status: "DONE" })
+        .send({ statusId: statusIds.Done })
         .expect(403);
     });
 
@@ -679,7 +700,7 @@ describe("Tenancy (e2e)", () => {
     const created = await api()
       .post(issues)
       .set(as(aliceToken, aliceWs))
-      .send({ title: "Tracked", status: "TODO" })
+      .send({ title: "Tracked", statusId: statusIds["To Do"] })
       .expect(201);
     const trackedId = data<{ id: string }>(created).id;
     const activity = `${issues}/${trackedId}/activity`;
@@ -687,13 +708,13 @@ describe("Tenancy (e2e)", () => {
     await api()
       .patch(`${issues}/${trackedId}`)
       .set(as(aliceToken, aliceWs))
-      .send({ status: "IN_PROGRESS", priority: "HIGH" })
+      .send({ statusId: statusIds["In Progress"], priority: "HIGH" })
       .expect(200);
     // A reorder within the lane isn't history.
     await api()
       .patch(`${issues}/${trackedId}`)
       .set(as(aliceToken, aliceWs))
-      .send({ status: "IN_PROGRESS", rank: "a1" })
+      .send({ statusId: statusIds["In Progress"], rank: "a1" })
       .expect(200);
 
     // Bob's comment, removed by Alice as a moderator.
@@ -724,7 +745,8 @@ describe("Tenancy (e2e)", () => {
         "Alice",
         {
           changes: [
-            { field: "status", from: "TODO", to: "IN_PROGRESS" },
+            // By name, so history survives renames and deletes.
+            { field: "status", from: "To Do", to: "In Progress" },
             { field: "priority", from: "MEDIUM", to: "HIGH" },
           ],
         },
@@ -745,12 +767,12 @@ describe("Tenancy (e2e)", () => {
     // before "a0" in byte order). A locale collation sorts "Zz" *after* "a0",
     // so the server took "Zz" for the last card and handed the new one "a0"
     // again — a duplicate the board can't place anything between.
-    const lane = "IN_REVIEW";
+    const lane = statusIds["In Review"];
     const create = (title: string) =>
       api()
         .post(`/api/v1/projects/${projectId}/issues`)
         .set(as(aliceToken, aliceWs))
-        .send({ title, status: lane })
+        .send({ title, statusId: lane })
         .expect(201);
 
     const first = data<{ id: string }>(await create("Upper")).id;
@@ -764,13 +786,13 @@ describe("Tenancy (e2e)", () => {
   });
 
   it("gives cards created at the same moment in one lane distinct ranks (H7)", async () => {
-    const lane = "QA_REQUESTED";
+    const lane = statusIds["In Progress"];
     const created = await Promise.all(
       Array.from({ length: 8 }, (_, i) =>
         api()
           .post(`/api/v1/projects/${projectId}/issues`)
           .set(as(aliceToken, aliceWs))
-          .send({ title: `Parallel ${i}`, status: lane })
+          .send({ title: `Parallel ${i}`, statusId: lane })
           .expect(201),
       ),
     );
@@ -780,12 +802,12 @@ describe("Tenancy (e2e)", () => {
   });
 
   it("keeps two cards dropped into the same gap at once apart (H7)", async () => {
-    const lane = "DEPLOYED";
+    const lane = statusIds.Done;
     const create = async (title: string, rank: string) => {
       const res = await api()
         .post(`/api/v1/projects/${projectId}/issues`)
         .set(as(aliceToken, aliceWs))
-        .send({ title, status: lane })
+        .send({ title, statusId: lane })
         .expect(201);
       const { id } = data<{ id: string }>(res);
       await prisma.issue.update({ where: { id }, data: { rank } });
@@ -825,13 +847,14 @@ describe("Tenancy (e2e)", () => {
     const first = data<{ id: string; key: string }>(await create("Key Test"));
     const second = data<{ key: string }>(await create("Kilo Tango"));
     expect([first.key, second.key]).toEqual(["KT", "KT2"]);
+    const toDo = (await statusIdsOf(first.id))["To Do"];
 
     const created = await Promise.all(
       Array.from({ length: 6 }, (_, i) =>
         api()
           .post(`/api/v1/projects/${first.id}/issues`)
           .set(as(aliceToken, aliceWs))
-          .send({ title: `Numbered ${i}`, status: i % 2 ? "TODO" : "BACKLOG" })
+          .send({ title: `Numbered ${i}`, ...(i % 2 && { statusId: toDo }) })
           .expect(201),
       ),
     );
@@ -891,7 +914,7 @@ describe("Tenancy (e2e)", () => {
       .expect(403);
   });
 
-  it("commits a Backlog issue to To Do when it joins a sprint, and leaves it alone going back", async () => {
+  it("commits a backlog issue to the first unstarted status when it joins a sprint, and leaves it alone going back", async () => {
     const issues = `/api/v1/projects/${projectId}/issues`;
     const sprint = data<{ id: string }>(
       await api()
@@ -900,33 +923,39 @@ describe("Tenancy (e2e)", () => {
         .send({ name: "Commitment" })
         .expect(201),
     );
-    const issue = data<{ id: string; status: string }>(
+    type Issue = { id: string; statusId: string; status: { name: string } };
+    const issue = data<Issue>(
       await api()
         .post(issues)
         .set(as(aliceToken, aliceWs))
         .send({ title: "Groomed" })
         .expect(201),
     );
-    expect(issue.status).toBe("BACKLOG");
+    // The project's default status, embedded in the response.
+    expect(issue.statusId).toBe(statusIds.Backlog);
+    expect(issue.status.name).toBe("Backlog");
 
-    const planned = data<{ status: string; rank: string }>(
+    const planned = data<{ statusId: string; rank: string }>(
       await api()
         .patch(`${issues}/${issue.id}`)
         .set(as(aliceToken, aliceWs))
         .send({ sprintId: sprint.id })
         .expect(200),
     );
-    expect(planned.status).toBe("TODO");
+    expect(planned.statusId).toBe(statusIds["To Do"]);
     expect(planned.rank).toBeTruthy();
 
-    const unplanned = data<{ status: string; sprintId: string | null }>(
+    const unplanned = data<{ statusId: string; sprintId: string | null }>(
       await api()
         .patch(`${issues}/${issue.id}`)
         .set(as(aliceToken, aliceWs))
         .send({ sprintId: null })
         .expect(200),
     );
-    expect(unplanned).toMatchObject({ status: "TODO", sprintId: null });
+    expect(unplanned).toMatchObject({
+      statusId: statusIds["To Do"],
+      sprintId: null,
+    });
   });
 
   it("deletes an issue's comments with the issue", async () => {
@@ -1374,6 +1403,189 @@ describe("Tenancy (e2e)", () => {
       } finally {
         await prisma.stripeEvent.deleteMany({ where: { id } });
       }
+    });
+  });
+
+  describe("workflows", () => {
+    const workflow = (id: string) => `/api/v1/projects/${id}/workflow`;
+    const createProject = (body: object) =>
+      api().post("/api/v1/projects").set(as(aliceToken, aliceWs)).send(body);
+    const addStatus = (id: string, body: object) =>
+      api()
+        .post(`${workflow(id)}/statuses`)
+        .set(as(aliceToken, aliceWs))
+        .send({ color: "#ef4444", category: "STARTED", ...body });
+    const setTransitions = (id: string, moves: [string, string][]) =>
+      api()
+        .patch(`${workflow(id)}/transitions`)
+        .set(as(aliceToken, aliceWs))
+        .send({
+          transitions: moves.map(([fromStatusId, toStatusId]) => ({
+            fromStatusId,
+            toStatusId,
+          })),
+        });
+
+    afterAll(async () => {
+      await prisma.subscription.deleteMany({ where: { workspaceId: aliceWs } });
+    });
+
+    it("gives a new project the default workflow, every move allowed", async () => {
+      const { statuses, transitions } = await workflowOf(projectId);
+
+      expect(statuses.map((s) => s.name)).toEqual([
+        "Backlog",
+        "To Do",
+        "In Progress",
+        "In Review",
+        "Done",
+      ]);
+      expect(statuses.filter((s) => s.isDefault).map((s) => s.name)).toEqual([
+        "Backlog",
+      ]);
+      expect(transitions).toHaveLength(5 * 4);
+    });
+
+    it("402s every edit on Free, and copying a workflow into a new project", async () => {
+      const refusals = [
+        await addStatus(projectId, { name: "QA" }),
+        await setTransitions(projectId, []),
+        await api()
+          .patch(`${workflow(projectId)}/statuses/${statusIds.Backlog}`)
+          .set(as(aliceToken, aliceWs))
+          .send({ name: "Inbox" }),
+        await createProject({
+          name: "Copycat",
+          workflowFromProjectId: projectId,
+        }),
+      ];
+
+      for (const res of refusals) {
+        expect(res.status).toBe(402);
+        expect(res.body).toMatchObject({
+          code: "PLAN_LIMIT",
+          limit: "customWorkflows",
+        });
+      }
+      expect((await workflowOf(projectId)).statuses).toHaveLength(5);
+    });
+
+    it("keeps a project's workflow out of other workspaces", async () => {
+      await api().get(workflow(projectId)).set(as(bobToken, bobWs)).expect(404);
+    });
+
+    it("on Pro, moves issues only along the project's own transitions", async () => {
+      await prisma.subscription.upsert({
+        where: { workspaceId: aliceWs },
+        create: { workspaceId: aliceWs, plan: "PRO", status: "ACTIVE" },
+        update: { plan: "PRO", status: "ACTIVE" },
+      });
+      const lab = data<{ id: string }>(
+        await createProject({ name: "Workflow Lab" }).expect(201),
+      ).id;
+      const ids = await statusIdsOf(lab);
+      const qa = data<{ id: string }>(
+        await addStatus(lab, { name: "QA" }).expect(201),
+      ).id;
+      await addStatus(lab, { name: "qa" }).expect(409);
+
+      // To Do → QA → Done, and nothing else.
+      await setTransitions(lab, [
+        [ids["To Do"], qa],
+        [qa, ids.Done],
+      ]).expect(200);
+
+      const issues = `/api/v1/projects/${lab}/issues`;
+      const issue = data<{ id: string }>(
+        await api()
+          .post(issues)
+          .set(as(aliceToken, aliceWs))
+          .send({ title: "Gated", statusId: ids["To Do"] })
+          .expect(201),
+      ).id;
+      const move = (statusId: string) =>
+        api()
+          .patch(`${issues}/${issue}`)
+          .set(as(aliceToken, aliceWs))
+          .send({ statusId });
+
+      await move(ids["In Progress"]).expect(400);
+      await move(qa).expect(200);
+      await move(ids.Done).expect(200);
+      // Another project's status is never this project's.
+      await move(statusIds.Done).expect(400);
+
+      // A new project can start from this workflow.
+      const copy = data<{ id: string }>(
+        await createProject({
+          name: "Workflow Copy",
+          workflowFromProjectId: lab,
+        }).expect(201),
+      ).id;
+      const copied = await workflowOf(copy);
+      expect(copied.statuses.map((s) => s.name)).toEqual(
+        (await workflowOf(lab)).statuses.map((s) => s.name),
+      );
+      expect(copied.transitions).toHaveLength(2);
+      expect(copied.statuses.map((s) => s.id)).not.toContain(qa);
+    });
+
+    it("on Pro, deletes a status only once its issues have somewhere to go", async () => {
+      const lab = data<{ id: string }>(
+        await createProject({ name: "Deletion Lab" }).expect(201),
+      ).id;
+      const ids = await statusIdsOf(lab);
+      const issues = `/api/v1/projects/${lab}/issues`;
+      const created = await Promise.all(
+        ["First", "Second"].map(async (title) =>
+          data<{ id: string }>(
+            await api()
+              .post(issues)
+              .set(as(aliceToken, aliceWs))
+              .send({ title, statusId: ids["In Review"] })
+              .expect(201),
+          ),
+        ),
+      );
+      const statusUrl = `${workflow(lab)}/statuses/${ids["In Review"]}`;
+
+      await api().delete(statusUrl).set(as(aliceToken, aliceWs)).expect(409);
+      await api()
+        .delete(`${statusUrl}?moveTo=${ids["In Progress"]}`)
+        .set(as(aliceToken, aliceWs))
+        .expect(200);
+
+      for (const { id } of created) {
+        const moved = data<{ statusId: string }>(
+          await api()
+            .get(`${issues}/${id}`)
+            .set(as(aliceToken, aliceWs))
+            .expect(200),
+        );
+        expect(moved.statusId).toBe(ids["In Progress"]);
+      }
+      const history = data<{ metadata: unknown }[]>(
+        await api()
+          .get(`${issues}/${created[0].id}/activity`)
+          .set(as(aliceToken, aliceWs))
+          .expect(200),
+      );
+      expect(history.map((r) => r.metadata)).toContainEqual({
+        changes: [{ field: "status", from: "In Review", to: "In Progress" }],
+      });
+      expect((await workflowOf(lab)).statuses.map((s) => s.name)).not.toContain(
+        "In Review",
+      );
+
+      // The default and the last completed status can't go.
+      await api()
+        .delete(`${workflow(lab)}/statuses/${ids.Backlog}`)
+        .set(as(aliceToken, aliceWs))
+        .expect(409);
+      await api()
+        .delete(`${workflow(lab)}/statuses/${ids.Done}`)
+        .set(as(aliceToken, aliceWs))
+        .expect(409);
     });
   });
 });

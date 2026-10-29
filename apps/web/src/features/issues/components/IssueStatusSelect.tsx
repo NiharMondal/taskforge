@@ -5,15 +5,15 @@ import {
 	canSetIssueStatus,
 	type Permissions,
 } from "@/features/memberships/lib/permissions";
+import { useWorkflow } from "@/features/workflow/hooks/use-workflow";
 
-import { statusOptionsFor } from "../constants";
-import type { Issue, IssueStatus } from "../types/issue-types";
+import type { Issue } from "../types/issue-types";
 
 /**
- * Inline status picker for a row: the issue's current status plus its legal
- * next steps (see `STATUS_TRANSITIONS`), minus any the viewer's role may not
- * set (VIEWER: all, MEMBER: DONE). A lone option means there's nothing to
- * pick — terminal DONE, or no permission — so it's disabled.
+ * Inline status picker for a row: the issue's current status plus the
+ * statuses its project's workflow lets it move to, minus any the viewer's
+ * role may not set (VIEWER: all, MEMBER: completed ones). A lone option means
+ * there's nothing to pick — no move out, or no permission — so it's disabled.
  */
 export default function IssueStatusSelect({
 	issue,
@@ -24,24 +24,26 @@ export default function IssueStatusSelect({
 }: {
 	issue: Issue;
 	permissions: Permissions;
-	onChange: (issueId: string, status: IssueStatus) => void;
+	onChange: (issueId: string, statusId: string) => void;
 	isDisabled?: boolean;
 	className?: string;
 }) {
-	const options = statusOptionsFor(issue.status).filter(
-		(s) => s.value === issue.status || canSetIssueStatus(permissions, s.value),
+	const { view } = useWorkflow(issue.workspaceId, issue.projectId);
+	const options = (view?.optionsFrom(issue.statusId) ?? [issue.status]).filter(
+		(s) =>
+			s.id === issue.statusId || canSetIssueStatus(permissions, s.category),
 	);
 
 	return (
 		<TFSelect
 			aria-label={`Status of ${issue.title}`}
-			value={issue.status}
+			value={issue.statusId}
 			isDisabled={isDisabled || options.length === 1}
 			className={className}
 			onChange={(key) => {
-				if (key !== issue.status) onChange(issue.id, key as IssueStatus);
+				if (key !== issue.statusId) onChange(issue.id, String(key));
 			}}
-			options={options.map((s) => ({ value: s.value, label: s.label }))}
+			options={options.map((s) => ({ value: s.id, label: s.name }))}
 		/>
 	);
 }

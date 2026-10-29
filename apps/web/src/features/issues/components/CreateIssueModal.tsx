@@ -8,7 +8,8 @@ import { toast } from "@heroui/react";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { useSprints } from "@/features/sprint/hooks/use-sprints";
 import { useLabels } from "@/features/labels/hooks/use-labels";
-import type { IssueStatus } from "../types/issue-types";
+import { useWorkflow } from "@/features/workflow/hooks/use-workflow";
+import { Spinner } from "@heroui/react";
 import { parseEstimate } from "../lib/estimate";
 type TProps = {
 	isOpen: boolean;
@@ -17,8 +18,11 @@ type TProps = {
 	projectId: string;
 	onSubmit?: (dto: TIssueFormValues) => Promise<void>;
 	isLoading?: boolean;
-	/** Status the form starts on (the board has no BACKLOG lane, so it passes TODO). */
-	defaultStatus?: IssueStatus;
+	/**
+	 * Status the form starts on; the project's default unless given. The board
+	 * passes its first lane, since it shows no backlog statuses.
+	 */
+	defaultStatusId?: string;
 	/** Sprint the form starts on (the board passes the active sprint). */
 	defaultSprintId?: string;
 };
@@ -27,7 +31,7 @@ export default function CreateIssueModal({
 	onOpenChange,
 	members,
 	projectId,
-	defaultStatus,
+	defaultStatusId,
 	defaultSprintId,
 }: TProps) {
 	const { activeWorkspaceId } = useWorkspace();
@@ -38,6 +42,7 @@ export default function CreateIssueModal({
 	);
 	const { data: sprints = [] } = useSprints(workspaceId, projectId);
 	const { data: labels = [] } = useLabels(workspaceId);
+	const { view: workflow } = useWorkflow(workspaceId, projectId);
 
 	const handleCreateIssue = async (values: TIssueFormValues) => {
 		try {
@@ -61,7 +66,12 @@ export default function CreateIssueModal({
 			width="md:min-w-[600px] max-h-[90vh]"
 			title="Create Issue"
 		>
-			{isOpen && (
+			{isOpen && !workflow && (
+				<div className="flex justify-center py-8">
+					<Spinner />
+				</div>
+			)}
+			{isOpen && workflow && (
 				<IssueForm
 					isSubmitting={isPending}
 					onSubmit={handleCreateIssue}
@@ -70,7 +80,10 @@ export default function CreateIssueModal({
 					labels={labels}
 					onCancel={onOpenChange}
 					onSuccess={onOpenChange}
-					initialStatus={defaultStatus}
+					statuses={workflow.statuses}
+					initialStatusId={
+						defaultStatusId ?? workflow.defaultStatus?.id ?? ""
+					}
 					initialSprintId={defaultSprintId}
 				/>
 			)}

@@ -55,16 +55,17 @@ app/
         backlog/    — sprint planning: sprint sections + unscheduled backlog, move issues between them
         list/       — every issue as a filterable table, sub-issues nested
           [slug]/   — issue detail page ([slug] is the issue id)
+        workflow/   — the project's statuses and allowed moves (editable on Pro)
     settings/       — members, roles, general, labels, billing, profile
     issues/         — redirect → /projects (no workspace-wide issues endpoint)
   invitations/accept/
 ```
 
-Issues are project-scoped: pages live under `/projects/[projectId]/` (`active-sprint`, `backlog`, `list`, `list/[slug]`); the backend route is still `/projects/:projectId/issues`. `/` redirects to `/dashboard`.
+Issues are project-scoped: pages live under `/projects/[projectId]/` (`active-sprint`, `backlog`, `list`, `list/[slug]`, `workflow`); the backend route is still `/projects/:projectId/issues`. `/` redirects to `/dashboard`.
 
 ### Feature structure
 
-Each domain lives in `src/features/<name>/` (`activity`, `auth`, `billing`, `comments`, `dashboard`, `invitations`, `issues`, `labels`, `memberships`, `profile`, `projects`, `roles`, `settings`, `sprint`, `workspace`):
+Each domain lives in `src/features/<name>/` (`activity`, `auth`, `billing`, `comments`, `dashboard`, `invitations`, `issues`, `labels`, `memberships`, `profile`, `projects`, `roles`, `settings`, `sprint`, `workflow`, `workspace`):
 
 ```
 api/          — async functions calling `api.*` from lib/axios
@@ -77,7 +78,9 @@ constants.ts  — display metadata for enums (labels, ordering, chip colors)
 
 Shared UI primitives go in `src/components/` (`ui/`, `form-element/`); layout components (sidebar, header) in `src/components/layout/`. Values the API also enforces — enums, field limits, the permission catalog, status transitions, rank helpers, the response envelope — come from `@taskforge/shared` (`packages/shared/`); import them from there rather than restating them. The feature `types/` files re-export the enum types so existing imports keep working.
 
-Enum display metadata is centralized — e.g. `features/issues/constants.ts` owns `ISSUE_STATUSES`, `BOARD_STATUSES`, `ISSUE_PRIORITIES`, and the `STATUS_META`/`PRIORITY_META` lookups that chips, selects, and grouped lists all read. Add a status there, not inline.
+Enum display metadata is centralized — e.g. `features/issues/constants.ts` owns `ISSUE_PRIORITIES`, `PRIORITY_META` and the type metadata that chips and selects read.
+
+**Statuses are per project, not an enum.** `useWorkflow(workspaceId, projectId)` (`features/workflow/`, key `workflowKeys.detail`) returns the project's workflow and a `view` (`workflowView`): statuses in column order, `byId`, `boardStatuses` (non-`BACKLOG` categories), `defaultStatus`, `firstUnstarted`, `canMove(from, to)` and `optionsFrom(statusId)` for pickers. Issues carry `statusId` plus an embedded `status: { id, name, color, category }`; render it with `StatusChip` (a dot in the status's color). Never compare a status by name — use `status.category` (`COMPLETED` is "done"). `canSetIssueStatus(permissions, category)` gates completing. The project's **Workflow** tab (`/projects/[projectId]/workflow`, `WorkflowEditor`) edits statuses and moves on Pro with `project:manage`; read-only otherwise. A workflow mutation invalidates the workflow and the project's issues. Creating a project offers "Same as <project>" (sent as `workflowFromProjectId`, Pro only).
 
 ### API layer
 
@@ -114,9 +117,9 @@ Mutations use `.message` from the envelope for toast feedback. Every rejection i
 `src/features/issues/components/board/` — `@dnd-kit/core` + `@dnd-kit/sortable`.
 
 - The board is the **active sprint's**: `BoardView` filters the project issue list to `sprintId === activeSprint.id` (memoized — the resync below compares by reference) and shows `SprintSummaryCard` above the lanes, then `IssueFilterBar` (search, assignees and labels, via `filterIssues` in `lib/issue-filters.ts` — the List tab uses the same). Lanes show the filtered cards, but a drop's rank is computed against the *full* lane (`rankForPosition`), so a key never lands on a hidden card's key. With no active sprint it renders an empty state linking to the backlog. Issues outside the sprint live on the backlog and the List tab.
-- Lane order comes from `BOARD_STATUSES` (all statuses except `BACKLOG`; backlog is triage and appears on the list view only).
+- Lanes are the project's workflow statuses outside the `BACKLOG` category (`workflow.boardStatuses`), keyed by status id, in column order; backlog work is triage and appears on the backlog and list views only. Columns regroup when the issues *or* the workflow change.
 - Card position persists as `Issue.rank`, a fractional index computed by `rankBetween` (`@taskforge/shared`, re-exported from `features/issues/lib/rank.ts`; the API appends with the same helper). `rankBetween(prev, next)` returns `undefined` on invalid bounds so the caller can fall back to a status-only PATCH; `compareIssueRank` sorts un-ranked rows last. Moving a card is a single-row PATCH — no renumbering.
-- A drag may only land back in its starting lane or in one of that lane's `STATUS_TRANSITIONS` (`isAllowedTransition`, from `@taskforge/shared`) — the same rule as the status Selects, and the same map the backend enforces on every `PATCH` that changes `status`.
+- A drag may only land back in its starting lane or in a status the project's workflow allows from it (`workflow.canMove`, i.e. `isAllowedTransition` over the project's transitions) — the same rule as the status Selects, and what the backend enforces on every `PATCH` that changes `statusId`.
 - `BoardView` mirrors server data into local column state and resyncs by reference comparison during render (not an effect), so an in-progress drag is never clobbered. The stable `EMPTY_ISSUES` constant exists to keep that comparison from looping.
 
 ### Roles and permissions

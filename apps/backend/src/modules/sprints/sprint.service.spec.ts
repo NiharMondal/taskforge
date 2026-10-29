@@ -61,8 +61,13 @@ describe("SprintService", () => {
     it("only releases unfinished issues that belong to the caller's workspace", async () => {
       await service.endSprint(workspaceId, projectId, sprintId);
 
+      // Unfinished by category: a project names its completed statuses.
       expect(prisma.issue.updateMany).toHaveBeenCalledWith({
-        where: { sprintId, workspaceId, status: { not: "DONE" } },
+        where: {
+          sprintId,
+          workspaceId,
+          status: { category: { not: "COMPLETED" } },
+        },
         data: { sprintId: null },
       });
     });

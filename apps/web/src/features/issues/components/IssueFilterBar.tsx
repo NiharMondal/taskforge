@@ -9,9 +9,9 @@ import type { Label } from "@/features/labels/types/label-types";
 import type { Member } from "@/features/memberships/types/membership-types";
 import { getMemberName } from "@/features/memberships/lib/member";
 import type { Sprint } from "@/features/sprint/types/sprint-types";
+import type { WorkflowStatus } from "@/features/workflow/types/workflow-types";
 import { initialsOf } from "@/util/initials";
 
-import { ISSUE_STATUSES } from "../constants";
 import {
 	ALL,
 	EMPTY_FILTERS,
@@ -26,8 +26,11 @@ interface Props {
 	members: Member[];
 	/** Shows the sprint picker (the List tab); the board is one sprint. */
 	sprints?: Sprint[];
-	/** Shows the status picker (the List tab); the board's lanes are statuses. */
-	showStatus?: boolean;
+	/**
+	 * The project's statuses: shows the status picker (the List tab). The
+	 * board leaves it out, since its lanes are statuses.
+	 */
+	statuses?: WorkflowStatus[];
 	/** The workspace's labels; the label picker shows once there are any. */
 	labels?: Label[];
 }
@@ -42,7 +45,7 @@ export default function IssueFilterBar({
 	onChange,
 	members,
 	sprints,
-	showStatus = false,
+	statuses,
 	labels = [],
 }: Props) {
 	const set = (patch: Partial<IssueFilters>) =>
@@ -139,7 +142,7 @@ export default function IssueFilterBar({
 				</Select>
 			)}
 
-			{showStatus && (
+			{statuses && (
 				<TFSelect
 					aria-label="Filter by status"
 					value={filters.status}
@@ -147,10 +150,7 @@ export default function IssueFilterBar({
 					className="w-40"
 					options={[
 						{ value: ALL, label: "All statuses" },
-						...ISSUE_STATUSES.map((s) => ({
-							value: s.value,
-							label: s.label,
-						})),
+						...statuses.map((s) => ({ value: s.id, label: s.name })),
 					]}
 				/>
 			)}

@@ -4,4 +4,4 @@ export * from "./limits";
 export * from "./permissions";
 export * from "./plans";
 export * from "./rank";
-export * from "./status-transitions";
+export * from "./workflow";

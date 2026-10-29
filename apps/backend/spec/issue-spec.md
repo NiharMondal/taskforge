@@ -8,7 +8,8 @@ Build a backend issue tracking system scoped to workspace projects. Issues are t
 - `reporterId` is always sourced from the authenticated user's JWT (`sub`). It is never accepted from the request body.
 - Issues are workspace-isolated: a user from Workspace A must never be able to read or mutate Workspace B's issues.
 - Creating needs `issue:create` (OWNER, ADMIN, MEMBER by default); deleting needs `issue:delete` (OWNER, ADMIN).
-- Updating is field-level (see the PATCH table). A `MEMBER` may change `status`/`rank` on any issue and edit every field of issues they reported or are assigned to, but never set `DONE`. `VIEWER` is read-only.
+- Updating is field-level (see the PATCH table). A `MEMBER` may change `statusId`/`rank` on any issue and edit every field of issues they reported or are assigned to, but never move one into a `COMPLETED` status. `VIEWER` is read-only.
+- Statuses are the project's own (`spec/workflow-spec.md`): `statusId` names a status of the issue's project, and rules read its category, never its name. Created without one, an issue lands in the project's default status. Responses embed `status: { id, name, color, category }`.
 
 ---
 
@@ -22,7 +23,7 @@ model Issue {
   title       String
   description String?
 
-  status   IssueStatus   @default(BACKLOG)
+  statusId String         // a WorkflowStatus of this project (see workflow-spec.md)
   priority IssuePriority @default(MEDIUM)
 
   workspaceId String
@@ -46,23 +47,12 @@ model Issue {
   labels   IssueLabel[]
 
   @@index([workspaceId, projectId])
-  @@index([workspaceId, status])
+  @@index([workspaceId, statusId])
   @@index([workspaceId, assigneeId])
 }
 
-enum IssueStatus {
-  BACKLOG
-  TODO
-  IN_PROGRESS
-  IN_REVIEW
-  QA_REQUESTED
-  QA_FAILED
-  DEPLOYED
-  DONE
-}
-// A PATCH may only move status along the workflow in
-// STATUS_TRANSITIONS in @taskforge/shared (e.g. QA_REQUESTED → QA_FAILED or
-// DEPLOYED); anything else is a 400. DONE is terminal.
+// A PATCH may only move an issue along a WorkflowTransition of its project
+// (staying put is always allowed); anything else is a 400.
 
 enum IssuePriority {
   LOW
@@ -97,7 +87,7 @@ Base path: `/projects/:projectId/issues`
 {
   "title": "Fix login bug",
   "description": "Users are getting 500 on login when email has uppercase letters",
-  "status": "BACKLOG",
+  "statusId": "uuid-optional",
   "priority": "HIGH",
   "type": "BUG",
   "timeEstimate": 3,
@@ -144,7 +134,7 @@ Base path: `/projects/:projectId/issues`
 **Query params (all optional):**
 | Param | Type | Description |
 |-------|------|-------------|
-| `status` | `IssueStatus` | Filter by status |
+| `statusId` | `string` (UUID) | Filter by workflow status |
 | `priority` | `IssuePriority` | Filter by priority |
 | `assigneeId` | `string` (UUID) | Filter by assignee |
 | `sprintId` | `string` (UUID) | Filter by sprint |
@@ -210,8 +200,8 @@ Base path: `/projects/:projectId/issues`
 
 | Role | Allowed fields | Status restriction |
 |------|---------------|-------------------|
-| `OWNER` / `ADMIN` | All fields | Can set any status including `DONE` |
-| `MEMBER` | `status`, `rank` on any issue; all fields on issues they reported or are assigned to (as stored before the update) | Cannot set `DONE` |
+| `OWNER` / `ADMIN` | All fields | Can set any status, completed ones included |
+| `MEMBER` | `statusId`, `rank` on any issue; all fields on issues they reported or are assigned to (as stored before the update) | Cannot move it into a `COMPLETED` status |
 | `VIEWER` | None | — |
 
 Rules are permissions on the member's `Role` (`issue:status`, `issue:status:done`, `issue:edit:any`, `issue:edit:own`); the table shows the built-in defaults. Unlisted fields are refused.
@@ -221,7 +211,7 @@ Rules are permissions on the member's `Role` (`issue:status`, `issue:status:done
 {
   "title": "Updated title",
   "description": "Updated description",
-  "status": "IN_PROGRESS",
+  "statusId": "uuid",
   "priority": "URGENT",
   "type": "STORY",
   "timeEstimate": 5,
@@ -239,7 +229,7 @@ Rules are permissions on the member's `Role` (`issue:status`, `issue:status:done
 1. Checks the caller's role permissions (see the table above).
 2. Verifies the issue exists in this workspace + project.
 3. Checks each field against those permissions; for a `MEMBER`, ownership is judged on the issue as stored before the update. A field the caller may not change is a `403`.
-4. If `status` changes, checks it against the workflow (`400` if not allowed).
+4. If `statusId` changes, checks it is this project's (`400`) and that the project's workflow has that move (`400` if not). Joining a sprint from a backlog status is the exception: see `workflow-spec.md`.
 5. Applies the partial update.
 
 **Success:** `200 OK`
@@ -256,7 +246,7 @@ Rules are permissions on the member's `Role` (`issue:status`, `issue:status:done
 | Status | Reason |
 |--------|--------|
 | `400` | Validation failure, a disallowed status transition, or a `type` sent for a sub-issue |
-| `403` | `MEMBER` attempted to update a restricted field or set status to `DONE` |
+| `403` | `MEMBER` attempted to update a restricted field or move the issue into a completed status |
 | `404` | Issue not found in this project/workspace |
 
 ---

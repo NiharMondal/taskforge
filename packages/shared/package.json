@@ -2,7 +2,7 @@
   "name": "@taskforge/shared",
   "version": "0.0.0",
   "private": true,
-  "description": "Code both apps need to agree on: enums, permissions, status transitions, board ranks, field limits and the API envelope.",
+  "description": "Code both apps need to agree on: enums, permissions, the default workflow, board ranks, field limits and the API envelope.",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {

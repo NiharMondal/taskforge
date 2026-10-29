@@ -13,7 +13,7 @@ import { formatDate } from "@/util/format-date";
 import { initialsOf } from "@/util/initials";
 
 import { PRIORITY_META } from "../../constants";
-import type { Issue, IssueStatus } from "../../types/issue-types";
+import type { Issue } from "../../types/issue-types";
 import { IssueTypeIcon, PriorityIcon } from "../IssueIcons";
 import IssueKey from "../IssueKey";
 import IssueStatusSelect from "../IssueStatusSelect";
@@ -25,7 +25,7 @@ interface Props {
 	/** userId → display name, from the workspace roster. */
 	memberNames: Map<string, string>;
 	permissions: Permissions;
-	onStatusChange: (issueId: string, status: IssueStatus) => void;
+	onStatusChange: (issueId: string, statusId: string) => void;
 	/** Issue currently being mutated, to disable its status picker. */
 	updatingIssueId?: string;
 }

@@ -11,12 +11,17 @@ export interface PlanLimits {
   members: number | null;
   /** Whether custom roles can be created (built-ins exist on every plan). */
   customRoles: boolean;
+  /**
+   * Whether a project's workflow (statuses and moves) can be edited, or copied
+   * from another project when one is created. Every plan gets the default.
+   */
+  customWorkflows: boolean;
 }
 
 export const PLAN_LIMITS: Record<SubscriptionPlan, PlanLimits> = {
-  FREE: { members: 5, customRoles: false },
-  PRO: { members: null, customRoles: true },
-  ENTERPRISE: { members: null, customRoles: true },
+  FREE: { members: 5, customRoles: false, customWorkflows: false },
+  PRO: { members: null, customRoles: true, customWorkflows: true },
+  ENTERPRISE: { members: null, customRoles: true, customWorkflows: true },
 };
 
 /**
@@ -35,7 +40,11 @@ export const PRO_TRIAL_DAYS = 14;
 export const PLAN_LIMIT_ERROR_CODE = "PLAN_LIMIT";
 
 /** Which limit a 402 `PLAN_LIMIT` refers to (`limit` on its body). */
-export type PlanLimitKind = "members" | "customRoles" | "ownedWorkspaces";
+export type PlanLimitKind =
+  | "members"
+  | "customRoles"
+  | "customWorkflows"
+  | "ownedWorkspaces";
 
 /**
  * Statuses that keep a paid plan in force. `PAST_DUE` is included: Stripe

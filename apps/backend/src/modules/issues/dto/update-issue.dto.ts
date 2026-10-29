@@ -7,7 +7,7 @@ import {
   SELECTABLE_ISSUE_TYPES,
 } from "@taskforge/shared";
 import { IsOptionalNonNull } from "@/common/decorators/is-optional-non-null.decorator";
-import { IssueStatus, IssuePriority, IssueType } from "generated/prisma/enums";
+import { IssuePriority, IssueType } from "generated/prisma/enums";
 import {
   ArrayMaxSize,
   ArrayUnique,
@@ -38,9 +38,13 @@ export class UpdateIssueDto {
   @MaxLength(MAX_ISSUE_DESCRIPTION_LENGTH)
   description?: string;
 
+  /**
+   * A status of this project's workflow (`GET /projects/:projectId/workflow`).
+   * Left out on create, the project's default.
+   */
   @IsOptionalNonNull()
-  @IsEnum(IssueStatus)
-  status?: IssueStatus;
+  @IsUUID()
+  statusId?: string;
 
   @IsOptionalNonNull()
   @IsEnum(IssuePriority)
@@ -77,7 +81,7 @@ export class UpdateIssueDto {
   /**
    * Board position within the target `(project, status)` lane: a base-62
    * fractional index computed by the client on drop (see `Issue.rank`). Sent
-   * together with `status`; the charset check only rejects obvious junk — the
+   * together with `statusId`; the charset check only rejects obvious junk — the
    * service validates that it is a usable key.
    */
   @IsOptional()

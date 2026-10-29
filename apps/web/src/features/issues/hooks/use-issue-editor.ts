@@ -75,7 +75,9 @@ export function useIssueEditor(
 			(issue.labels ?? []).map((l) => l.id).sort().join();
 
 		const dto: UpdateIssueDto = {
-			...(values.status !== issue.status && { status: values.status }),
+			...(values.statusId !== issue.statusId && {
+				statusId: values.statusId,
+			}),
 			...(values.priority !== issue.priority && {
 				priority: values.priority,
 			}),

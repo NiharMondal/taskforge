@@ -1,5 +1,5 @@
 import { ForbiddenException } from "@nestjs/common";
-import { IssueStatus } from "generated/prisma/enums";
+import { StatusCategory } from "generated/prisma/enums";
 import { Permission } from "@taskforge/shared";
 import { WorkspaceAccess } from "./workspace-access";
 
@@ -17,7 +17,7 @@ const FIELD_RULES = {
   sprintId: "content",
   assigneeId: "content",
   labelIds: "content",
-  status: "status",
+  statusId: "status",
   rank: "status",
 } as const satisfies Record<string, "content" | "status">;
 
@@ -37,14 +37,21 @@ export function assertCanUpdateSomeIssue(access: WorkspaceAccess) {
   }
 }
 
-/** Setting DONE takes its own permission, on create and update alike. */
+/**
+ * Moving an issue into a COMPLETED status takes its own permission, on create
+ * and update alike. Takes the target status's category, never its name: the
+ * project names its statuses.
+ */
 export function assertCanSetStatus(
   access: WorkspaceAccess,
-  status: IssueStatus | undefined,
+  category: StatusCategory | undefined,
 ) {
-  if (status === IssueStatus.DONE && !has(access, "issue:status:done")) {
+  if (
+    category === StatusCategory.COMPLETED &&
+    !has(access, "issue:status:done")
+  ) {
     throw new ForbiddenException(
-      "You do not have permission to mark an issue as DONE",
+      "You do not have permission to complete issues",
     );
   }
 }
@@ -52,7 +59,8 @@ export function assertCanSetStatus(
 /**
  * Field-level check for a PATCH. `issue` is the row as stored: ownership is
  * decided before the update, so assigning yourself in the same request doesn't
- * make the issue yours.
+ * make the issue yours. The target status's category is checked apart, with
+ * `assertCanSetStatus`, once the service has resolved it.
  */
 export function assertCanUpdateIssue(
   access: WorkspaceAccess,
@@ -87,6 +95,4 @@ export function assertCanUpdateIssue(
       throw new ForbiddenException(`"${field}" cannot be updated`);
     }
   }
-
-  assertCanSetStatus(access, (dto as { status?: IssueStatus }).status);
 }

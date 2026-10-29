@@ -69,7 +69,7 @@ export default function IssueDetailComponent({ projectId, issueId }: Props) {
 	const detailsValues = useMemo<TIssueDetailsValues | undefined>(
 		() =>
 			issue && {
-				status: issue.status,
+				statusId: issue.statusId,
 				priority: issue.priority,
 				type: issue.type,
 				timeEstimate: formatEstimate(issue.timeEstimate),
@@ -146,6 +146,8 @@ export default function IssueDetailComponent({ projectId, issueId }: Props) {
 			</div>
 			<div className="xl:col-span-2 flex flex-col gap-3">
 				<IssueDetailsPanel
+					workspaceId={workspaceId}
+					projectId={projectId}
 					defaultValues={detailsValues}
 					onSubmit={handleSaveDetails}
 					isSubmitting={isSavingDetails}

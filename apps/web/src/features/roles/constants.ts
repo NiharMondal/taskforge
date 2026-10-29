@@ -36,12 +36,14 @@ export const PERMISSION_GROUPS: { title: string; permissions: PermissionMeta[] }
 			{
 				key: "issue:status",
 				label: "Move issues",
-				description: "Change status and board position, except to Done.",
+				description:
+					"Change status and board position, except into a completed status.",
 			},
 			{
 				key: "issue:status:done",
-				label: "Mark issues Done",
-				description: "Set an issue's status to Done.",
+				label: "Complete issues",
+				description:
+					"Move an issue into a completed status (Done, or whatever the project calls it).",
 			},
 			{
 				key: "issue:delete",
@@ -71,7 +73,8 @@ export const PERMISSION_GROUPS: { title: string; permissions: PermissionMeta[] }
 			{
 				key: "project:manage",
 				label: "Manage projects",
-				description: "Create, edit and delete projects.",
+				description:
+					"Create, edit and delete projects, and edit their workflows on Pro.",
 			},
 			{
 				key: "sprint:manage",

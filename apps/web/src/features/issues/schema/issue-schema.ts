@@ -1,6 +1,5 @@
 import {
 	ISSUE_PRIORITY_VALUES,
-	ISSUE_STATUS_VALUES,
 	ISSUE_TYPE_VALUES,
 	MAX_ISSUE_DESCRIPTION_LENGTH,
 	MAX_ISSUE_LABELS,
@@ -34,7 +33,8 @@ export const issueSchema = z.object({
 			"Description is too long (formatting counts toward the limit)",
 		)
 		.optional(),
-	status: z.enum(ISSUE_STATUS_VALUES),
+	// A status of the project's workflow, picked from `useWorkflow`.
+	statusId: z.string().min(1, "Pick a status"),
 	priority: z.enum(ISSUE_PRIORITY_VALUES),
 	// SUBTASK is here so a sub-issue's details form can hold its type; the
 	// selects never offer it and the backend refuses it.
@@ -71,7 +71,7 @@ export const issueContentSchema = issueSchema.pick({
 export type TIssueContentValues = z.infer<typeof issueContentSchema>;
 
 export const issueDetailsSchema = issueSchema.pick({
-	status: true,
+	statusId: true,
 	priority: true,
 	type: true,
 	timeEstimate: true,

@@ -8,6 +8,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import type { Prisma } from "generated/prisma/client";
+import { StatusCategory } from "generated/prisma/enums";
 import { CreateSprintDto } from "./dto/create-sprint.dto";
 import { UpdateSprintDto } from "./dto/update-sprint.dto";
 
@@ -141,12 +142,13 @@ export class SprintService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      // Move unfinished issues back to backlog
+      // Unfinished issues (any status not in the COMPLETED category) go back
+      // to the backlog; their status is kept.
       await tx.issue.updateMany({
         where: {
           sprintId,
           workspaceId,
-          status: { not: "DONE" },
+          status: { category: { not: StatusCategory.COMPLETED } },
         },
         data: {
           sprintId: null,

@@ -11,7 +11,7 @@ export interface IssueFilters {
 	assigneeIds: string[];
 	/** Selected label ids; an issue matches with any of them. Empty: all. */
 	labelIds: string[];
-	/** An `IssueStatus`, or `ALL`. */
+	/** A workflow status id, or `ALL`. */
 	status: string;
 	/** A sprint id, `NO_SPRINT` (the backlog), or `ALL`. */
 	sprint: string;
@@ -53,7 +53,7 @@ export function filterIssues(
 				(!!i.assigneeId && f.assigneeIds.includes(i.assigneeId))) &&
 			(f.labelIds.length === 0 ||
 				!!i.labels?.some((l) => f.labelIds.includes(l.id))) &&
-			(f.status === ALL || i.status === f.status) &&
+			(f.status === ALL || i.statusId === f.status) &&
 			(f.sprint === ALL ||
 				(f.sprint === NO_SPRINT ? !i.sprintId : i.sprintId === f.sprint)),
 	);

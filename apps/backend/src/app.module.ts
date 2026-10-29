@@ -18,6 +18,7 @@ import { MembershipModule } from "./modules/memberships/membership.module";
 import { ProjectModule } from "./modules/projects/project.module";
 import { RoleModule } from "./modules/roles/role.module";
 import { SprintModule } from "./modules/sprints/sprint.module";
+import { WorkflowModule } from "./modules/workflows/workflow.module";
 import { WorkspaceModule } from "./modules/workspace/workspace.module";
 
 @Module({
@@ -38,6 +39,7 @@ import { WorkspaceModule } from "./modules/workspace/workspace.module";
     ActivityModule,
     SprintModule,
     BillingModule,
+    WorkflowModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: JwtAuthGuard }],

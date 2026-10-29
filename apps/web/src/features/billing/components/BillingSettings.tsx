@@ -258,6 +258,10 @@ function Usage({ billing }: { billing: Billing }) {
 				<span className="text-muted">Custom roles: </span>
 				{billing.limits.customRoles ? "included" : "Pro only"}
 			</p>
+			<p className="text-sm">
+				<span className="text-muted">Custom workflows: </span>
+				{billing.limits.customWorkflows ? "included" : "Pro only"}
+			</p>
 		</div>
 	);
 }

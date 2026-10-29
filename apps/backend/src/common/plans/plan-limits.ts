@@ -93,6 +93,21 @@ export async function assertCanCreateCustomRole(db: Db, workspaceId: string) {
 }
 
 /**
+ * Before editing a project's workflow, or creating a project from another's:
+ * Free projects keep the default. A workflow customized on Pro keeps working
+ * after a downgrade; it just can't be changed.
+ */
+export async function assertCanCustomizeWorkflow(db: Db, workspaceId: string) {
+  const plan = await getWorkspacePlan(db, workspaceId);
+  if (!PLAN_LIMITS[plan].customWorkflows) {
+    throw new PlanLimitException(
+      "customWorkflows",
+      "Custom workflows are part of the Pro plan. Upgrade to change a project's statuses.",
+    );
+  }
+}
+
+/**
  * Before creating a workspace: the caller may own at most
  * FREE_OWNED_WORKSPACES Free ones (the new one would be Free too). Paid
  * workspaces they own don't count.

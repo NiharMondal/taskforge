@@ -5,7 +5,6 @@ import { Menu } from "lucide-react";
 import { useSession } from "next-auth/react";
 
 import Avatar from "@/components/ui/avatar";
-import { SignOutButton } from "@/features/auth/components/sign-out-button";
 
 import { useSidebar } from "./sidebar-context";
 import { ThemeSwitcher } from "../theme-switch/theme-switch";
@@ -20,7 +19,8 @@ export interface HeaderUser {
 
 /**
  * Top bar for the dashboard shell. Hosts the mobile drawer toggle (hidden on
- * desktop) and the current user / sign-out controls.
+ * desktop), the theme switch and the current user. Sign-out is at the bottom
+ * of the sidebar, next to the workspace switcher.
  *
  * The server layout provides `user` for first paint; `useSession()` then keeps
  * the name/avatar live so a profile save (which calls `update()`) reflects
@@ -59,8 +59,6 @@ export default function Header({ user }: { user: HeaderUser }) {
         <span className="hidden text-sm text-muted sm:inline">
           {name ?? email}
         </span>
-       
-        <SignOutButton />
       </div>
     </header>
   );

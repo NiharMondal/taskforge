@@ -293,8 +293,12 @@ refresh token for 60 seconds instead of treating it as stolen.
 ```ts
 import { signOut } from "next-auth/react";
 
-await signOut({ callbackUrl: "/login" });
+// "Sign out" in the workspace menu: back to the public landing page.
+await signOut({ callbackUrl: "/" });
 ```
+
+A session that ends on its own (a refused refresh token, or a 401 the retry can't fix) signs out to
+`/login` instead (`auth-provider.tsx`): that user wants to sign straight back in.
 
 Auth.js's `events.signOut` (in `lib/auth.ts`) also posts the refresh token to `POST /auth/logout`,
 so the backend session ends with the cookie.

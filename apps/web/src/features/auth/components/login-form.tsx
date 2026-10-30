@@ -2,10 +2,10 @@
 
 import { FormTextField, FormWrapper } from "@/components/form-element";
 import { getApiErrorMessage } from "@/lib/api-error";
-import GoogleIcon from "@/shared/icons/google-icon";
 import { Button, toast } from "@heroui/react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { signIn } from "next-auth/react";
+import GoogleSignInButton, { AuthDivider } from "./google-sign-in-button";
 import PasswordVisibilityToggle from "./password-visibility-toggle";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
@@ -51,53 +51,39 @@ export default function LoginForm() {
 		}
 	};
 	return (
-		<FormWrapper methods={methods} onSubmit={onSubmit}>
-			<FormTextField
-				isRequired
-				name="email"
-				label="Email"
-				placeholder="you@company.com"
-				type="email"
-			/>
-			<FormTextField
-				isRequired
-				name="password"
-				label="Password"
-				type={showPassword ? "text" : "password"}
-				ornament={
-					<PasswordVisibilityToggle
-						isVisible={showPassword}
-						onToggle={() => setShowPassword((prev) => !prev)}
-					/>
-				}
-			/>
-			<div className="flex items-center gap-3 my-4">
-				<div className="h-px flex-1 bg-muted/20" />
-				<span className="text-xs text-muted">OR</span>
-				<div className="h-px flex-1 bg-muted/20" />
-			</div>
-			<Button
-				type="button"
-				className="w-full"
-				variant="outline"
-				onPress={() =>
-					signIn("google", {
-						redirectTo: resolvePostLoginTarget(
-							searchParams.get("callbackUrl"),
-						),
-					})
-				}
-			>
-				<GoogleIcon />
-				Continue with Google
-			</Button>
-			<Button
-				type="submit"
-				className={"w-full"}
-				isDisabled={methods.formState.isSubmitting}
-			>
-				{methods.formState.isSubmitting ? "Signing in…" : "Login"}
-			</Button>
-		</FormWrapper>
+		<>
+			<GoogleSignInButton />
+			<AuthDivider />
+			<FormWrapper methods={methods} onSubmit={onSubmit}>
+				<FormTextField
+					isRequired
+					name="email"
+					label="Email"
+					placeholder="you@company.com"
+					type="email"
+				/>
+				<FormTextField
+					isRequired
+					name="password"
+					label="Password"
+					type={showPassword ? "text" : "password"}
+					ornament={
+						<PasswordVisibilityToggle
+							isVisible={showPassword}
+							onToggle={() => setShowPassword((prev) => !prev)}
+						/>
+					}
+				/>
+				<Button
+					type="submit"
+					variant="primary"
+					fullWidth
+					className="mt-2"
+					isDisabled={methods.formState.isSubmitting}
+				>
+					{methods.formState.isSubmitting ? "Signing in…" : "Sign in"}
+				</Button>
+			</FormWrapper>
+		</>
 	);
 }

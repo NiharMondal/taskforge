@@ -220,3 +220,55 @@
 	background: none;
 	padding: 0;
 }
+
+/* ---------------------------------------------------------------------------
+ * Public site and auth pages
+ * ------------------------------------------------------------------------- */
+
+/* A soft accent glow behind a hero. */
+.hero-glow {
+	background:
+		radial-gradient(
+			60% 55% at 50% 0%,
+			color-mix(in oklch, var(--accent) 22%, transparent),
+			transparent
+		),
+		radial-gradient(
+			35% 35% at 85% 30%,
+			color-mix(in oklch, oklch(70% 0.18 330) 14%, transparent),
+			transparent
+		);
+}
+
+/* A faint grid, faded out toward the edges. */
+.grid-pattern {
+	background-image:
+		linear-gradient(
+			to right,
+			color-mix(in oklch, var(--foreground) 6%, transparent) 1px,
+			transparent 1px
+		),
+		linear-gradient(
+			to bottom,
+			color-mix(in oklch, var(--foreground) 6%, transparent) 1px,
+			transparent 1px
+		);
+	background-size: 40px 40px;
+	mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+}
+
+/* The brand panel beside the sign-in and sign-up forms. */
+.brand-panel {
+	background:
+		radial-gradient(
+			70% 60% at 100% 0%,
+			oklch(66% 0.2 320 / 0.45),
+			transparent
+		),
+		radial-gradient(
+			60% 50% at 0% 100%,
+			oklch(45% 0.2 273.85 / 0.6),
+			transparent
+		),
+		var(--accent);
+}

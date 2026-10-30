@@ -6,7 +6,6 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
-  Logger,
   UnauthorizedException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
@@ -59,13 +58,13 @@ let refreshTokens: {
   revoke: jest.Mock;
   revokeAllForUser: jest.Mock;
 };
-let mail: { sendMail: jest.Mock };
+let mail: { sendInBackground: jest.Mock };
 let service: AuthService;
 
 /** The emails sent, as `{ to, subject, text }`. */
 const sentMail = () =>
   (
-    mail.sendMail.mock.calls as [
+    mail.sendInBackground.mock.calls as [
       { to: string; subject: string; text: string },
     ][]
   ).map(([m]) => m);
@@ -132,7 +131,7 @@ beforeEach(() => {
     revoke: jest.fn().mockResolvedValue(undefined),
     revokeAllForUser: jest.fn().mockResolvedValue(undefined),
   };
-  mail = { sendMail: jest.fn().mockResolvedValue({}) };
+  mail = { sendInBackground: jest.fn() };
 
   service = new AuthService(
     prisma as unknown as PrismaService,
@@ -227,21 +226,7 @@ describe("AuthService.register", () => {
 
     expect(result).toEqual({ email: "bob@example.com" });
     expect(prisma.pendingRegistration.create).not.toHaveBeenCalled();
-    expect(mail.sendMail).not.toHaveBeenCalled();
-  });
-
-  it("still answers when the email can't be sent, and logs it", async () => {
-    const logError = jest
-      .spyOn(Logger.prototype, "error")
-      .mockImplementation(() => undefined);
-    mail.sendMail.mockRejectedValue(new Error("SMTP down"));
-
-    await expect(service.register(dto)).resolves.toEqual({
-      email: "bob@example.com",
-    });
-    await new Promise((resolve) => setImmediate(resolve));
-    expect(logError).toHaveBeenCalledWith(expect.stringContaining("SMTP down"));
-    logError.mockRestore();
+    expect(mail.sendInBackground).not.toHaveBeenCalled();
   });
 });
 

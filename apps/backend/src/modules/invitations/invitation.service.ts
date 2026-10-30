@@ -1,9 +1,4 @@
-import {
-  escapeHtml,
-  futureDate,
-  generateToken,
-  normalizeEmail,
-} from "@/helper";
+import { appUrl, futureDate, generateToken, normalizeEmail } from "@/helper";
 import {
   assertActorHolds,
   WorkspaceAccess,
@@ -17,7 +12,6 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
-  Logger,
   NotFoundException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
@@ -27,6 +21,7 @@ import { MailService } from "../mail/mail.service";
 import { SYSTEM_ROLE_NAMES } from "@taskforge/shared";
 import { findSystemRole, resolveAssignableRole } from "../roles/system-roles";
 import { SendInvitationDto } from "./dto/send-invitation.dto";
+import { invitationEmail } from "./invitation-emails";
 
 /**
  * What callers of the API may see of an invitation. `token` is excluded: it is
@@ -48,8 +43,6 @@ const PUBLIC_INVITATION_SELECT = {
 
 @Injectable()
 export class InvitationService {
-  private readonly logger = new Logger(InvitationService.name);
-
   constructor(
     private prisma: PrismaService,
     private mail: MailService,
@@ -149,19 +142,18 @@ export class InvitationService {
       select: { name: true },
     });
 
-    // Fire-and-forget: a transient email failure must not roll back a
-    // successfully persisted invitation. Failures are logged for retry/audit.
-    void this.sendInvitationEmail({
+    // In the background: a transient email failure must not roll back a
+    // successfully persisted invitation. Failures are logged.
+    this.mail.sendInBackground({
       to: email,
-      inviterName: actor_user?.name ?? "A workspace member",
-      workspaceName: workspace?.name ?? "a workspace",
-      token,
-    }).catch((error) => {
-      this.logger.error(
-        `Failed to send invitation email to ${email}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
+      ...invitationEmail({
+        inviterName: actor_user?.name ?? "A workspace member",
+        workspaceName: workspace?.name ?? "a workspace",
+        url: appUrl(
+          this.config,
+          `/invitations/accept?token=${encodeURIComponent(token)}`,
+        ),
+      }),
     });
 
     return invitation;
@@ -327,54 +319,5 @@ export class InvitationService {
       where: { id: invitationId },
       data: { status: InvitationStatus.REVOKED },
     });
-  }
-
-  private async sendInvitationEmail(params: {
-    to: string;
-    inviterName: string;
-    workspaceName: string;
-    token: string;
-  }) {
-    const appUrl =
-      this.config.get<string>("APP_URL") ?? "http://localhost:3000";
-    const acceptUrl = `${appUrl.replace(/\/+$/, "")}/invitations/accept?token=${encodeURIComponent(
-      params.token,
-    )}`;
-
-    const subject = `${params.inviterName} invited you to join "${params.workspaceName}" on TaskForge`;
-
-    const text =
-      `${params.inviterName} has invited you to join the "${params.workspaceName}" workspace on TaskForge.\n\n` +
-      `Accept your invitation: ${acceptUrl}\n\n` +
-      `This invitation expires in 7 days. If you weren't expecting this, you can safely ignore this email.`;
-
-    // Inviter and workspace names are user-controlled, so they must be escaped
-    // before landing in the HTML part (the subject and text part are plain text).
-    const inviterName = escapeHtml(params.inviterName);
-    const workspaceName = escapeHtml(params.workspaceName);
-    const safeUrl = escapeHtml(acceptUrl);
-
-    const html = `
-      <div style="font-family: Arial, Helvetica, sans-serif; max-width: 480px; margin: 0 auto; color: #1a1a1a;">
-        <h2 style="margin-bottom: 8px;">You've been invited to TaskForge</h2>
-        <p><strong>${inviterName}</strong> has invited you to join the
-          <strong>${workspaceName}</strong> workspace.</p>
-        <p style="margin: 24px 0;">
-          <a href="${safeUrl}"
-             style="background:#4f46e5;color:#fff;padding:12px 20px;border-radius:6px;text-decoration:none;display:inline-block;">
-            Accept invitation
-          </a>
-        </p>
-        <p style="font-size: 13px; color: #666;">
-          Or paste this link into your browser:<br />
-          <a href="${safeUrl}">${safeUrl}</a>
-        </p>
-        <p style="font-size: 12px; color: #999; margin-top: 24px;">
-          This invitation expires in 7 days. If you weren't expecting this, you can safely ignore this email.
-        </p>
-      </div>
-    `;
-
-    await this.mail.sendMail({ to: params.to, subject, text, html });
   }
 }

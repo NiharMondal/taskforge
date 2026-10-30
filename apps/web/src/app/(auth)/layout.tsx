@@ -77,7 +77,7 @@ export default function AuthLayout({
 					</ul>
 				</div>
 				{/* Bleeds off the right edge, like a window behind the form. */}
-				<BoardPreview className="w-[640px] max-w-none -rotate-2 text-foreground" />
+				<BoardPreview className="w-160 max-w-none -rotate-2 text-foreground" />
 			</aside>
 		</div>
 	);

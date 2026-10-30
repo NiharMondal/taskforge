@@ -10,18 +10,17 @@ import {
 	DropdownRoot,
 	Label,
 } from "@heroui/react";
-import { CircleUserRound, MoreHorizontal } from "lucide-react";
+import { MoreHorizontal } from "lucide-react";
 import Link from "next/link";
 import type { KeyboardEvent, PointerEvent, ReactNode } from "react";
 
-import Avatar from "@/components/ui/avatar";
+import AssigneeAvatar from "@/features/issues/components/AssigneeAvatar";
 import { IssueTypeIcon, PriorityIcon } from "@/features/issues/components/IssueIcons";
 import IssueKey from "@/features/issues/components/IssueKey";
 import ParentTag from "@/features/issues/components/ParentTag";
 import { LabelChips } from "@/features/labels/components/LabelChip";
 import StatusChip from "@/features/issues/components/StatusChip";
 import type { Issue } from "@/features/issues/types/issue-types";
-import { initialsOf } from "@/util/initials";
 
 /** A section an issue can be moved to: a sprint id, or the backlog. */
 export interface MoveTarget {
@@ -145,22 +144,11 @@ export function BacklogIssueRowBody({
 				{issue.timeEstimate ?? "–"}
 			</span>
 			<PriorityIcon priority={issue.priority} />
-			<span title={assigneeName ?? "Unassigned"} className="shrink-0">
-				{issue.assigneeId ? (
-					<Avatar
-						size="sm"
-						customSize
-						src={issue.assignee?.avatarUrl ?? undefined}
-						alt={assigneeName ?? "Assignee"}
-						fallback={initialsOf(assigneeName)}
-					/>
-				) : (
-					<CircleUserRound
-						className="size-5 text-muted"
-						aria-label="Unassigned"
-					/>
-				)}
-			</span>
+			<AssigneeAvatar
+				name={assigneeName}
+				avatarUrl={issue.assignee?.avatarUrl}
+				isAssigned={!!issue.assigneeId}
+			/>
 			<div className="w-8 shrink-0" {...keepOutOfDrag}>
 				{menu}
 			</div>

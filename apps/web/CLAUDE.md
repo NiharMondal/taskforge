@@ -26,7 +26,7 @@ The backend lives alongside this app at `../backend/` (see the root `CLAUDE.md`)
 - `.claude/AI_GUIDE.md` — project-level architectural rules (workspace scoping, optimistic updates, no monolithic components).
 - `.claude/FORM_GUIDE.md` — the canonical form pattern with a worked example.
 - `.claude/migrations/` — historical schema-change notes from the two-repo era (all applied).
-- `spec/` — feature specs written before implementation (`auth.md`, `layout.md`, `projects.md`, `cloudinary.md`, `sprint-on-create-issue.md`). These document backend contracts and intended UX; consult the relevant one before changing a feature.
+- `spec/` — feature specs written before implementation (`auth.md`, `layout.md`, `projects.md`, `cloudinary.md`, `sprint-on-create-issue.md`, `audit-log.md`). These document backend contracts and intended UX; consult the relevant one before changing a feature.
 
 Never invent an API shape. If a contract is unclear, ask rather than guess.
 
@@ -57,7 +57,7 @@ app/
         list/       — every issue as a filterable table, sub-issues nested
           [slug]/   — issue detail page ([slug] is the issue id)
         workflow/   — the project's statuses and allowed moves (editable on Pro)
-    settings/       — members, roles, general, labels, billing, profile
+    settings/       — members, roles, general, labels, billing, audit-log (`audit:read` only), profile
     issues/         — redirect → /projects (no workspace-wide issues endpoint)
   invitations/accept/
 ```
@@ -66,7 +66,7 @@ Issues are project-scoped: pages live under `/projects/[projectId]/` (`active-sp
 
 ### Feature structure
 
-Each domain lives in `src/features/<name>/` (`activity`, `auth`, `billing`, `comments`, `dashboard`, `invitations`, `issues`, `labels`, `marketing`, `memberships`, `profile`, `projects`, `roles`, `settings`, `sprint`, `workflow`, `workspace`):
+Each domain lives in `src/features/<name>/` (`activity`, `audit`, `auth`, `billing`, `comments`, `dashboard`, `invitations`, `issues`, `labels`, `marketing`, `memberships`, `profile`, `projects`, `roles`, `settings`, `sprint`, `workflow`, `workspace`):
 
 ```
 api/          — async functions calling `api.*` from lib/axios
@@ -125,9 +125,21 @@ Mutations use `.message` from the envelope for toast feedback. Every rejection i
 
 ### Roles and permissions
 
-The JWT has no role. `useWorkspacePermissions()` (`features/memberships/hooks/`) reads `GET /memberships/me` (`useMyMembership`, key `membershipKeys.me`, under the roster's key so invalidating the roster refreshes it) — the backend resolves the viewer's role, built-in or custom, into permission keys — and `permissionsFrom` (`features/memberships/lib/permissions.ts`) turns them into flags: `canManageWorkspace`, `canManageMembers`, `canManageInvitations`, `canManageRoles`, `canCreateIssue`, `canEditAnyIssue`, `canEditOwnIssues`, `canChangeIssueStatus`, `canMarkIssueDone`, `canDeleteIssue`, `canManageProjects`, `canManageSprints`, `canManageLabels`, `canComment`, `canDeleteAnyComment`, `canDeleteWorkspace`, `canTransferOwnership`, `canManageBilling`, `canLeaveWorkspace`, plus `granted` (the key set), `isOwner` and `userId` ("me": the backend's answer, else the access token's `sub`). There is no copy of the role rules on the web. Per-row rules are helpers: `canEditIssue(permissions, issue)` (any issue, or one you reported or are assigned to), `canSetIssueStatus`, `holdsAll(permissions, keys)` — the backend's no-escalation rule, used to offer only roles the viewer could hand out — and `outranks(permissions, keys)` — holding all of a member's keys plus one more, the backend's rule for changing or removing a member, used to lock roster rows (an Admin can't act on another Admin). Flags are all `false` *while loading*; if `/memberships/me` still can't be read afterwards the hook **fails open** (`UNRESTRICTED_PERMISSIONS`, `isRoleKnown: false`, plus a dev-only `[permissions]` console warning) so a lookup problem never locks an owner out. Hide or disable controls with these flags rather than letting users hit a 403 toast — but they are UX only; the backend is the authority.
+The JWT has no role. `useWorkspacePermissions()` (`features/memberships/hooks/`) reads `GET /memberships/me` (`useMyMembership`, key `membershipKeys.me`, under the roster's key so invalidating the roster refreshes it) — the backend resolves the viewer's role, built-in or custom, into permission keys — and `permissionsFrom` (`features/memberships/lib/permissions.ts`) turns them into flags: `canManageWorkspace`, `canManageMembers`, `canManageInvitations`, `canManageRoles`, `canReadAuditLog`, `canCreateIssue`, `canEditAnyIssue`, `canEditOwnIssues`, `canChangeIssueStatus`, `canMarkIssueDone`, `canDeleteIssue`, `canManageProjects`, `canManageSprints`, `canManageLabels`, `canComment`, `canDeleteAnyComment`, `canDeleteWorkspace`, `canTransferOwnership`, `canManageBilling`, `canLeaveWorkspace`, plus `granted` (the key set), `isOwner` and `userId` ("me": the backend's answer, else the access token's `sub`). There is no copy of the role rules on the web. Per-row rules are helpers: `canEditIssue(permissions, issue)` (any issue, or one you reported or are assigned to), `canSetIssueStatus`, `holdsAll(permissions, keys)` — the backend's no-escalation rule, used to offer only roles the viewer could hand out — and `outranks(permissions, keys)` — holding all of a member's keys plus one more, the backend's rule for changing or removing a member, used to lock roster rows (an Admin can't act on another Admin). Flags are all `false` *while loading*; if `/memberships/me` still can't be read afterwards the hook **fails open** (`UNRESTRICTED_PERMISSIONS`, `isRoleKnown: false`, plus a dev-only `[permissions]` console warning) so a lookup problem never locks an owner out. Hide or disable controls with these flags rather than letting users hit a 403 toast — but they are UX only; the backend is the authority.
 
 Roles live in `features/roles/` (`useRoles`, `roleKeys.list`; `GET /roles` for any member). Settings → Roles (`RolesSettings`) creates custom roles — from scratch or copied from any role — and edits and deletes them with `role:manage`; built-ins are view-only. The role editor (`RoleForm`) lists `PERMISSION_GROUPS` from `features/roles/constants.ts`: labels and descriptions for the grantable keys in `@taskforge/shared`, each of which needs an entry there. The Members tab and the invite form pick from the same roles by `roleId`; show a role with `RoleChip` (`assignedRole`, falling back to the enum for rows predating roles). A role mutation invalidates the roles list and everything under `["memberships", workspaceId]`.
+
+### Audit log
+
+`features/audit/` (`spec/audit-log.md`). Settings → Audit log (`AuditLogSettings`, `useAuditLog`,
+key `auditKeys.list(workspaceId, { page, limit, entityType })`) reads `GET /audit-log` one page at a
+time — it does **not** walk pages like the other lists — with an entity-type filter and
+Previous/Next from `metaData`. It needs `audit:read` (`canReadAuditLog`): the tab is hidden without
+it (`SettingsTab.requires`, filtered in `SettingsNav`), and the page shows a no-access card for a
+deep link or a 403. Row types come from `@taskforge/shared`'s `audit.ts` (`AuditMetadata` per
+action); `lib/describe-audit-event.ts` turns a row into a sentence ("changed Bob's role from Member
+to Admin") and `auditActorName` names who did it ("System" for Stripe's webhook). A new action
+needs a case there. Nothing invalidates the log: it refetches on mount (`staleTime: 0`).
 
 ### Billing and plan limits
 

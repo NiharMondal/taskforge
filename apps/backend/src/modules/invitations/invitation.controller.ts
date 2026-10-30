@@ -103,10 +103,12 @@ export class InvitationController {
   async revokeInvitation(
     @WorkspaceId() workspaceId: string,
     @Param("id") invitationId: string,
+    @Access() access: WorkspaceAccess,
   ) {
     const invitation = await this.invitationService.revokeInvitation(
       workspaceId,
       invitationId,
+      access.userId,
     );
     return sendResponse({
       statusCode: HttpStatus.OK,

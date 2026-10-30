@@ -579,6 +579,37 @@ describe("Tenancy (e2e)", () => {
         .expect(201);
     });
 
+    it("logs the invitation for Alice's audit log, and only there", async () => {
+      type Row = {
+        action: string;
+        entityType: string;
+        user: { id: string; name: string } | null;
+        metadata: { email?: string };
+      };
+      const res = await api()
+        .get("/api/v1/audit-log?entityType=INVITATION")
+        .set(as(aliceToken, aliceWs))
+        .expect(200);
+      const rows = data<Row[]>(res);
+      // Newest first: Bob accepting, then Alice sending.
+      expect(rows.map((r) => [r.action, r.user?.name])).toEqual([
+        ["invitation.accepted", bob.name],
+        ["invitation.sent", alice.name],
+      ]);
+      expect(rows[1].metadata.email).toBe(bob.email);
+
+      // A MEMBER can't read it, and Bob's own workspace has none of it.
+      await api()
+        .get("/api/v1/audit-log")
+        .set(as(bobToken, aliceWs))
+        .expect(403);
+      const bobs = await api()
+        .get("/api/v1/audit-log")
+        .set(as(bobToken, bobWs))
+        .expect(200);
+      expect(data<Row[]>(bobs)).toEqual([]);
+    });
+
     it("lets Bob read Alice's workspace", async () => {
       const res = await api()
         .get("/api/v1/projects")

@@ -11,12 +11,14 @@ describe("WorkspaceService", () => {
       create: jest.Mock;
       update: jest.Mock;
       findUnique: jest.Mock;
+      findUniqueOrThrow: jest.Mock;
       findMany: jest.Mock;
       count: jest.Mock;
       delete: jest.Mock;
     };
     membership: { create: jest.Mock; findMany: jest.Mock };
     role: { createManyAndReturn: jest.Mock };
+    auditLog: { create: jest.Mock };
     $transaction: jest.Mock;
   };
   let billing: { cancelForDeletion: jest.Mock };
@@ -26,8 +28,19 @@ describe("WorkspaceService", () => {
     prisma = {
       workspace: {
         create: jest.fn().mockResolvedValue({ id: "ws-1" }),
-        update: jest.fn().mockResolvedValue({ id: "ws-1" }),
+        // The stored workspace after the update: Acme with what was sent.
+        update: jest.fn(
+          ({ data }: { data: { name?: string; description?: string } }) =>
+            Promise.resolve({
+              id: "ws-1",
+              name: data.name ?? "Acme",
+              description: data.description ?? null,
+            }),
+        ),
         findUnique: jest.fn().mockResolvedValue({ id: "ws-1", name: "Acme" }),
+        findUniqueOrThrow: jest
+          .fn()
+          .mockResolvedValue({ name: "Acme", description: null }),
         findMany: jest.fn().mockResolvedValue([]),
         count: jest.fn().mockResolvedValue(0),
         delete: jest.fn().mockResolvedValue({ id: "ws-1" }),
@@ -50,6 +63,7 @@ describe("WorkspaceService", () => {
             ),
         ),
       },
+      auditLog: { create: jest.fn().mockResolvedValue({}) },
       $transaction: jest.fn(),
     };
     prisma.$transaction.mockImplementation((cb: (tx: unknown) => unknown) =>
@@ -148,8 +162,42 @@ describe("WorkspaceService", () => {
   });
 
   describe("update", () => {
+    const auditRows = () =>
+      (
+        prisma.auditLog.create.mock.calls as [
+          { data: Record<string, unknown> },
+        ][]
+      ).map(([arg]) => arg.data);
+
+    it("records workspace.updated once, with the rename and not the description text", async () => {
+      await service.update("ws-1", "user-1", {
+        name: "Acme Inc",
+        description: "Secret plans",
+      });
+
+      expect(auditRows()).toEqual([
+        {
+          workspaceId: "ws-1",
+          userId: "user-1",
+          action: "workspace.updated",
+          entityType: "WORKSPACE",
+          entityId: "ws-1",
+          metadata: {
+            name: { from: "Acme", to: "Acme Inc" },
+            description: true,
+          },
+        },
+      ]);
+    });
+
+    it("records nothing for a save that changed nothing", async () => {
+      await service.update("ws-1", "user-1", { name: "Acme" });
+
+      expect(prisma.auditLog.create).not.toHaveBeenCalled();
+    });
+
     it("persists the description", async () => {
-      await service.update("ws-1", { description: "New blurb" });
+      await service.update("ws-1", "user-1", { description: "New blurb" });
 
       expect(prisma.workspace.update).toHaveBeenCalledWith({
         where: { id: "ws-1" },
@@ -158,7 +206,7 @@ describe("WorkspaceService", () => {
     });
 
     it("can clear the description with an empty string", async () => {
-      await service.update("ws-1", { name: "Acme", description: "" });
+      await service.update("ws-1", "user-1", { name: "Acme", description: "" });
 
       expect(prisma.workspace.update).toHaveBeenCalledWith({
         where: { id: "ws-1" },

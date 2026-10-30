@@ -543,5 +543,8 @@ model AuditLog {
   // entityType, entityId ORDER BY createdAt. Its prefix also covers lookups by
   // workspace alone, which the old single-column index did.
   @@index([workspaceId, entityType, entityId, createdAt])
+  // Serves the workspace audit log (GET /audit-log): a workspace's rows,
+  // newest first.
+  @@index([workspaceId, createdAt])
   @@index([entityType])
 }

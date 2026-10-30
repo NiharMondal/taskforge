@@ -29,6 +29,8 @@ export interface Permissions {
 	canManageInvitations: boolean;
 	/** Create, edit and delete custom roles (`role:manage`). */
 	canManageRoles: boolean;
+	/** Read the workspace audit log, Settings → Audit log (`audit:read`). */
+	canReadAuditLog: boolean;
 	canCreateIssue: boolean;
 	/** Content fields on every issue (`issue:edit:any`); see {@link canEditIssue}. */
 	canEditAnyIssue: boolean;
@@ -76,6 +78,7 @@ export function permissionsFrom(
 		canManageMembers: has("member:manage"),
 		canManageInvitations: has("invitation:manage"),
 		canManageRoles: has("role:manage"),
+		canReadAuditLog: has("audit:read"),
 		canCreateIssue: has("issue:create"),
 		canEditAnyIssue: has("issue:edit:any"),
 		canEditOwnIssues: has("issue:edit:own"),

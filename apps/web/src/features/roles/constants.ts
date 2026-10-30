@@ -111,6 +111,12 @@ export const PERMISSION_GROUPS: { title: string; permissions: PermissionMeta[] }
 				label: "Manage roles",
 				description: "Create, edit and delete custom roles.",
 			},
+			{
+				key: "audit:read",
+				label: "View the audit log",
+				description:
+					"See who changed members, invitations, roles, workspace details and billing, and when.",
+			},
 		],
 	},
 ];

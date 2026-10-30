@@ -42,8 +42,9 @@ describe("InvitationService", () => {
     };
     workspace: { findUnique: jest.Mock };
     user: { findFirst: jest.Mock; findUnique: jest.Mock };
-    role: { findFirst: jest.Mock };
+    role: { findFirst: jest.Mock; findUnique: jest.Mock };
     subscription: { findUnique: jest.Mock };
+    auditLog: { create: jest.Mock };
     $executeRaw: jest.Mock;
     $transaction: jest.Mock;
   };
@@ -75,9 +76,15 @@ describe("InvitationService", () => {
         findUnique: jest.fn().mockResolvedValue({ name: "Alice" }),
       },
       // No Role rows by default: the enum's default permissions apply.
-      role: { findFirst: jest.fn().mockResolvedValue(null) },
+      role: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findUnique: jest.fn(({ where }: { where: { id: string } }) =>
+          Promise.resolve({ id: where.id, name: `Role ${where.id}` }),
+        ),
+      },
       // No Subscription row: the Free plan.
       subscription: { findUnique: jest.fn().mockResolvedValue(null) },
+      auditLog: { create: jest.fn().mockResolvedValue({}) },
       $executeRaw: jest.fn().mockResolvedValue(1),
       $transaction: jest.fn(),
     };
@@ -273,7 +280,7 @@ describe("InvitationService", () => {
 
       expect(prisma.role.findFirst).toHaveBeenCalledWith({
         where: { workspaceId, systemKey: WorkspaceRole.VIEWER },
-        select: { id: true, permissions: true },
+        select: { id: true, name: true, permissions: true },
       });
       const create: unknown = expect.objectContaining({
         role: WorkspaceRole.VIEWER,
@@ -295,7 +302,7 @@ describe("InvitationService", () => {
 
       expect(prisma.role.findFirst).toHaveBeenCalledWith({
         where: { id: "role-triage", workspaceId },
-        select: { id: true, systemKey: true, permissions: true },
+        select: { id: true, name: true, systemKey: true, permissions: true },
       });
       const create: unknown = expect.objectContaining({
         role: WorkspaceRole.MEMBER,
@@ -563,7 +570,7 @@ describe("InvitationService", () => {
 
       expect(prisma.role.findFirst).toHaveBeenCalledWith({
         where: { workspaceId, systemKey: WorkspaceRole.MEMBER },
-        select: { id: true, permissions: true },
+        select: { id: true, name: true, permissions: true },
       });
       const data: unknown = expect.objectContaining({ roleId: "role-member" });
       expect(prisma.membership.create).toHaveBeenCalledWith({ data });
@@ -621,6 +628,106 @@ describe("InvitationService", () => {
         where: { id: "inv-1" },
         data: { status: InvitationStatus.EXPIRED },
       });
+    });
+  });
+
+  describe("audit log", () => {
+    const auditRows = () =>
+      (
+        prisma.auditLog.create.mock.calls as [
+          { data: Record<string, unknown> },
+        ][]
+      ).map(([arg]) => arg.data);
+
+    it("records invitation.sent once, in the invitation's transaction", async () => {
+      await service.sendInvitation(workspaceId, adminAccess, {
+        email: "Dan@Example.com",
+        role: WorkspaceRole.VIEWER,
+      });
+
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(auditRows()).toEqual([
+        {
+          workspaceId,
+          userId: actorUserId,
+          action: "invitation.sent",
+          entityType: "INVITATION",
+          entityId: "inv-1",
+          metadata: {
+            email: "dan@example.com",
+            role: { id: null, name: "Viewer" },
+          },
+        },
+      ]);
+    });
+
+    it("records invitation.accepted once, by the new member", async () => {
+      prisma.invitation.findUnique.mockResolvedValue({
+        id: "inv-1",
+        email: "bob@example.com",
+        workspaceId,
+        role: WorkspaceRole.MEMBER,
+        roleId: "role-triage",
+        status: InvitationStatus.PENDING,
+        expiresAt: new Date(Date.now() + DAY),
+      });
+      prisma.user.findUnique.mockResolvedValue({
+        id: invitee.userId,
+        email: "bob@example.com",
+      });
+
+      await service.acceptInvitation("tok", invitee.userId);
+
+      expect(auditRows()).toEqual([
+        {
+          workspaceId,
+          userId: invitee.userId,
+          action: "invitation.accepted",
+          entityType: "INVITATION",
+          entityId: "inv-1",
+          metadata: {
+            email: "bob@example.com",
+            role: { id: "role-triage", name: "Role role-triage" },
+          },
+        },
+      ]);
+    });
+
+    it("records invitation.revoked once, with the address", async () => {
+      prisma.invitation.findFirst.mockResolvedValue({
+        id: "inv-9",
+        email: "eve@example.com",
+        workspaceId,
+        status: InvitationStatus.PENDING,
+      });
+
+      await service.revokeInvitation(workspaceId, "inv-9", actorUserId);
+
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(auditRows()).toEqual([
+        {
+          workspaceId,
+          userId: actorUserId,
+          action: "invitation.revoked",
+          entityType: "INVITATION",
+          entityId: "inv-9",
+          metadata: { email: "eve@example.com" },
+        },
+      ]);
+    });
+
+    it("records nothing for an invitation it refuses to revoke", async () => {
+      prisma.invitation.findFirst.mockResolvedValue({
+        id: "inv-9",
+        email: "eve@example.com",
+        workspaceId,
+        status: InvitationStatus.ACCEPTED,
+      });
+
+      await expect(
+        service.revokeInvitation(workspaceId, "inv-9", actorUserId),
+      ).rejects.toThrow();
+      expect(prisma.auditLog.create).not.toHaveBeenCalled();
     });
   });
 });

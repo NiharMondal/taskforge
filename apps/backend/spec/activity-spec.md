@@ -1,4 +1,4 @@
-# Issue Activity (History) — Backend Spec
+# Activity (Issue History and Workspace Audit Log) — Backend Spec
 
 ## Goal
 
@@ -76,6 +76,39 @@ Names are **copied at the time of the change**, so the history still reads after
 
 Not paginated yet. There is no write route; history is only written beside the changes themselves.
 
+## Workspace audit log
+
+The same table records who changed the workspace itself. The actions, their entity types and each
+one's `metadata` shape are in `@taskforge/shared` (`packages/shared/src/audit.ts`); rows are
+written by `recordWorkspaceEvent(tx, …)` (`src/modules/activity/workspace-activity.ts`), always in
+the transaction of the change, so a refused or rolled-back change leaves no row. Names (members,
+roles) are copied as they were.
+
+| Action | Entity | Written by | `userId` | `metadata` |
+| --- | --- | --- | --- | --- |
+| `member.role_changed` | MEMBER | `MembershipService.updateRole` | actor | `{ member, from, to }` |
+| `member.removed` | MEMBER | `MembershipService.removeMember` | actor | `{ member, role }` |
+| `member.left` | MEMBER | `MembershipService.leave` | the member | `{ member, role }` |
+| `invitation.sent` | INVITATION | `InvitationService.sendInvitation` (also a re-send) | actor | `{ email, role }` |
+| `invitation.revoked` | INVITATION | `InvitationService.revokeInvitation` | actor | `{ email }` |
+| `invitation.accepted` | INVITATION | `InvitationService.acceptInvitation` | the new member | `{ email, role }` |
+| `role.created` | ROLE | `RoleService.create` | actor | `{ role, permissions }` |
+| `role.updated` | ROLE | `RoleService.update`, only if something changed | actor | `{ role, name?, permissions?: { added, removed } }` |
+| `role.deleted` | ROLE | `RoleService.remove` | actor | `{ role }` |
+| `workspace.updated` | WORKSPACE | `WorkspaceService.update`, only if something changed | actor | `{ name?: { from, to }, description?: true }` (the text isn't copied) |
+| `ownership.transferred` | WORKSPACE | `MembershipService.transferOwnership` | old owner | `{ from, to }` |
+| `billing.subscription_changed` | SUBSCRIPTION | the Stripe webhook, only when plan, status or a scheduled cancellation changed | `null` | `{ from, to }` (`from` null for the first) |
+
+`entityId` is the member's user id, the invitation, role, workspace, or `Subscription` row id.
+
+`GET /audit-log?entityType=&page=&limit=` (`AuditLogController`) needs `audit:read` (Admin by
+default; the OWNER holds everything). It reads only the caller's workspace and only the entity
+types above (never ISSUE), newest first, paginated with `PrismaQueryBuilder`, each row with
+`user: { id, name, avatarUrl }` or `null`. `entityType` narrows to one of them; anything else is a
+`400`. The `audit_log` migration added the `(workspaceId, createdAt)` index it reads and granted
+`audit:read` to existing Admin roles.
+
 ## Out of scope (for now)
 
-A workspace-wide audit view (all actions, all entities), history for projects, sprints and memberships, and recording issue deletion (there is nowhere to show it yet).
+History for projects, sprints, labels and issue deletion; exporting the audit log; a retention
+limit (rows are kept forever, and cascade with the workspace).

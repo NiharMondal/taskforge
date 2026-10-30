@@ -18,6 +18,12 @@ const asBilling = billing as unknown as BillingService;
 
 beforeEach(() => billing.syncSeats.mockClear());
 
+/** The audit rows written, as the `data` each `auditLog.create` got. */
+const auditRows = (create: jest.Mock) =>
+  (create.mock.calls as [{ data: Record<string, unknown> }][]).map(
+    ([arg]) => arg.data,
+  );
+
 describe("MembershipService.findAllByWorkspaceId", () => {
   let prisma: { membership: { findMany: jest.Mock; count: jest.Mock } };
   let service: MembershipService;
@@ -113,6 +119,8 @@ describe("MembershipService role changes and removal", () => {
   let prisma: {
     membership: { findUnique: jest.Mock; update: jest.Mock; delete: jest.Mock };
     role: { findFirst: jest.Mock };
+    auditLog: { create: jest.Mock };
+    $transaction: jest.Mock;
   };
   let service: MembershipService;
 
@@ -135,7 +143,16 @@ describe("MembershipService role changes and removal", () => {
           }) => {
             const { userId, workspaceId: ws } = where.userId_workspaceId;
             const role = ws === workspaceId ? roster[userId] : undefined;
-            return Promise.resolve(role ? { userId, role } : null);
+            return Promise.resolve(
+              role
+                ? {
+                    userId,
+                    role,
+                    assignedRole: null,
+                    user: { id: userId, name: `Name of ${userId}` },
+                  }
+                : null,
+            );
           },
         ),
         update: jest.fn().mockResolvedValue({}),
@@ -143,7 +160,12 @@ describe("MembershipService role changes and removal", () => {
       },
       // No Role rows by default: the enum's default permissions apply.
       role: { findFirst: jest.fn().mockResolvedValue(null) },
+      auditLog: { create: jest.fn().mockResolvedValue({}) },
+      $transaction: jest.fn(),
     };
+    prisma.$transaction.mockImplementation((cb: (tx: unknown) => unknown) =>
+      cb(prisma),
+    );
     service = new MembershipService(
       prisma as unknown as PrismaService,
       asBilling,
@@ -151,6 +173,37 @@ describe("MembershipService role changes and removal", () => {
   });
 
   describe("updateRole", () => {
+    it("records member.role_changed once, with both roles by name", async () => {
+      await service.updateRole(workspaceId, "user-member", adminAccess, {
+        role: WorkspaceRole.VIEWER,
+      });
+
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(auditRows(prisma.auditLog.create)).toEqual([
+        {
+          workspaceId,
+          userId: admin,
+          action: "member.role_changed",
+          entityType: "MEMBER",
+          entityId: "user-member",
+          metadata: {
+            member: { id: "user-member", name: "Name of user-member" },
+            from: { id: null, name: "Member" },
+            to: { id: null, name: "Viewer" },
+          },
+        },
+      ]);
+    });
+
+    it("records nothing when the change is refused", async () => {
+      await expect(
+        service.updateRole(workspaceId, "user-owner", adminAccess, {
+          role: WorkspaceRole.VIEWER,
+        }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(prisma.auditLog.create).not.toHaveBeenCalled();
+    });
+
     it("changes a member's role, keyed to this workspace", async () => {
       await service.updateRole(workspaceId, "user-member", adminAccess, {
         role: WorkspaceRole.ADMIN,
@@ -179,7 +232,7 @@ describe("MembershipService role changes and removal", () => {
 
       expect(prisma.role.findFirst).toHaveBeenCalledWith({
         where: { workspaceId, systemKey: WorkspaceRole.VIEWER },
-        select: { id: true, permissions: true },
+        select: { id: true, name: true, permissions: true },
       });
       expect(prisma.membership.update).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -202,7 +255,7 @@ describe("MembershipService role changes and removal", () => {
 
         expect(prisma.role.findFirst).toHaveBeenCalledWith({
           where: { id: "role-triage", workspaceId },
-          select: { id: true, systemKey: true, permissions: true },
+          select: { id: true, name: true, systemKey: true, permissions: true },
         });
         // The enum column reads MEMBER; permissions come from the Role row.
         expect(prisma.membership.update).toHaveBeenCalledWith(
@@ -328,6 +381,25 @@ describe("MembershipService role changes and removal", () => {
       expect(billing.syncSeats).toHaveBeenCalledWith(workspaceId);
     });
 
+    it("records member.removed once, in the removal's transaction", async () => {
+      await service.removeMember(workspaceId, "user-member", adminAccess);
+
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(auditRows(prisma.auditLog.create)).toEqual([
+        {
+          workspaceId,
+          userId: admin,
+          action: "member.removed",
+          entityType: "MEMBER",
+          entityId: "user-member",
+          metadata: {
+            member: { id: "user-member", name: "Name of user-member" },
+            role: { id: null, name: "Member" },
+          },
+        },
+      ]);
+    });
+
     it("404s a user who is not in this workspace", async () => {
       await expect(
         service.removeMember(workspaceId, "user-from-B", adminAccess),
@@ -425,6 +497,8 @@ describe("MembershipService ownership transfer and leaving", () => {
     };
     role: { findFirst: jest.Mock };
     subscription: { findUnique: jest.Mock };
+    user: { findMany: jest.Mock };
+    auditLog: { create: jest.Mock };
     $transaction: jest.Mock;
   };
   let service: MembershipService;
@@ -436,7 +510,12 @@ describe("MembershipService ownership transfer and leaving", () => {
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         findUnique: jest.fn().mockResolvedValue({ userId: "user-member" }),
         count: jest.fn().mockResolvedValue(2),
-        delete: jest.fn().mockResolvedValue({ userId: "user-member" }),
+        delete: jest.fn().mockResolvedValue({
+          userId: "user-member",
+          role: WorkspaceRole.MEMBER,
+          assignedRole: { id: "role-MEMBER", name: "Member" },
+          user: { id: "user-member", name: "Mia" },
+        }),
         // The new owner owns no other workspace unless a test says otherwise.
         findMany: jest.fn().mockResolvedValue([]),
       },
@@ -447,6 +526,13 @@ describe("MembershipService ownership transfer and leaving", () => {
       },
       // No Subscription row: the Free plan.
       subscription: { findUnique: jest.fn().mockResolvedValue(null) },
+      user: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "user-owner", name: "Olive" },
+          { id: "user-member", name: "Mia" },
+        ]),
+      },
+      auditLog: { create: jest.fn().mockResolvedValue({}) },
       $transaction: jest.fn(),
     };
     prisma.$transaction.mockImplementation((cb: (tx: unknown) => unknown) =>
@@ -459,6 +545,35 @@ describe("MembershipService ownership transfer and leaving", () => {
   });
 
   describe("transferOwnership", () => {
+    it("records ownership.transferred once, inside the transfer", async () => {
+      await service.transferOwnership(workspaceId, owner, "user-member");
+
+      expect(auditRows(prisma.auditLog.create)).toEqual([
+        {
+          workspaceId,
+          userId: "user-owner",
+          action: "ownership.transferred",
+          entityType: "WORKSPACE",
+          entityId: workspaceId,
+          metadata: {
+            from: { id: "user-owner", name: "Olive" },
+            to: { id: "user-member", name: "Mia" },
+          },
+        },
+      ]);
+    });
+
+    it("records nothing when the new owner isn't a member", async () => {
+      prisma.membership.updateMany
+        .mockResolvedValueOnce({ count: 1 })
+        .mockResolvedValueOnce({ count: 0 });
+
+      await expect(
+        service.transferOwnership(workspaceId, owner, "user-outsider"),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.auditLog.create).not.toHaveBeenCalled();
+    });
+
     it("makes the member OWNER and the old owner ADMIN, in this workspace", async () => {
       await service.transferOwnership(workspaceId, owner, "user-member");
 
@@ -570,12 +685,32 @@ describe("MembershipService ownership transfer and leaving", () => {
     it("removes the caller's own membership in this workspace", async () => {
       await service.leave(member);
 
-      expect(prisma.membership.delete).toHaveBeenCalledWith({
-        where: {
-          userId_workspaceId: { userId: "user-member", workspaceId },
-        },
-      });
+      expect(prisma.membership.delete).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            userId_workspaceId: { userId: "user-member", workspaceId },
+          },
+        }),
+      );
       expect(billing.syncSeats).toHaveBeenCalledWith(workspaceId);
+    });
+
+    it("records member.left once, by the member themselves", async () => {
+      await service.leave(member);
+
+      expect(auditRows(prisma.auditLog.create)).toEqual([
+        {
+          workspaceId,
+          userId: "user-member",
+          action: "member.left",
+          entityType: "MEMBER",
+          entityId: "user-member",
+          metadata: {
+            member: { id: "user-member", name: "Mia" },
+            role: { id: "role-MEMBER", name: "Member" },
+          },
+        },
+      ]);
     });
 
     it("refuses the owner", async () => {

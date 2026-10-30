@@ -14,7 +14,7 @@ The steps go from easiest to hardest. Each one is one PR from `develop` and leav
 | 6 | ✅ Forgot / reset password — done | M | 1 |
 | 7 | ✅ Scheduled cleanup jobs — done | M | (6, for its table) |
 | 8 | Email on issue assignment | M | 1 |
-| 9 | Workspace audit log | M | — |
+| 9 | ✅ Workspace audit log — done | M | — |
 | 10 | Account deletion and data export | M–L | 1 |
 | 11 | Platform admin: foundation + read-only console | L | — |
 | 12 | Platform admin: actions (suspend, revoke, delete) | L | 10, 11 |
@@ -223,7 +223,16 @@ Unit tests, typecheck and lint pass; `pnpm run cleanup` ran against a dev databa
 - With the setting off, nothing is sent.
 - A mail failure doesn't fail the request.
 
-## Step 9 — Workspace audit log
+## Step 9 — Workspace audit log ✅
+
+**Status: done (2026-10-30, branch `implement-change-password-functionality`).** Every action in the plan, `audit:read` (Admin by default) with the `20261030150000_audit_log` migration, `GET /audit-log`, and Settings → Audit log. Beyond the plan:
+- The actions, entity types and each action's metadata shape are in `@taskforge/shared` (`audit.ts`), so the backend's writes and the web's summaries are type-checked against one contract.
+- `role.updated`, `workspace.updated` and `billing.subscription_changed` are only written when something actually changed (for billing: plan, status or a scheduled cancellation), since Stripe re-sends unchanged subscriptions often. `workspace.updated` records that the description changed, not its text.
+- The migration also adds an `AuditLog (workspaceId, createdAt)` index for the log's query.
+- `GET /audit-log` rejects `entityType=ISSUE` (400) rather than ignoring it.
+- Web: a settings tab can now be hidden by a permission flag (`requires` on `SettingsTab`); only Audit log uses it.
+
+Unit tests, typecheck and lint pass in both apps. An e2e case (Alice sees the invitation rows, Bob as Member gets 403, Bob's own workspace sees none) is written but not yet run, and the page hasn't been checked in a browser against the backend.
 
 **Why.** `AuditLog` is only written for issue activity (`apps/backend/src/modules/activity/issue-activity.ts`). Owners can't see who removed a member, changed a role or changed the plan.
 

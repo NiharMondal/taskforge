@@ -94,7 +94,7 @@ Each workspace has `Role` rows (name + `permissions: String[]`); `Membership.rol
 `seedSystemRoles` (`src/modules/roles/system-roles.ts`) in every transaction that creates a
 workspace. The permission catalog and the built-ins' defaults are in
 `@taskforge/shared` (`packages/shared/src/permissions.ts`) — a new key needs a migration to reach existing Role rows
-(as `comment_permissions` and `label_permissions` did), and the `add_workspace_roles` seed plus those grant migrations must
+(as `comment_permissions`, `label_permissions` and `audit_log` did), and the `add_workspace_roles` seed plus those grant migrations must
 add up to `DEFAULT_ROLE_PERMISSIONS`.
 
 - **OWNER holds every permission in code** (its stored list is ignored), including the
@@ -409,6 +409,18 @@ records `comment.deleted` only when a moderator removes someone else's comment. 
 those names are copied into the row so history survives renames and deletes. Adding a tracked field
 means extending `IssueSnapshot`/`issueChanges` and the web's `describeChange` together.
 
+## Workspace audit log
+
+`spec/activity-spec.md`. Changes to members, invitations, roles, the workspace and its
+subscription are `AuditLog` rows too, written with `recordWorkspaceEvent(tx, …)`
+(`src/modules/activity/workspace-activity.ts`) **in the transaction of the change** — which is why
+`updateRole`, `removeMember`, `leave`, `revokeInvitation`, the role writes and
+`WorkspaceService.update` now run in one. Actions, entity types and each action's `metadata` shape
+live in `@taskforge/shared` (`audit.ts`), shared with the web's summaries; names are copied in.
+`GET /audit-log` (`audit:read`) reads them, never the ISSUE rows. A new audited action needs an
+entry in `AUDIT_ACTION_ENTITY` and `AuditMetadata`, the call in its service, and a summary in the
+web's `describe-audit-event.ts`.
+
 ## Billing and plan limits
 
 `src/modules/billing/` (`spec/billing-spec.md`). The workspace is the customer; Pro is per seat
@@ -439,7 +451,7 @@ membership is created or deleted (never throws); `WorkspaceService.delete` calls
 they need no database. Current coverage: `WorkspaceGuard`, `JwtAuthGuard`, `PermissionsGuard`, `IssueService`
 permission rules and tenant isolation, `MembershipService` role changes/removal, `UserController`/`UserService`,
 `InvitationService`/controller, register/verify/login/Google sign-in/refresh/change, forgot and reset password (`AuthService`,
-`RefreshTokenService`, `GoogleTokenVerifier`, throttling), `WorkspaceService`, `BillingService` (with `StripeService` mocked) and the plan limits, `SprintService.endSprint`, `CommentService`, `LabelService`, `ActivityService`, `RoleService` and the role DTOs, `WorkflowService`, `issueChanges`, the history rows `IssueService` writes, the health check, the cleanup (`CleanupService` and its route), and the issue, comment and label DTOs.
+`RefreshTokenService`, `GoogleTokenVerifier`, throttling), `WorkspaceService`, `BillingService` (with `StripeService` mocked) and the plan limits, `SprintService.endSprint`, `CommentService`, `LabelService`, `ActivityService`, `RoleService` and the role DTOs, `WorkflowService`, `issueChanges`, the history rows `IssueService` writes, the workspace audit rows (each action, inside its transaction) and `GET /audit-log`, the health check, the cleanup (`CleanupService` and its route), and the issue, comment and label DTOs.
 `jest` maps `@/` and `generated/` in `package.json` and transforms the ESM-only `fractional-indexing` (a dependency of `@taskforge/shared`, which Jest loads as TypeScript source).
 
 `pnpm run test:e2e` (`test/*.e2e-spec.ts`) boots the real `AppModule` through `configureApp()` and

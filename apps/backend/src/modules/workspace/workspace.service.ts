@@ -10,6 +10,7 @@ import { BillingService } from "../billing/billing.service";
 import { seedSystemRoles } from "../roles/system-roles";
 import { CreateWorkspaceDto } from "./dto/create-workspace.dto";
 import { UpdateWorkspaceDto } from "./dto/update-workspace.dto";
+import { recordWorkspaceEvent } from "../activity/workspace-activity";
 
 /** A `GET /workspaces` row before its subscription becomes `plan`. */
 type WorkspaceRow = Workspace & {
@@ -85,14 +86,37 @@ export class WorkspaceService {
 
     return workspace;
   }
-  // update workspace
-  async update(workspaceId: string, data: UpdateWorkspaceDto) {
-    return this.prisma.workspace.update({
-      where: { id: workspaceId },
-      data: {
-        name: data.name,
-        description: data.description,
-      },
+  // update workspace (`workspace:manage` is checked on the route)
+  async update(workspaceId: string, actorId: string, data: UpdateWorkspaceDto) {
+    return this.prisma.$transaction(async (tx) => {
+      const before = await tx.workspace.findUniqueOrThrow({
+        where: { id: workspaceId },
+        select: { name: true, description: true },
+      });
+      const updated = await tx.workspace.update({
+        where: { id: workspaceId },
+        data: {
+          name: data.name,
+          description: data.description,
+        },
+      });
+
+      // Only what actually changed; the description itself isn't copied.
+      const renamed = updated.name !== before.name;
+      const described = updated.description !== before.description;
+      if (renamed || described) {
+        await recordWorkspaceEvent(tx, {
+          workspaceId,
+          userId: actorId,
+          action: "workspace.updated",
+          entityId: workspaceId,
+          metadata: {
+            ...(renamed && { name: { from: before.name, to: updated.name } }),
+            ...(described && { description: true as const }),
+          },
+        });
+      }
+      return updated;
     });
   }
 

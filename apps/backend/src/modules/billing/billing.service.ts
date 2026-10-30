@@ -23,6 +23,7 @@ import { Prisma } from "generated/prisma/client";
 import { SubscriptionPlan, SubscriptionStatus } from "generated/prisma/enums";
 import type Stripe from "stripe";
 import { StripeService } from "./stripe.service";
+import { recordWorkspaceEvent } from "../activity/workspace-activity";
 
 const STATUS_FROM_STRIPE: Record<string, SubscriptionStatus> = {
   active: SubscriptionStatus.ACTIVE,
@@ -332,12 +333,40 @@ export class BillingService {
       trialEndsAt: fromUnix(subscription.trial_end),
     };
 
-    return (tx: Prisma.TransactionClient) =>
-      tx.subscription.upsert({
+    // Many events re-send a subscription that hasn't changed in a way an
+    // owner cares about; the audit log only records the ones that did.
+    const from = stored && {
+      plan: stored.plan,
+      status: stored.status,
+      cancelAtPeriodEnd: stored.cancelAtPeriodEnd,
+    };
+    const to = {
+      plan: data.plan,
+      status: data.status,
+      cancelAtPeriodEnd: data.cancelAtPeriodEnd,
+    };
+    const changed =
+      !from ||
+      from.plan !== to.plan ||
+      from.status !== to.status ||
+      from.cancelAtPeriodEnd !== to.cancelAtPeriodEnd;
+
+    return async (tx: Prisma.TransactionClient) => {
+      const saved = await tx.subscription.upsert({
         where: { workspaceId },
         create: { workspaceId, ...data },
         update: data,
       });
+      if (changed) {
+        await recordWorkspaceEvent(tx, {
+          workspaceId,
+          userId: null,
+          action: "billing.subscription_changed",
+          entityId: saved.id,
+          metadata: { from, to },
+        });
+      }
+    };
   }
 
   private async createCustomer(workspaceId: string, ownerId: string) {

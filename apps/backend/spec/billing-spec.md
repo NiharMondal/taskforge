@@ -31,12 +31,18 @@ A limit hit is **`402`** with `{ success: false, statusCode: 402, message, code:
 limit }`, where `limit` is `members`, `customRoles` or `ownedWorkspaces`. A `403` still means "not
 allowed"; a `402` means "upgrade needed". The checks are in `src/common/plans/plan-limits.ts`.
 
-- **Members** — `POST /invitations` counts members plus PENDING, unexpired invitations. Accepting an
-  invitation isn't re-checked: the invitation already reserved the seat.
+- **Members** — `POST /invitations` counts members plus PENDING, unexpired invitations. The count
+  and the invitation's insert run in one transaction holding a per-workspace advisory lock
+  (`workspace-seats:<workspaceId>`), so of two invitations racing for the last seat one gets a
+  `201` and the other a `402`. Accepting an invitation isn't re-checked: the invitation already
+  reserved the seat.
 - **Custom roles** — `POST /roles`. Editing, assigning and deleting existing custom roles stay
   allowed, so a workspace back on Free keeps working.
 - **Owned Free workspaces** — `POST /workspaces` counts the caller's OWNER memberships whose
   workspace is on Free (the one created with the account included). Sign-up isn't checked.
+  `POST /memberships/transfer-ownership` of a Free workspace checks the same cap for the new owner
+  (not counting the workspace being transferred), inside the transfer's transaction; a refusal rolls
+  the whole transfer back. A Pro workspace can go to anyone.
 
 Going back to Free deletes nothing and removes nobody. A workspace over the limits just can't add
 past them.
@@ -167,8 +173,5 @@ invoice history and cancellation.
 
 ## Known gaps
 
-- Two invitations sent at the same moment to a Free workspace at 4/5 can both pass (the count isn't
-  locked); at worst a Free workspace ends one seat over.
-- Ownership transfer isn't checked against the 2-Free-workspaces cap.
 - Seat sync is best-effort (see above).
 - Yearly billing, self-serve Enterprise and limit reminder emails are not built.

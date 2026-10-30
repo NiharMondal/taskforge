@@ -44,6 +44,7 @@ describe("InvitationService", () => {
     user: { findFirst: jest.Mock; findUnique: jest.Mock };
     role: { findFirst: jest.Mock };
     subscription: { findUnique: jest.Mock };
+    $executeRaw: jest.Mock;
     $transaction: jest.Mock;
   };
   let mail: { sendInBackground: jest.Mock };
@@ -77,6 +78,7 @@ describe("InvitationService", () => {
       role: { findFirst: jest.fn().mockResolvedValue(null) },
       // No Subscription row: the Free plan.
       subscription: { findUnique: jest.fn().mockResolvedValue(null) },
+      $executeRaw: jest.fn().mockResolvedValue(1),
       $transaction: jest.fn(),
     };
     // The actor is an ADMIN unless a test says otherwise; everyone else is not
@@ -134,6 +136,43 @@ describe("InvitationService", () => {
             expiresAt: { gt: expect.any(Date) as Date },
           },
         });
+      });
+
+      it("counts the seats under the workspace's lock, in the transaction that writes the invitation", async () => {
+        const order: string[] = [];
+        const tx = {
+          ...prisma,
+          $executeRaw: jest.fn(
+            (strings: TemplateStringsArray, lock: string) => {
+              order.push(`lock ${strings.join("?")} ${lock}`);
+              return Promise.resolve(1);
+            },
+          ),
+          membership: {
+            ...prisma.membership,
+            count: jest.fn(() => {
+              order.push("count");
+              return Promise.resolve(1);
+            }),
+          },
+          invitation: {
+            ...prisma.invitation,
+            upsert: jest.fn(() => {
+              order.push("upsert");
+              return Promise.resolve({ id: "inv-1" });
+            }),
+          },
+        };
+        prisma.$transaction.mockImplementation((cb: (tx: unknown) => unknown) =>
+          cb(tx),
+        );
+
+        await send({ email: "bob@example.com" });
+
+        expect(order[0]).toMatch(/pg_advisory_xact_lock/);
+        expect(order[0]).toContain(`workspace-seats:${workspaceId}`);
+        expect(order.slice(1)).toEqual(["count", "upsert"]);
+        expect(prisma.invitation.upsert).not.toHaveBeenCalled();
       });
 
       it("invites the fifth seat on Free", async () => {

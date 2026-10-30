@@ -399,9 +399,11 @@ The plan in force is `effectivePlan(subscription)` from `@taskforge/shared` (`pl
 holds `PLAN_LIMITS`, `FREE_OWNED_WORKSPACES`, `PRO_TRIAL_DAYS`); no row is FREE. Limits are checked
 by the writing service through `src/common/plans/plan-limits.ts` and refused with a **402**
 `{ code: "PLAN_LIMIT", limit }` (`PlanLimitException`) — `InvitationService.sendInvitation`
-(members + live invitations), `RoleService.create` (custom roles), `WorkflowService` and
-`ProjectService.create` with `workflowFromProjectId` (custom workflows), `WorkspaceService.create`
-(owned Free workspaces). A new limit goes there, not in a guard. `BillingService.syncSeats` runs after a
+(members + live invitations; `assertCanAddMember` takes the `workspace-seats:<id>` advisory lock, so
+call it in the transaction that writes the invitation), `RoleService.create` (custom roles),
+`WorkflowService` and `ProjectService.create` with `workflowFromProjectId` (custom workflows),
+`WorkspaceService.create` and `MembershipService.transferOwnership` of a Free workspace (owned Free
+workspaces, the new owner's for a transfer). A new limit goes there, not in a guard. `BillingService.syncSeats` runs after a
 membership is created or deleted (never throws); `WorkspaceService.delete` calls
 `cancelForDeletion` first and is refused (502/503) if a billing subscription can't be canceled.
 

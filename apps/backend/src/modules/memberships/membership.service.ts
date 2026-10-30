@@ -6,6 +6,10 @@ import {
   WorkspaceAccess,
 } from "@/common/permissions/workspace-access";
 import { PaginationQueryDto } from "@/common/dto/pagination-query.dto";
+import {
+  assertCanOwnAnotherFreeWorkspace,
+  getWorkspacePlan,
+} from "@/common/plans/plan-limits";
 import PrismaQueryBuilder from "@/lib/PrismQueryBuilder";
 import { PrismaService } from "@/prisma/prisma.service";
 import {
@@ -206,6 +210,13 @@ export class MembershipService {
       if (promoted.count !== 1) {
         // Throwing rolls the step-down back too.
         throw new NotFoundException("Member not found");
+      }
+
+      // A Free workspace counts toward its owner's Free cap, so the new owner
+      // must have room for it (a refusal rolls everything back). Checked once
+      // they're known to be a member, so an outsider is still a 404.
+      if ((await getWorkspacePlan(tx, workspaceId)) === "FREE") {
+        await assertCanOwnAnotherFreeWorkspace(tx, newOwnerId, workspaceId);
       }
 
       return tx.membership.findUnique({

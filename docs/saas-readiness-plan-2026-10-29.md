@@ -8,7 +8,7 @@ The steps go from easiest to hardest. Each one is one PR from `develop` and leav
 |---|------|------|------------|
 | 1 | ✅ Shared email helpers (refactor) — done | S | — |
 | 2 | ✅ Health check endpoint — done | S | — |
-| 3 | Close the billing known gaps | S | — |
+| 3 | ✅ Close the billing known gaps — done | S | — |
 | 4 | Public pages: landing, pricing, terms, privacy | S–M | — |
 | 5 | Change password | M | 1 |
 | 6 | Forgot / reset password | M | 1 |
@@ -63,7 +63,9 @@ The steps go from easiest to hardest. Each one is one PR from `develop` and leav
 
 **Tests.** A controller spec for both cases, with `$queryRaw` mocked to succeed and to throw.
 
-## Step 3 — Close the billing known gaps
+## Step 3 — Close the billing known gaps ✅
+
+**Status: done (2026-10-30).** `assertCanAddMember` now takes the `workspace-seats:<workspaceId>` advisory lock itself, so it must run in the transaction that writes the invitation (it does). Two changes from the plan: `assertCanOwnAnotherFreeWorkspace` takes an optional `transferredWorkspaceId`, so the check runs after the new owner's membership is confirmed (an outsider is still a 404) and has its own message; and `TransferOwnershipCard` was switched to `useErrorToast`, since it didn't use it yet. Unit tests, typecheck and lint pass; the new e2e race test still has to be run.
 
 **Why.** `apps/backend/spec/billing-spec.md` ("Known gaps") lists two small holes.
 

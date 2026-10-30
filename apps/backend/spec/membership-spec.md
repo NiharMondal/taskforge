@@ -34,6 +34,7 @@ Base path: `/memberships`
 
 1. The caller steps down from `OWNER` to `ADMIN`, matched on still being the owner. If they no longer are (a second transfer racing the first), nothing changes: `409`.
 2. The new owner's membership becomes `OWNER`. If they aren't in this workspace: `404`, and step 1 rolls back.
+3. If the workspace is on Free, the new owner must not already own `FREE_OWNED_WORKSPACES` (2) other Free workspaces: otherwise `402` `{ code: "PLAN_LIMIT", limit: "ownedWorkspaces" }`, and steps 1 and 2 roll back. A Pro workspace isn't checked.
 
 Both rows' `roleId` points at the workspace's matching built-in `Role`. Returns `200` with the new owner's membership.
 
@@ -41,6 +42,7 @@ Both rows' `roleId` points at the workspace's matching built-in `Role`. Returns 
 | --- | --- |
 | `400` | Transferring to yourself, or `userId` isn't a UUID |
 | `403` | The caller isn't the owner |
+| `402` | A Free workspace, and the new owner already owns 2 Free workspaces (`PLAN_LIMIT`, `ownedWorkspaces`) |
 | `404` | That user isn't a member of this workspace |
 | `409` | The caller stopped being the owner meanwhile |
 

@@ -1,5 +1,6 @@
 import { accessAs } from "@/common/permissions/test-access";
 import { WorkspaceAccess } from "@/common/permissions/workspace-access";
+import { PlanLimitException } from "@/common/plans/plan-limits";
 import { PrismaService } from "@/prisma/prisma.service";
 import {
   BadRequestException,
@@ -420,8 +421,10 @@ describe("MembershipService ownership transfer and leaving", () => {
       findUnique: jest.Mock;
       count: jest.Mock;
       delete: jest.Mock;
+      findMany: jest.Mock;
     };
     role: { findFirst: jest.Mock };
+    subscription: { findUnique: jest.Mock };
     $transaction: jest.Mock;
   };
   let service: MembershipService;
@@ -434,12 +437,16 @@ describe("MembershipService ownership transfer and leaving", () => {
         findUnique: jest.fn().mockResolvedValue({ userId: "user-member" }),
         count: jest.fn().mockResolvedValue(2),
         delete: jest.fn().mockResolvedValue({ userId: "user-member" }),
+        // The new owner owns no other workspace unless a test says otherwise.
+        findMany: jest.fn().mockResolvedValue([]),
       },
       role: {
         findFirst: jest.fn(({ where }: { where: { systemKey: string } }) =>
           Promise.resolve({ id: `role-${where.systemKey}`, permissions: [] }),
         ),
       },
+      // No Subscription row: the Free plan.
+      subscription: { findUnique: jest.fn().mockResolvedValue(null) },
       $transaction: jest.fn(),
     };
     prisma.$transaction.mockImplementation((cb: (tx: unknown) => unknown) =>
@@ -490,6 +497,72 @@ describe("MembershipService ownership transfer and leaving", () => {
         service.transferOwnership(workspaceId, owner, "user-member"),
       ).rejects.toBeInstanceOf(ConflictException);
       expect(prisma.membership.updateMany).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("transferOwnership and the Free workspace cap", () => {
+    const freeOwned = { workspace: { subscription: null } };
+
+    it("402s a Free workspace to a member who already owns 2 Free ones, and rolls back", async () => {
+      prisma.membership.findMany.mockResolvedValue([freeOwned, freeOwned]);
+
+      const error = await service
+        .transferOwnership(workspaceId, owner, "user-member")
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(PlanLimitException);
+      expect((error as PlanLimitException).getResponse()).toMatchObject({
+        statusCode: 402,
+        code: "PLAN_LIMIT",
+        limit: "ownedWorkspaces",
+      });
+      // Counted inside the transaction, leaving out the workspace being
+      // transferred (they already own it there by then).
+      expect(prisma.membership.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            userId: "user-member",
+            role: WorkspaceRole.OWNER,
+            workspaceId: { not: workspaceId },
+          },
+        }),
+      );
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    });
+
+    it("transfers to a member who owns 1 Free workspace, or 2 with one on Pro", async () => {
+      prisma.membership.findMany.mockResolvedValueOnce([freeOwned]);
+      await service.transferOwnership(workspaceId, owner, "user-member");
+
+      prisma.membership.findMany.mockResolvedValueOnce([
+        freeOwned,
+        { workspace: { subscription: { plan: "PRO", status: "ACTIVE" } } },
+      ]);
+      await service.transferOwnership(workspaceId, owner, "user-member");
+    });
+
+    it("doesn't check the cap when the workspace is on Pro", async () => {
+      prisma.subscription.findUnique.mockResolvedValue({
+        plan: "PRO",
+        status: "ACTIVE",
+      });
+      prisma.membership.findMany.mockResolvedValue([freeOwned, freeOwned]);
+
+      await service.transferOwnership(workspaceId, owner, "user-member");
+
+      expect(prisma.membership.findMany).not.toHaveBeenCalled();
+    });
+
+    it("still 404s an outsider before looking at the cap", async () => {
+      prisma.membership.updateMany
+        .mockResolvedValueOnce({ count: 1 })
+        .mockResolvedValueOnce({ count: 0 });
+      prisma.membership.findMany.mockResolvedValue([freeOwned, freeOwned]);
+
+      await expect(
+        service.transferOwnership(workspaceId, owner, "user-elsewhere"),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.membership.findMany).not.toHaveBeenCalled();
     });
   });
 

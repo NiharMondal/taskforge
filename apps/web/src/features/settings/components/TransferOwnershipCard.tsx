@@ -16,20 +16,22 @@ import { Crown } from "lucide-react";
 
 import ConfirmModal from "@/components/ui/confirm-modal";
 import { TFSelect } from "@/components/ui/TFSelect";
+import { useErrorToast } from "@/features/billing/lib/plan-limit";
 import { getMemberName } from "@/features/memberships/lib/member";
 import {
 	useMemberships,
 	useTransferOwnership,
 } from "@/features/memberships/hooks/use-memberships";
 import type { Workspace } from "@/features/workspace/types/workspace-types";
-import { getApiErrorMessage } from "@/lib/api-error";
 
 const NOBODY = "__nobody__";
 
 /**
  * Settings → General: the OWNER hands the workspace to another member, who
  * becomes OWNER while the current owner becomes ADMIN. Rendered for the OWNER
- * only (`canTransferOwnership`); confirmed by typing the workspace's name.
+ * only (`canTransferOwnership`); confirmed by typing the workspace's name. A
+ * Free workspace can't go to a member who already owns the Free maximum
+ * (`FREE_OWNED_WORKSPACES`): that 402 shows an upgrade prompt.
  */
 export default function TransferOwnershipCard({
 	workspace,
@@ -40,6 +42,7 @@ export default function TransferOwnershipCard({
 }) {
 	const [isOpen, { setTrue: open, setFalse: close }] = useBoolean();
 	const [newOwnerId, setNewOwnerId] = useState(NOBODY);
+	const showError = useErrorToast();
 	const { data: members = [] } = useMemberships(workspace.id);
 	const { mutateAsync: transfer, isPending } = useTransferOwnership(
 		workspace.id,
@@ -55,7 +58,7 @@ export default function TransferOwnershipCard({
 			toast.success(res.message || "Ownership transferred");
 			close();
 		} catch (error) {
-			toast.danger(getApiErrorMessage(error, "Failed to transfer ownership"));
+			showError(error, "Failed to transfer ownership");
 		}
 	};
 

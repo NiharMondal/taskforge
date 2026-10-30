@@ -18,8 +18,20 @@ import { refreshBackendTokens } from "./backend-session";
 /** Routes that render the auth UI; signed-in users are bounced away from these. */
 const AUTH_ROUTES = ["/login", "/register"];
 
-/** Public route prefixes that never require a session. */
-const PUBLIC_PREFIXES = ["/login", "/register", "/verify-email", "/api/auth"];
+/**
+ * Public routes (and everything under them) that never require a session.
+ * `/` (the landing page) is public too, but matched exactly in `authorized`:
+ * as a prefix it would make every route public.
+ */
+const PUBLIC_PREFIXES = [
+	"/login",
+	"/register",
+	"/verify-email",
+	"/api/auth",
+	"/pricing",
+	"/terms",
+	"/privacy",
+];
 
 /**
  * Renew the backend access token (15 minutes) once it has less than this left.
@@ -158,7 +170,13 @@ export const authConfig = {
         return true;
       }
 
-      const isPublic = PUBLIC_PREFIXES.some((p) => pathname.startsWith(p));
+      // Whole path segments only, so `/pricing/...` is public but a future
+      // `/pricing-admin` isn't.
+      const isPublic =
+        pathname === "/" ||
+        PUBLIC_PREFIXES.some(
+          (p) => pathname === p || pathname.startsWith(`${p}/`),
+        );
       if (isPublic) return true;
 
       // Everything else the proxy matches requires a session.

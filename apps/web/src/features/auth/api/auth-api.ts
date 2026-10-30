@@ -3,6 +3,7 @@ import { api } from "@/lib/axios";
 import { ApiResponse } from "@/types/api";
 
 import type {
+  ChangePasswordRequest,
   GoogleAuthRequest,
   GoogleAuthResponse,
   LoginRequest,
@@ -62,4 +63,14 @@ export async function verifyEmail(
   payload: VerifyEmailRequest,
 ): Promise<ApiResponse<LoginResponse>> {
   return api.post<LoginResponse>("/auth/verify-email", payload);
+}
+
+/**
+ * Change the signed-in user's password. The backend signs out every session,
+ * this one included, so the caller signs out afterwards.
+ */
+export async function changePassword(
+  payload: ChangePasswordRequest,
+): Promise<ApiResponse<null>> {
+  return api.patch<null>("/auth/password", payload);
 }

@@ -286,6 +286,46 @@ describe("Tenancy (e2e)", () => {
         .expect(401);
     });
 
+    it("changing the password ends every session and replaces the old one", async () => {
+      const login = await api()
+        .post("/api/v1/auth/login")
+        .send({ email: dave.email, password: dave.password })
+        .expect(200);
+      const session = data<{ accessToken: string; refreshToken: string }>(
+        login,
+      );
+      const me = await api()
+        .get("/api/v1/users/me")
+        .set(as(session.accessToken))
+        .expect(200);
+      expect(data(me)).toMatchObject({ hasPassword: true });
+
+      const change = (currentPassword: string) =>
+        api()
+          .patch("/api/v1/auth/password")
+          .set(as(session.accessToken))
+          .send({ currentPassword, newPassword: "changed123" });
+      await api()
+        .patch("/api/v1/auth/password")
+        .send({ currentPassword: dave.password, newPassword: "changed123" })
+        .expect(401);
+      await change("wrong-pass1").expect(400);
+      await change(dave.password).expect(200);
+
+      await api()
+        .post("/api/v1/auth/refresh")
+        .send({ refreshToken: session.refreshToken })
+        .expect(401);
+      await api()
+        .post("/api/v1/auth/login")
+        .send({ email: dave.email, password: dave.password })
+        .expect(401);
+      await api()
+        .post("/api/v1/auth/login")
+        .send({ email: dave.email, password: "changed123" })
+        .expect(200);
+    });
+
     it("rejects a body key the route doesn't declare", async () => {
       const res = await api()
         .post("/api/v1/projects")

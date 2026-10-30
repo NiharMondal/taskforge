@@ -14,6 +14,11 @@ export interface User {
 	emailVerifiedAt: string | null;
 	createdAt: string;
 	updatedAt: string;
+	/**
+	 * Whether the account has a password (an EMAIL sign-in method); `false` for
+	 * Google-only accounts. Only `GET /users/me` (and `/users/:id`) include it.
+	 */
+	hasPassword?: boolean;
 }
 
 /**

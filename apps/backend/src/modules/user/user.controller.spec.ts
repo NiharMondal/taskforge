@@ -14,11 +14,11 @@ describe("UserController (HTTP)", () => {
 
   let app: INestApplication;
   const server = () => app.getHttpServer() as App;
-  let userService: { findOne: jest.Mock; update: jest.Mock };
+  let userService: { findProfile: jest.Mock; update: jest.Mock };
 
   beforeEach(async () => {
     userService = {
-      findOne: jest.fn().mockResolvedValue({ id: me, name: "Me" }),
+      findProfile: jest.fn().mockResolvedValue({ id: me, name: "Me" }),
       update: jest.fn().mockResolvedValue({ id: me, name: "Renamed" }),
     };
 
@@ -47,7 +47,7 @@ describe("UserController (HTTP)", () => {
     it("GET /users does not list every user", async () => {
       await request(server()).get("/users").expect(404);
 
-      expect(userService.findOne).not.toHaveBeenCalled();
+      expect(userService.findProfile).not.toHaveBeenCalled();
     });
 
     it("DELETE /users/:id does not delete anyone", async () => {
@@ -60,7 +60,7 @@ describe("UserController (HTTP)", () => {
     it("returns the caller, resolved from the token", async () => {
       const res = await request(server()).get("/users/me").expect(200);
 
-      expect(userService.findOne).toHaveBeenCalledWith(me);
+      expect(userService.findProfile).toHaveBeenCalledWith(me);
       expect((res.body as { data: unknown }).data).toEqual({
         id: me,
         name: "Me",
@@ -72,13 +72,13 @@ describe("UserController (HTTP)", () => {
     it("returns the caller's own profile", async () => {
       await request(server()).get(`/users/${me}`).expect(200);
 
-      expect(userService.findOne).toHaveBeenCalledWith(me);
+      expect(userService.findProfile).toHaveBeenCalledWith(me);
     });
 
     it("refuses another user's profile with 403 and never queries it", async () => {
       await request(server()).get(`/users/${someoneElse}`).expect(403);
 
-      expect(userService.findOne).not.toHaveBeenCalled();
+      expect(userService.findProfile).not.toHaveBeenCalled();
     });
   });
 

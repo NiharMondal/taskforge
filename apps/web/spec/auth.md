@@ -305,6 +305,23 @@ so the backend session ends with the cookie.
 
 ---
 
+# 🔑 Change password
+
+Settings → Profile shows a **Password** card (`features/settings/components/ChangePasswordCard.tsx`)
+under the profile card. It reads `hasPassword` from `GET /users/me`: a Google-only account
+(`false`) gets a note instead of the form.
+
+- The form (`changePasswordSchema` in `features/auth/schemas/auth-schema.ts`) takes the current
+  password, a new one under the sign-up rules, and a confirmation. It refuses a new password equal
+  to the current one. `confirmPassword` is form-only and is never sent.
+- It sends `PATCH /auth/password` with `{ currentPassword, newPassword }` (`useChangePassword`).
+  A failure (wrong current password: a 400) is a toast, and the user stays signed in.
+- On success the backend has ended every session, this one included, so the card signs out with
+  `signOut({ redirectTo: "/login?passwordChanged=1" })`. The login form shows a "Password changed"
+  notice for that parameter.
+
+---
+
 # ⚠️ Rules (STRICT)
 
 1. NEVER store token in localStorage manually

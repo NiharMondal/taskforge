@@ -2,7 +2,7 @@
 
 import { FormTextField, FormWrapper } from "@/components/form-element";
 import { getApiErrorMessage } from "@/lib/api-error";
-import { Button, toast } from "@heroui/react";
+import { Alert, Button, toast } from "@heroui/react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { signIn } from "next-auth/react";
 import GoogleSignInButton, { AuthDivider } from "./google-sign-in-button";
@@ -52,6 +52,18 @@ export default function LoginForm() {
 	};
 	return (
 		<>
+			{/* Set by Settings → Profile after a password change signed us out. */}
+			{searchParams.get("passwordChanged") && (
+				<Alert status="success" className="mb-5">
+					<Alert.Indicator />
+					<Alert.Content>
+						<Alert.Title>Password changed</Alert.Title>
+						<Alert.Description>
+							You were signed out everywhere. Sign in with your new password.
+						</Alert.Description>
+					</Alert.Content>
+				</Alert>
+			)}
 			<GoogleSignInButton />
 			<AuthDivider />
 			<FormWrapper methods={methods} onSubmit={onSubmit}>

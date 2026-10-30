@@ -1,4 +1,6 @@
+import { CurrentUser } from "@/common/decorators/current-user.decorator";
 import { Public } from "@/common/decorators/public.decorator";
+import type { JwtPayload } from "@/common/strategies/jwt.strategy";
 import { sendResponse } from "@/common/utils/send-response";
 import { AuthService } from "@/modules/auth/auth.service";
 import { RegisterDto } from "@/modules/auth/dto/register.dto";
@@ -7,10 +9,12 @@ import {
   Controller,
   HttpCode,
   HttpStatus,
+  Patch,
   Post,
   UseGuards,
 } from "@nestjs/common";
 import { SkipThrottle, ThrottlerGuard } from "@nestjs/throttler";
+import { ChangePasswordDto } from "./dto/change-password.dto";
 import { GoogleAuthDto } from "./dto/google-auth.dto";
 import { LoginDto } from "./dto/login.dto";
 import { RefreshTokenDto } from "./dto/refresh-token.dto";
@@ -70,6 +74,25 @@ export class AuthController {
       statusCode: HttpStatus.OK,
       message: "Google login successfully",
       data: result,
+    });
+  }
+
+  /**
+   * The one auth route that needs a signed-in user (no `@Public()`). Throttled
+   * like the others, which slows guessing the current password with a stolen
+   * access token. Signs out every session, this one included.
+   */
+  @Patch("password")
+  @HttpCode(HttpStatus.OK)
+  async changePassword(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: ChangePasswordDto,
+  ) {
+    await this.authService.changePassword(user.sub, dto);
+    return sendResponse({
+      statusCode: HttpStatus.OK,
+      message: "Password changed. Sign in again with your new password.",
+      data: null,
     });
   }
 

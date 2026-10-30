@@ -20,11 +20,13 @@ import type { UpdateProfileDto } from "@/features/profile/types/profile-types";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { isTempPublicId } from "@/lib/cloudinary";
 
+import ChangePasswordCard from "./ChangePasswordCard";
+
 /**
  * Settings → Profile. Lets the signed-in user update their display name and
  * avatar (`PATCH /users/me`). Email is shown read-only. On save we also push
  * the new name/image into the Auth.js session via `update()` so the header
- * reflects the change without a re-login.
+ * reflects the change without a re-login. Below it, `ChangePasswordCard`.
  */
 export default function ProfileSettings() {
 	const { update } = useSession();
@@ -91,33 +93,36 @@ export default function ProfileSettings() {
 	}
 
 	return (
-		<Card>
-			<CardHeader>
-				<CardTitle>Your profile</CardTitle>
-				<CardDescription>
-					Update your name and profile photo.
-				</CardDescription>
-			</CardHeader>
-			<CardContent>
-				{isLoading || !user ? (
-					<div className="flex items-center justify-center py-8">
-						<Spinner />
-					</div>
-				) : (
-					<ProfileForm
-						key={user.id}
-						userId={user.id}
-						defaultValues={{
-							name: user.name,
-							avatarUrl: user.avatarUrl ?? "",
-							avatarPublicId: user.avatarPublicId ?? "",
-						}}
-						email={user.email}
-						onSubmit={handleSubmit}
-						isSubmitting={isPending}
-					/>
-				)}
-			</CardContent>
-		</Card>
+		<div className="flex flex-col gap-6">
+			<Card>
+				<CardHeader>
+					<CardTitle>Your profile</CardTitle>
+					<CardDescription>
+						Update your name and profile photo.
+					</CardDescription>
+				</CardHeader>
+				<CardContent>
+					{isLoading || !user ? (
+						<div className="flex items-center justify-center py-8">
+							<Spinner />
+						</div>
+					) : (
+						<ProfileForm
+							key={user.id}
+							userId={user.id}
+							defaultValues={{
+								name: user.name,
+								avatarUrl: user.avatarUrl ?? "",
+								avatarPublicId: user.avatarPublicId ?? "",
+							}}
+							email={user.email}
+							onSubmit={handleSubmit}
+							isSubmitting={isPending}
+						/>
+					)}
+				</CardContent>
+			</Card>
+			{user && <ChangePasswordCard hasPassword={user.hasPassword ?? true} />}
+		</div>
 	);
 }

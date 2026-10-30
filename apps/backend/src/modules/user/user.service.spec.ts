@@ -1,6 +1,6 @@
 import { CloudinaryService } from "@/cloudinary/cloudinary.service";
 import { PrismaService } from "@/prisma/prisma.service";
-import { BadRequestException } from "@nestjs/common";
+import { BadRequestException, NotFoundException } from "@nestjs/common";
 import { UserService } from "./user.service";
 
 describe("UserService.update avatar handling", () => {
@@ -120,5 +120,34 @@ describe("UserService.update avatar handling", () => {
 
     expect(cloudinary.promoteToPermanent).not.toHaveBeenCalled();
     expect(cloudinary.delete).not.toHaveBeenCalled();
+  });
+});
+
+describe("UserService.findProfile", () => {
+  const findUnique = jest.fn();
+  const service = new UserService(
+    { user: { findUnique } } as unknown as PrismaService,
+    {} as CloudinaryService,
+  );
+
+  it("says whether the user has a password, without returning the auth rows", async () => {
+    findUnique.mockResolvedValueOnce({ id: "u1", auths: [{ id: "a1" }] });
+    await expect(service.findProfile("u1")).resolves.toEqual({
+      id: "u1",
+      hasPassword: true,
+    });
+
+    findUnique.mockResolvedValueOnce({ id: "u2", auths: [] });
+    await expect(service.findProfile("u2")).resolves.toEqual({
+      id: "u2",
+      hasPassword: false,
+    });
+  });
+
+  it("is a 404 for a user that no longer exists", async () => {
+    findUnique.mockResolvedValueOnce(null);
+    await expect(service.findProfile("gone")).rejects.toThrow(
+      NotFoundException,
+    );
   });
 });

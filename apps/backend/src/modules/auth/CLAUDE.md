@@ -15,7 +15,7 @@ Reads secretOrKey from `ConfigService.getOrThrow<string>("JWT_ACCESS_SECRET")` �
 ## Guard usage
 Only JwtAuthGuard is global (APP_GUARD in app.module.ts). Everything else is applied per controller or route.
 
-- `@Public()`                                → skips JwtAuthGuard (every /auth/* route, GET /invitations/validate, POST /billing/webhook, GET /health)
+- `@Public()`                                → skips JwtAuthGuard (every /auth/* route except PATCH /auth/password, GET /invitations/validate, POST /billing/webhook, GET /health)
 - `@UseGuards(JwtAuthGuard, WorkspaceGuard)` → JWT + workspace membership check (used in workspace-scoped controllers)
 - `@RequirePermission("project:manage")`     → applies PermissionsGuard; 403 unless the caller's role holds every listed permission
 
@@ -39,7 +39,7 @@ workspaceId is NOT in the JWT. Workspace context is request-scoped via the x-wor
 Access token expiry: 15 minutes (`ACCESS_TOKEN_TTL_SECONDS` in auth.constants.ts, used by auth.module.ts JwtModule.registerAsync).
 
 ## Refresh tokens
-`RefreshTokenService` (refresh-token.service.ts) issues, rotates and revokes opaque refresh tokens; only their SHA-256 is stored (`RefreshToken`). It never signs JWTs — `AuthService.issueTokens` pairs a signed access token with a refresh token. Revoke a user's tokens (`revokeAllForUser`, inside the same transaction) whenever an account changes hands. Details: `spec/auth-spec.md`.
+`RefreshTokenService` (refresh-token.service.ts) issues, rotates and revokes opaque refresh tokens; only their SHA-256 is stored (`RefreshToken`). It never signs JWTs — `AuthService.issueTokens` pairs a signed access token with a refresh token. Revoke a user's tokens (`revokeAllForUser`, inside the same transaction) whenever an account changes hands or its password changes. Details: `spec/auth-spec.md`.
 
 ## Email verification
 `register` stores a `PendingRegistration` and emails a link (templates in auth-emails.ts); `verifyEmail` creates the account. Tokens in links are `generateToken()` values stored as `hashToken()`.

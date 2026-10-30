@@ -11,7 +11,7 @@ The steps go from easiest to hardest. Each one is one PR from `develop` and leav
 | 3 | ✅ Close the billing known gaps — done | S | — |
 | 4 | ✅ Public pages: landing, pricing, terms, privacy — done | S–M | — |
 | 5 | ✅ Change password — done | M | 1 |
-| 6 | Forgot / reset password | M | 1 |
+| 6 | ✅ Forgot / reset password — done | M | 1 |
 | 7 | Scheduled cleanup jobs | M | (6, for its table) |
 | 8 | Email on issue assignment | M | 1 |
 | 9 | Workspace audit log | M | — |
@@ -123,7 +123,16 @@ Unit tests, typecheck and lint pass. An e2e test is added (`changing the passwor
 - Google-only account.
 - Success revokes the refresh tokens.
 
-## Step 6 — Forgot / reset password
+## Step 6 — Forgot / reset password ✅
+
+**Status: done (2026-10-30, branch `implement-change-password-functionality`, on top of step 5).** `PasswordReset` model and migration `20261030120000_password_resets`, `POST /auth/forgot-password` and `/auth/reset-password`, and the web's `/forgot-password` and `/reset-password` pages. Beyond the plan:
+- `PASSWORD_RESET_TTL_MINUTES` lives in `@taskforge/shared`, since the web's notice shows it; the per-account limit (3 per 15 minutes) stays in `auth.constants.ts`.
+- **Not** added to `AUTH_ROUTES`: a signed-in Google-only user has to reach both pages to set a password. Settings → Profile's Google-only card now has "Email me a link", and step 5's Google-only message and "password changed" email point at Forgot password.
+- A successful reset sends the "your password was changed" email too, and the reset page signs out (harmless without a session) before landing on `/login?passwordReset=1`.
+- "Forgot password?" carries the email already typed on the login form.
+- Known gap (in `spec/auth-spec.md`): an unknown address answers slightly faster than a registered one.
+
+Unit tests, typecheck and lint pass, and the pages were checked in a browser against the dev servers. The e2e tests (reset once under a race, Google-only gets an EMAIL row) are written but not yet run.
 
 **Depends on:** 1.
 

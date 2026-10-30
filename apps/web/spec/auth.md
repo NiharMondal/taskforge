@@ -309,7 +309,8 @@ so the backend session ends with the cookie.
 
 Settings → Profile shows a **Password** card (`features/settings/components/ChangePasswordCard.tsx`)
 under the profile card. It reads `hasPassword` from `GET /users/me`: a Google-only account
-(`false`) gets a note instead of the form.
+(`false`) gets "Email me a link" instead of the form, which sends `POST /auth/forgot-password` for
+its own address (see below).
 
 - The form (`changePasswordSchema` in `features/auth/schemas/auth-schema.ts`) takes the current
   password, a new one under the sign-up rules, and a confirmation. It refuses a new password equal
@@ -319,6 +320,24 @@ under the profile card. It reads `hasPassword` from `GET /users/me`: a Google-on
 - On success the backend has ended every session, this one included, so the card signs out with
   `signOut({ redirectTo: "/login?passwordChanged=1" })`. The login form shows a "Password changed"
   notice for that parameter.
+
+---
+
+# 🔁 Forgot / reset password
+
+- **`/forgot-password`** (`ForgotPasswordForm`): an email field (prefilled from `?email=`, which the
+  login form's "Forgot password?" link sets from what was typed) that sends
+  `POST /auth/forgot-password`. The backend answers 202 for any address, so the "check your email"
+  notice (`CheckEmailNotice`, `variant="password-reset"`) says "if it has an account" and never
+  claims one.
+- **`/reset-password?token=…`** (`ResetPasswordForm`, inside `<Suspense>`): new password and
+  confirmation under the sign-up rules (`resetPasswordSchema`), sent as
+  `POST /auth/reset-password { token, password }`. A 400 (missing, expired or used link) swaps the
+  form for "Get a new link". On success every session has ended and nobody is signed in, so it
+  calls `signOut({ redirectTo: "/login?passwordReset=1" })` (harmless without a session) and the
+  login form shows a "Password reset" notice.
+- Both paths are in `PUBLIC_PREFIXES` but **not** in `AUTH_ROUTES`: a signed-in Google-only user
+  follows the link to set their first password, and must not be bounced to the dashboard.
 
 ---
 

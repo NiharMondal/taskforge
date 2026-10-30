@@ -98,6 +98,20 @@ model PendingRegistration {
 // One refresh token. Each use replaces it with a new one in the same family
 // (one family per sign-in); presenting a replaced token after the grace period
 // means it leaked, and revokes the whole family. See RefreshTokenService.
+// A "forgot password" link. Following it sets the user's password (creating
+// the EMAIL sign-in method for a Google-only account) and ends every session.
+model PasswordReset {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // SHA-256 of the token in the emailed link; the token itself is never stored.
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
 model RefreshToken {
   id         String    @id @default(uuid())
   userId     String
@@ -153,9 +167,10 @@ model User {
   createdIssues  Issue[]      @relation("CreatedIssues")
   assignedIssues Issue[]      @relation("AssignedIssues")
 
-  comments      Comment[]
-  auditLogs     AuditLog[]
-  refreshTokens RefreshToken[]
+  comments       Comment[]
+  auditLogs      AuditLog[]
+  refreshTokens  RefreshToken[]
+  passwordResets PasswordReset[]
 }
 
 //// WORKSPACE (TENANT ROOT)

@@ -61,7 +61,8 @@ Three layers, applied in order. `src/modules/auth/CLAUDE.md` has module-level de
 1. **`JwtAuthGuard` — global.** Registered once in `app.module.ts` via `APP_GUARD`. It applies to
    every route, so you do not need `@UseGuards(JwtAuthGuard)` (existing controllers still list it
    redundantly; harmless). Opt out with `@Public()` (used on every `/auth/*` route but
-   `PATCH /auth/password` — `register`, `verify-email`, `login`, `google`, `refresh`, `logout` — plus
+   `PATCH /auth/password` — `register`, `verify-email`, `login`, `google`, `refresh`, `logout`,
+   `forgot-password`, `reset-password` — plus
    `GET /invitations/validate`, `POST /billing/webhook`, `GET /health` and `GET /`).
    It throws `UnauthorizedException("Token not provided!")` (401) when the `authorization` header is missing.
    `JwtStrategy.validate()` returns the payload unchanged, so `req.user` is `{ sub, email }`.
@@ -144,7 +145,12 @@ sends a link that replaces that password. A signed-in user changes their passwor
 a 400 (never 401, which the web reads as a dead session), and success stores the new hash only if
 the checked one is still there, revokes every refresh token in the same transaction, and emails the
 owner. `GET /users/me` returns `hasPassword` (`UserService.findProfile`) so the web knows whether to
-offer it.
+offer it. "Forgot password" (`POST /auth/forgot-password`, `@Public()`) answers 202 for any address
+and emails an account a `/reset-password?token=…` link backed by a `PasswordReset` row (token
+stored as `hashToken`, `PASSWORD_RESET_TTL_MINUTES` from `@taskforge/shared`, 3 links per account
+per 15 minutes); `POST /auth/reset-password` claims the row (`deleteMany` + `count === 1`, like
+`verifyEmail`), upserts the `EMAIL` auth (so a Google-only account gets a password), marks the email
+verified, revokes every refresh token in the same transaction, and doesn't sign in.
 
 ### Google sign-in
 
@@ -418,13 +424,13 @@ membership is created or deleted (never throws); `WorkspaceService.delete` calls
 `PrismaService` (and `supertest` against a Nest app with mocked services for HTTP-level checks), so
 they need no database. Current coverage: `WorkspaceGuard`, `JwtAuthGuard`, `PermissionsGuard`, `IssueService`
 permission rules and tenant isolation, `MembershipService` role changes/removal, `UserController`/`UserService`,
-`InvitationService`/controller, register/verify/login/Google sign-in/refresh/change password (`AuthService`,
+`InvitationService`/controller, register/verify/login/Google sign-in/refresh/change, forgot and reset password (`AuthService`,
 `RefreshTokenService`, `GoogleTokenVerifier`, throttling), `WorkspaceService`, `BillingService` (with `StripeService` mocked) and the plan limits, `SprintService.endSprint`, `CommentService`, `LabelService`, `ActivityService`, `RoleService` and the role DTOs, `WorkflowService`, `issueChanges`, the history rows `IssueService` writes, the health check, and the issue, comment and label DTOs.
 `jest` maps `@/` and `generated/` in `package.json` and transforms the ESM-only `fractional-indexing` (a dependency of `@taskforge/shared`, which Jest loads as TypeScript source).
 
 `pnpm run test:e2e` (`test/*.e2e-spec.ts`) boots the real `AppModule` through `configureApp()` and
 drives it with supertest against Postgres: sign-up through the emailed link (read from the
-mocked `MailService`), refresh-token rotation and sign-out, changing the password, unknown body keys, cross-workspace isolation, the header/path-param
+mocked `MailService`), refresh-token rotation and sign-out, changing and resetting the password, unknown body keys, cross-workspace isolation, the header/path-param
 check, invite → accept, MEMBER limits, comments (isolation, authorship, cascade on issue delete), labels (isolation, MEMBER limits, cascade on label delete), custom roles (create, assign by
 `roleId`, enforcement, built-ins locked, delete refused while in use), workflows (the default, Free's 402s, moves along custom transitions, copying, deleting a status with issues), an issue's history, and
 billing without Stripe (the three plan limits as 402s, Pro lifting them, checkout's 503, and a
@@ -453,7 +459,7 @@ See `.env.example`. What the code actually does with each:
   `SMTP_PASS`, `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY` and `CLOUDINARY_API_SECRET` (read with
   `getOrThrow` in constructors — which is why `test/setup-e2e.ts` gives them placeholders).
 - **Optional, with defaults:** `PORT` (5001), `CORS_ORIGINS` (`localhost:3000`/`:3001`), `APP_URL`
-  (`http://localhost:3000`, used in invitation and email-verification links), `MAIL_FROM` (falls back to `SMTP_USER`),
+  (`http://localhost:3000`, used in invitation, email-verification and password-reset links), `MAIL_FROM` (falls back to `SMTP_USER`),
   `SMTP_SECURE` (`"true"`, or implied by port 465).
 - `NODE_ENV` only switches `PrismaService` query logging on (`development`).
 - `STRIPE_SECRET_KEY`, `STRIPE_PRO_PRICE_ID` and `STRIPE_WEBHOOK_SECRET` are read lazily by

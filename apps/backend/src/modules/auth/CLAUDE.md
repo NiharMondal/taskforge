@@ -44,9 +44,12 @@ Access token expiry: 15 minutes (`ACCESS_TOKEN_TTL_SECONDS` in auth.constants.ts
 ## Email verification
 `register` stores a `PendingRegistration` and emails a link (templates in auth-emails.ts); `verifyEmail` creates the account. Tokens in links are `generateToken()` values stored as `hashToken()`.
 
+## Password reset
+`forgotPassword` stores a `PasswordReset` and emails a link (`passwordResetEmail`); `resetPassword` claims it, sets the EMAIL password and revokes every refresh token. Like `register`, `forgot-password` answers the same for every address.
+
 ## What NOT to do
 - Never call JwtService.sign() outside AuthService
 - Never store a refresh or verification token itself — only `hashToken(token)`
-- Never let `register` answer differently for a taken address
+- Never let `register` or `forgot-password` answer differently for a taken (or unknown) address
 - Never trust workspaceId from request body or query params — always read from request.workspaceId (injected by WorkspaceGuard)
 - Never add workspaceId to a JWT claim from client input

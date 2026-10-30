@@ -67,6 +67,25 @@ export interface ChangePasswordRequest {
   newPassword: string;
 }
 
+/**
+ * `POST /auth/forgot-password` request body. Answers 202 with `data: null`
+ * whether or not the address has an account; one that does gets a link to
+ * `/reset-password?token=…`.
+ */
+export interface ForgotPasswordRequest {
+  email: string;
+}
+
+/**
+ * `POST /auth/reset-password` request body: the token from the emailed link and
+ * the new password. Answers 200 with `data: null` and ends every session; it
+ * doesn't sign in. An unknown, expired or used link is a 400.
+ */
+export interface ResetPasswordRequest {
+  token: string;
+  password: string;
+}
+
 /** `POST /auth/verify-email` request body: the token from the emailed link. */
 export interface VerifyEmailRequest {
   token: string;

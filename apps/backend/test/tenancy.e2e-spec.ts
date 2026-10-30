@@ -51,6 +51,9 @@ describe("Tenancy (e2e)", () => {
     password: "secret123",
   };
 
+  /** A Google-only account, created directly, for the password reset tests. */
+  const frank = { name: "Frank", email: `frank-${run}@e2e.test` };
+
   let aliceToken: string;
   let bobToken: string;
   let aliceWs: string;
@@ -88,6 +91,20 @@ describe("Tenancy (e2e)", () => {
     const token = /verify-email\?token=([0-9a-f]{64})/.exec(sent?.text ?? "");
     if (!token) throw new Error(`No verification link was sent to ${email}`);
     return token[1];
+  };
+
+  /** The token in the last password reset link emailed to `email`. */
+  const resetToken = (email: string) => {
+    const token = (
+      mail.sendInBackground.mock.calls as [{ to: string; text: string }][]
+    )
+      .map(([m]) => m)
+      .filter((m) => m.to === email)
+      .map((m) => /reset-password\?token=([0-9a-f]{64})/.exec(m.text)?.[1])
+      .filter(Boolean)
+      .pop();
+    if (!token) throw new Error(`No reset link was sent to ${email}`);
+    return token;
   };
 
   type Workflow = {
@@ -180,6 +197,7 @@ describe("Tenancy (e2e)", () => {
       carol.email,
       dave.email,
       erin.email,
+      frank.email,
     ];
     await prisma.user.deleteMany({ where: { email: { in: emails } } });
     await prisma.pendingRegistration.deleteMany({
@@ -324,6 +342,73 @@ describe("Tenancy (e2e)", () => {
         .post("/api/v1/auth/login")
         .send({ email: dave.email, password: "changed123" })
         .expect(200);
+    });
+
+    it("resets a forgotten password from the emailed link, once", async () => {
+      const login = await api()
+        .post("/api/v1/auth/login")
+        .send({ email: dave.email, password: "changed123" })
+        .expect(200);
+      const { refreshToken } = data<{ refreshToken: string }>(login);
+
+      // Same answer for an unknown address, which gets nothing.
+      await api()
+        .post("/api/v1/auth/forgot-password")
+        .send({ email: `nobody-${run}@e2e.test` })
+        .expect(202);
+      await api()
+        .post("/api/v1/auth/forgot-password")
+        .send({ email: dave.email.toUpperCase() })
+        .expect(202);
+      const token = resetToken(dave.email);
+
+      const reset = () =>
+        api()
+          .post("/api/v1/auth/reset-password")
+          .send({ token, password: "reset1234" });
+      const statuses = (await Promise.all([reset(), reset()]))
+        .map((r) => r.status)
+        .sort();
+      expect(statuses).toEqual([200, 400]);
+      await expect(
+        prisma.passwordReset.count({ where: { user: { email: dave.email } } }),
+      ).resolves.toBe(0);
+
+      await api()
+        .post("/api/v1/auth/refresh")
+        .send({ refreshToken })
+        .expect(401);
+      await api()
+        .post("/api/v1/auth/login")
+        .send({ email: dave.email, password: "reset1234" })
+        .expect(200);
+    });
+
+    it("gives a Google-only account a password through a reset link", async () => {
+      await prisma.user.create({
+        data: {
+          ...frank,
+          emailVerifiedAt: new Date(),
+          auths: {
+            create: { provider: "GOOGLE", providerId: `google-${run}` },
+          },
+        },
+      });
+
+      await api()
+        .post("/api/v1/auth/forgot-password")
+        .send({ email: frank.email })
+        .expect(202);
+      await api()
+        .post("/api/v1/auth/reset-password")
+        .send({ token: resetToken(frank.email), password: "frank1234" })
+        .expect(200);
+
+      const auths = await prisma.auth.findMany({
+        where: { user: { email: frank.email } },
+        orderBy: { provider: "asc" },
+      });
+      expect(auths.map((a) => a.provider).sort()).toEqual(["EMAIL", "GOOGLE"]);
     });
 
     it("rejects a body key the route doesn't declare", async () => {

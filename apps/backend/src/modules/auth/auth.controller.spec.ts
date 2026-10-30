@@ -21,6 +21,8 @@ describe("AuthController (HTTP)", () => {
     refresh: jest.Mock;
     logout: jest.Mock;
     changePassword: jest.Mock;
+    forgotPassword: jest.Mock;
+    resetPassword: jest.Mock;
   };
   const token = "ab".repeat(32);
 
@@ -35,6 +37,8 @@ describe("AuthController (HTTP)", () => {
       refresh: jest.fn().mockResolvedValue({ accessToken: "jwt" }),
       logout: jest.fn().mockResolvedValue(undefined),
       changePassword: jest.fn().mockResolvedValue(undefined),
+      forgotPassword: jest.fn().mockResolvedValue(undefined),
+      resetPassword: jest.fn().mockResolvedValue(undefined),
     };
 
     const moduleRef = await Test.createTestingModule({
@@ -120,6 +124,63 @@ describe("AuthController (HTTP)", () => {
     });
   });
 
+  describe("POST /auth/forgot-password", () => {
+    it("answers 202 whatever happened to the address", async () => {
+      await request(server())
+        .post("/auth/forgot-password")
+        .send({ email: "a@example.com" })
+        .expect(202);
+
+      expect(authService.forgotPassword).toHaveBeenCalledWith({
+        email: "a@example.com",
+      });
+    });
+
+    it("rejects a missing or malformed email", async () => {
+      await request(server())
+        .post("/auth/forgot-password")
+        .send({})
+        .expect(400);
+      await request(server())
+        .post("/auth/forgot-password")
+        .send({ email: "not-an-email" })
+        .expect(400);
+
+      expect(authService.forgotPassword).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("POST /auth/reset-password", () => {
+    it("takes the link's token and a new password", async () => {
+      await request(server())
+        .post("/auth/reset-password")
+        .send({ token, password: "brand-new1" })
+        .expect(200);
+
+      expect(authService.resetPassword).toHaveBeenCalledWith({
+        token,
+        password: "brand-new1",
+      });
+    });
+
+    it("rejects a malformed token, a short password and form-only fields", async () => {
+      await request(server())
+        .post("/auth/reset-password")
+        .send({ token: token.slice(2), password: "brand-new1" })
+        .expect(400);
+      await request(server())
+        .post("/auth/reset-password")
+        .send({ token, password: "short" })
+        .expect(400);
+      await request(server())
+        .post("/auth/reset-password")
+        .send({ token, password: "brand-new1", confirmPassword: "brand-new1" })
+        .expect(400);
+
+      expect(authService.resetPassword).not.toHaveBeenCalled();
+    });
+  });
+
   describe("PATCH /auth/password", () => {
     const body = { currentPassword: "old-secret1", newPassword: "new-secret2" };
 
@@ -195,6 +256,12 @@ describe("AuthController (HTTP)", () => {
       ],
       ["google", "/auth/google", { idToken: "tok" }],
       ["verify-email", "/auth/verify-email", { token: "ab".repeat(32) }],
+      ["forgot-password", "/auth/forgot-password", { email: "a@example.com" }],
+      [
+        "reset-password",
+        "/auth/reset-password",
+        { token: "ab".repeat(32), password: "brand-new1" },
+      ],
     ])("throttles %s after the per-window limit", async (_n, path, body) => {
       for (let i = 0; i < limit; i++) {
         const res = await request(server()).post(path).send(body);

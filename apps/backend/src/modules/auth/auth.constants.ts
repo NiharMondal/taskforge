@@ -26,3 +26,10 @@ export const EMAIL_VERIFICATION_TTL_HOURS = 24;
  */
 export const VERIFICATION_EMAILS_PER_WINDOW = 3;
 export const VERIFICATION_EMAIL_WINDOW_MS = 15 * 60_000;
+
+/**
+ * At most this many reset emails per account per window, so the forgot
+ * password route can't be used to flood someone's inbox.
+ */
+export const PASSWORD_RESET_EMAILS_PER_WINDOW = 3;
+export const PASSWORD_RESET_EMAIL_WINDOW_MS = 15 * 60_000;

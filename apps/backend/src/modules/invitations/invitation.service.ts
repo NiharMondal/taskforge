@@ -95,8 +95,9 @@ export class InvitationService {
       where: { workspaceId, email: { equals: email, mode: "insensitive" } },
     });
 
-    // A PENDING invite past its expiry is dead (nothing flips it to EXPIRED
-    // until someone opens the link), so it must not block a re-invite.
+    // A PENDING invite past its expiry is dead (it only becomes EXPIRED when
+    // someone opens the link or the daily cleanup runs), so it must not block
+    // a re-invite.
     if (
       existing?.status === InvitationStatus.PENDING &&
       existing.expiresAt > new Date()
@@ -186,6 +187,11 @@ export class InvitationService {
 
     if (!invitation) {
       throw new NotFoundException("Invitation not found");
+    }
+
+    // The daily cleanup marks expired invitations EXPIRED; say so, as below.
+    if (invitation.status === InvitationStatus.EXPIRED) {
+      throw new BadRequestException("Invitation has expired");
     }
 
     if (invitation.status !== InvitationStatus.PENDING) {

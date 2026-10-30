@@ -63,7 +63,8 @@ Three layers, applied in order. `src/modules/auth/CLAUDE.md` has module-level de
    redundantly; harmless). Opt out with `@Public()` (used on every `/auth/*` route but
    `PATCH /auth/password` — `register`, `verify-email`, `login`, `google`, `refresh`, `logout`,
    `forgot-password`, `reset-password` — plus
-   `GET /invitations/validate`, `POST /billing/webhook`, `GET /health` and `GET /`).
+   `GET /invitations/validate`, `POST /billing/webhook`, `GET /health`, `POST /maintenance/cleanup`
+   (which checks its own `CRON_SECRET`) and `GET /`).
    It throws `UnauthorizedException("Token not provided!")` (401) when the `authorization` header is missing.
    `JwtStrategy.validate()` returns the payload unchanged, so `req.user` is `{ sub, email }`.
 2. **`WorkspaceGuard` — opt-in per controller/route.** Resolves the tenant from the
@@ -280,6 +281,19 @@ hosting platforms and uptime monitors: it runs `SELECT 1` and answers 200 with
 `{ status: "ok", db: "ok", uptime }`, or 503 when the database fails or takes longer than
 `HEALTH_DB_TIMEOUT_MS` (3 s). The error is logged, never sent. `GET /` still says hello.
 
+## Scheduled cleanup
+
+`src/modules/maintenance/` (`spec/maintenance-spec.md`). `CleanupService.run()` deletes expired
+`PendingRegistration`/`PasswordReset` rows, refresh tokens expired/revoked/replaced over 30 days ago
+and Stripe event ids over 90 days old, and marks expired `PENDING` invitations `EXPIRED` — each task
+in its own try/catch, all idempotent, under a `pg_try_advisory_xact_lock` held by a transaction
+that stays open for the run (the tasks run outside it, so one failure can't abort the others). It
+runs from `@Cron` (03:17 UTC, `ScheduleModule.forRoot()` in `app.module.ts`), from
+`POST /maintenance/cleanup` with `Authorization: Bearer <CRON_SECRET>` (for hosts that sleep; the
+repo's `.github/workflows/cleanup.yml` calls it), and from `pnpm run cleanup`. A new table that
+grows without bound gets a task there. `@nestjs/schedule` is pinned to 6.x: 12.x is ESM-only,
+which Jest here can't load.
+
 ## Workflows
 
 `src/modules/workflows/` serves `/projects/:projectId/workflow` (`spec/workflow-spec.md`). A
@@ -425,7 +439,7 @@ membership is created or deleted (never throws); `WorkspaceService.delete` calls
 they need no database. Current coverage: `WorkspaceGuard`, `JwtAuthGuard`, `PermissionsGuard`, `IssueService`
 permission rules and tenant isolation, `MembershipService` role changes/removal, `UserController`/`UserService`,
 `InvitationService`/controller, register/verify/login/Google sign-in/refresh/change, forgot and reset password (`AuthService`,
-`RefreshTokenService`, `GoogleTokenVerifier`, throttling), `WorkspaceService`, `BillingService` (with `StripeService` mocked) and the plan limits, `SprintService.endSprint`, `CommentService`, `LabelService`, `ActivityService`, `RoleService` and the role DTOs, `WorkflowService`, `issueChanges`, the history rows `IssueService` writes, the health check, and the issue, comment and label DTOs.
+`RefreshTokenService`, `GoogleTokenVerifier`, throttling), `WorkspaceService`, `BillingService` (with `StripeService` mocked) and the plan limits, `SprintService.endSprint`, `CommentService`, `LabelService`, `ActivityService`, `RoleService` and the role DTOs, `WorkflowService`, `issueChanges`, the history rows `IssueService` writes, the health check, the cleanup (`CleanupService` and its route), and the issue, comment and label DTOs.
 `jest` maps `@/` and `generated/` in `package.json` and transforms the ESM-only `fractional-indexing` (a dependency of `@taskforge/shared`, which Jest loads as TypeScript source).
 
 `pnpm run test:e2e` (`test/*.e2e-spec.ts`) boots the real `AppModule` through `configureApp()` and
@@ -465,6 +479,8 @@ See `.env.example`. What the code actually does with each:
 - `STRIPE_SECRET_KEY`, `STRIPE_PRO_PRICE_ID` and `STRIPE_WEBHOOK_SECRET` are read lazily by
   `StripeService`: the backend boots without them, the Free limits still apply, and checkout,
   portal and webhook answer 503.
+- `CRON_SECRET` is read lazily, only by `POST /maintenance/cleanup` (unset: 503). The in-process
+  cron runs regardless.
 - `GOOGLE_CLIENT_ID` is read lazily, only by Google sign-in (the backend boots without it;
   `POST /auth/google` then answers 503) and must match the web app's `GOOGLE_CLIENT_ID`.
 

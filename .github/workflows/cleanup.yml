@@ -1,0 +1,33 @@
+name: Daily cleanup
+
+# Triggers the backend's daily cleanup (apps/backend/spec/maintenance-spec.md)
+# from outside, for hosts whose instance sleeps through its in-process cron
+# (Render's free tier). Waking a sleeping instance takes about a minute, hence
+# the long timeout and the retries.
+#
+# Set up in the repository's Settings → Secrets and variables → Actions:
+#   variable BACKEND_URL  e.g. https://taskforge-api.onrender.com (no /api/v1)
+#   secret   CRON_SECRET  the backend's CRON_SECRET
+# Until BACKEND_URL is set, the job is skipped.
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    if: ${{ vars.BACKEND_URL != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Run the cleanup
+        env:
+          BACKEND_URL: ${{ vars.BACKEND_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          curl --fail-with-body --silent --show-error \
+            --max-time 180 --retry 3 --retry-delay 30 --retry-all-errors \
+            -X POST "$BACKEND_URL/api/v1/maintenance/cleanup" \
+            -H "Authorization: Bearer $CRON_SECRET"

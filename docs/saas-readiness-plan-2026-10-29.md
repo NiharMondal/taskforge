@@ -6,8 +6,8 @@ The steps go from easiest to hardest. Each one is one PR from `develop` and leav
 
 | # | Step | Size | Depends on |
 |---|------|------|------------|
-| 1 | Shared email helpers (refactor) | S | — |
-| 2 | Health check endpoint | S | — |
+| 1 | ✅ Shared email helpers (refactor) — done | S | — |
+| 2 | ✅ Health check endpoint — done | S | — |
 | 3 | Close the billing known gaps | S | — |
 | 4 | Public pages: landing, pricing, terms, privacy | S–M | — |
 | 5 | Change password | M | 1 |
@@ -31,7 +31,9 @@ The steps go from easiest to hardest. Each one is one PR from `develop` and leav
 
 ---
 
-## Step 1 — Shared email helpers (refactor, no behaviour change)
+## Step 1 — Shared email helpers (refactor, no behaviour change) ✅
+
+**Status: done (2026-10-30, branch `shared-email-helpers-refactor-no-behaviour-change`, commit `a3f97ea`).** `emailLayout()` and the `Email` type are in `src/modules/mail/email-layout.ts`; `MailService.sendInBackground({ to, ...email })` takes the same shape as `sendMail`; `appUrl(config, path)` is a plain helper in `src/helper`. `AuthService`, `InvitationService` (builder in `invitation-emails.ts`) and `BillingService` use them. Unit tests, typecheck and lint pass; `pnpm test:e2e` still to run.
 
 **Why.** Steps 5, 6, 8, 10 and 12 all send email. Today the helpers they need are private or copied in more than one place:
 
@@ -47,7 +49,9 @@ The steps go from easiest to hardest. Each one is one PR from `develop` and leav
 
 **Tests.** The existing auth and invitation specs still pass. Add a unit test that `layout()` escapes the URL.
 
-## Step 2 — Health check endpoint
+## Step 2 — Health check endpoint ✅
+
+**Status: done (2026-10-30).** `GET /api/v1/health` lives in `src/modules/health/` (`spec/health-spec.md`). Besides the plan, the query has a 3-second timeout (`HEALTH_DB_TIMEOUT_MS`), because the pg pool otherwise waits indefinitely for a connection, and the 503 body carries `db: "down"` while the cause is only logged. Unit tests, typecheck and lint pass.
 
 **Why.** Hosting platforms and uptime monitors need a URL that fails when the database is down. `GET /api/v1/` only returns `"Hello from NestJs!"` (`apps/backend/src/app.controller.ts:9`).
 

@@ -122,7 +122,7 @@ export const UNRESTRICTED_PERMISSIONS = permissionsFrom(
  */
 export function canEditIssue(
 	permissions: Permissions,
-	issue: { reporterId: string; assigneeId?: string | null },
+	issue: { reporterId: string | null; assigneeId?: string | null },
 ): boolean {
 	if (permissions.canEditAnyIssue) return true;
 	const { userId } = permissions;

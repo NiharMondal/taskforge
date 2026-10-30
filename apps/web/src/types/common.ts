@@ -10,6 +10,9 @@ export interface ICommonUserEntity {
 	avatarUrl?: string | null;
 }
 
+/** How the UI names someone whose account was deleted (a null reporter, author or actor). */
+export const DELETED_USER_NAME = "Deleted user";
+
 export interface IFormSelectOption {
 	value: string | undefined;
 	label: string | undefined;

@@ -64,7 +64,7 @@ export function assertCanSetStatus(
  */
 export function assertCanUpdateIssue(
   access: WorkspaceAccess,
-  issue: { reporterId: string; assigneeId: string | null },
+  issue: { reporterId: string | null; assigneeId: string | null },
   dto: object,
 ) {
   const owns =

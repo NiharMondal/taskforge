@@ -10,9 +10,9 @@ export interface IssueComment {
 	/** HTML from the rich-text editor, stored as sent — sanitize before rendering. */
 	content: string;
 	issueId: string;
-	/** The author. */
-	userId: string;
-	user: ICommonUserEntity;
+	/** The author; `null` once their account is deleted (the comment stays). */
+	userId: string | null;
+	user: ICommonUserEntity | null;
 	createdAt: string;
 	updatedAt: string;
 }

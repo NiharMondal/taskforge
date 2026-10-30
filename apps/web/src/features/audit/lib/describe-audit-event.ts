@@ -1,5 +1,6 @@
 import { PLAN_META, STATUS_LABELS } from "@/features/billing/constants";
 import { PERMISSION_GROUPS } from "@/features/roles/constants";
+import { DELETED_USER_NAME } from "@/types/common";
 
 import type {
 	AuditLogEntry,
@@ -48,7 +49,7 @@ export function auditActorName(entry: AuditLogEntry): string {
 		case "invitation.accepted":
 			return entry.metadata.email;
 		default:
-			return "Deleted user";
+			return DELETED_USER_NAME;
 	}
 }
 

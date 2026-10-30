@@ -17,7 +17,8 @@ export const IssueActivity = {
   updated: "issue.updated",
   /**
    * Someone else's comment removed by a moderator (an author deleting their
-   * own isn't recorded). `metadata: { author: Ref }`.
+   * own isn't recorded). `metadata: { author: Ref | null }` — null when the
+   * author's account was deleted before the comment was.
    */
   commentDeleted: "comment.deleted",
 } as const;
@@ -112,7 +113,7 @@ export function recordIssueActivity(
     issueId: string;
     userId: string;
     action: (typeof IssueActivity)[keyof typeof IssueActivity];
-    metadata?: { changes: IssueChange[] } | { author: Ref };
+    metadata?: { changes: IssueChange[] } | { author: Ref | null };
   },
 ) {
   return db.auditLog.create({

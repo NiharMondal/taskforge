@@ -75,9 +75,10 @@ export interface Issue {
   subIssues?: SubIssue[];
   /** Story points (0–100), despite the name; `null` when not estimated. */
   timeEstimate?: number | null;
-  reporterId: string;
+  /** `null` once the reporter's account is deleted (the issue stays). */
+  reporterId: string | null;
   assigneeId?: string | null;
-  reporter?: IssueUser;
+  reporter?: IssueUser | null;
   assignee?: IssueUser | null;
   /** List and detail routes: the issue's labels, alphabetically. */
   labels?: IssueLabelRef[];

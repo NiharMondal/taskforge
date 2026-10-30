@@ -51,6 +51,18 @@ describe("Tenancy (e2e)", () => {
     password: "secret123",
   };
 
+  /** Sign up in the account deletion tests only. */
+  const gina = {
+    name: "Gina",
+    email: `gina-${run}@e2e.test`,
+    password: "secret123",
+  };
+  const hank = {
+    name: "Hank",
+    email: `hank-${run}@e2e.test`,
+    password: "secret123",
+  };
+
   /** A Google-only account, created directly, for the password reset tests. */
   const frank = { name: "Frank", email: `frank-${run}@e2e.test` };
 
@@ -198,6 +210,8 @@ describe("Tenancy (e2e)", () => {
       dave.email,
       erin.email,
       frank.email,
+      gina.email,
+      hank.email,
     ];
     await prisma.user.deleteMany({ where: { email: { in: emails } } });
     await prisma.pendingRegistration.deleteMany({
@@ -1756,6 +1770,183 @@ describe("Tenancy (e2e)", () => {
         .delete(`${workflow(lab)}/statuses/${ids.Done}`)
         .set(as(aliceToken, aliceWs))
         .expect(409);
+    });
+  });
+
+  describe("deleting an account", () => {
+    let ginaToken: string;
+    let ginaWs: string;
+    let hankToken: string;
+    let hankWs: string;
+    let hankId: string;
+    let sharedIssue: string;
+    let hankComment: string;
+
+    beforeAll(async () => {
+      ({ token: ginaToken, workspaceId: ginaWs } = await signUp(gina));
+      ({ token: hankToken, workspaceId: hankWs } = await signUp(hank));
+      hankId = (
+        await prisma.user.findUniqueOrThrow({ where: { email: hank.email } })
+      ).id;
+
+      await api()
+        .post("/api/v1/invitations")
+        .set(as(ginaToken, ginaWs))
+        .send({ email: hank.email, role: "MEMBER" })
+        .expect(201);
+      const { token } = await prisma.invitation.findFirstOrThrow({
+        where: { workspaceId: ginaWs, email: hank.email },
+      });
+      await api()
+        .post("/api/v1/invitations/accept")
+        .set(as(hankToken))
+        .send({ token })
+        .expect(201);
+
+      const project = data<{ id: string }>(
+        await api()
+          .post("/api/v1/projects")
+          .set(as(ginaToken, ginaWs))
+          .send({ name: "Shared" })
+          .expect(201),
+      );
+      sharedIssue = data<{ id: string }>(
+        await api()
+          .post(`/api/v1/projects/${project.id}/issues`)
+          .set(as(hankToken, ginaWs))
+          .send({ title: "Hank's report" })
+          .expect(201),
+      ).id;
+      hankComment = data<{ id: string }>(
+        await api()
+          .post(`/api/v1/projects/${project.id}/issues/${sharedIssue}/comments`)
+          .set(as(hankToken, ginaWs))
+          .send({ content: "<p>Found it on Tuesday</p>" })
+          .expect(201),
+      ).id;
+    });
+
+    it("exports the caller's profile, memberships, issues and comments", async () => {
+      type Export = {
+        profile: { email: string; signInMethods: { provider: string }[] };
+        memberships: { workspace: { id: string } }[];
+        issues: { id: string; reportedByYou: boolean }[];
+        comments: { id: string }[];
+      };
+      const exported = data<Export>(
+        await api()
+          .get("/api/v1/users/me/export")
+          .set(as(hankToken))
+          .expect(200),
+      );
+
+      expect(exported.profile.email).toBe(hank.email);
+      expect(exported.profile.signInMethods).toEqual([
+        expect.objectContaining({ provider: "EMAIL" }),
+      ]);
+      expect(JSON.stringify(exported)).not.toContain("$2"); // no bcrypt hash
+      expect(exported.memberships.map((m) => m.workspace.id).sort()).toEqual(
+        [ginaWs, hankWs].sort(),
+      );
+      expect(exported.issues).toEqual([
+        expect.objectContaining({ id: sharedIssue, reportedByYou: true }),
+      ]);
+      expect(exported.comments.map((c) => c.id)).toEqual([hankComment]);
+    });
+
+    it("refuses an owner whose workspace has other members (409), naming it", async () => {
+      const res = await api()
+        .delete("/api/v1/users/me")
+        .set(as(ginaToken))
+        .send({ password: gina.password })
+        .expect(409);
+
+      expect(res.body).toMatchObject({
+        success: false,
+        workspaces: [{ id: ginaWs }],
+      });
+      await expect(
+        prisma.user.count({ where: { email: gina.email } }),
+      ).resolves.toBe(1);
+    });
+
+    it("refuses a wrong password with 400", async () => {
+      await api()
+        .delete("/api/v1/users/me")
+        .set(as(hankToken))
+        .send({ password: "not-my-password" })
+        .expect(400);
+      await expect(prisma.user.count({ where: { id: hankId } })).resolves.toBe(
+        1,
+      );
+    });
+
+    it("deletes the account and its solo workspace, keeping shared issues and comments", async () => {
+      await api()
+        .delete("/api/v1/users/me")
+        .set(as(hankToken))
+        .send({ password: hank.password })
+        .expect(200);
+
+      await expect(prisma.user.count({ where: { id: hankId } })).resolves.toBe(
+        0,
+      );
+      await expect(
+        prisma.workspace.count({ where: { id: hankWs } }),
+      ).resolves.toBe(0);
+      await expect(
+        prisma.membership.count({ where: { userId: hankId } }),
+      ).resolves.toBe(0);
+
+      const issue = await prisma.issue.findUniqueOrThrow({
+        where: { id: sharedIssue },
+      });
+      expect(issue.reporterId).toBeNull();
+      const comment = await prisma.comment.findUniqueOrThrow({
+        where: { id: hankComment },
+      });
+      expect(comment.userId).toBeNull();
+
+      // Gina's audit log says Hank left, though his account is gone.
+      type Row = {
+        action: string;
+        user: unknown;
+        metadata: { member?: { name: string } };
+      };
+      const rows = data<Row[]>(
+        await api()
+          .get("/api/v1/audit-log?entityType=MEMBER")
+          .set(as(ginaToken, ginaWs))
+          .expect(200),
+      );
+      expect(rows[0]).toMatchObject({
+        action: "member.left",
+        user: null,
+        metadata: { member: { name: hank.name } },
+      });
+
+      // His still-unexpired access token reaches nothing.
+      await api().get("/api/v1/users/me").set(as(hankToken)).expect(404);
+      await api()
+        .get("/api/v1/projects")
+        .set(as(hankToken, ginaWs))
+        .expect(403);
+    });
+
+    it("lets the owner delete once nobody else is left", async () => {
+      await api()
+        .delete("/api/v1/users/me")
+        .set(as(ginaToken))
+        .send({ password: gina.password })
+        .expect(200);
+
+      await expect(
+        prisma.workspace.count({ where: { id: ginaWs } }),
+      ).resolves.toBe(0);
+      // The shared issue went with Gina's workspace.
+      await expect(
+        prisma.issue.count({ where: { id: sharedIssue } }),
+      ).resolves.toBe(0);
     });
   });
 });

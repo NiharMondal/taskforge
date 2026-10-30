@@ -1,7 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { getUser, updateProfile } from "../api/profile-api";
-import type { UpdateProfileDto } from "../types/profile-types";
+import {
+	deleteAccount,
+	exportMyData,
+	getUser,
+	updateProfile,
+} from "../api/profile-api";
+import type { DeleteAccountDto, UpdateProfileDto } from "../types/profile-types";
 
 /**
  * Query keys for the current user. Scoped by user id (identity is global, not
@@ -33,5 +38,22 @@ export function useUpdateProfile() {
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: profileKeys.all });
 		},
+	});
+}
+
+/**
+ * `DELETE /users/me`. Nothing to invalidate: the caller signs out, which
+ * leaves every cached query behind.
+ */
+export function useDeleteAccount() {
+	return useMutation({
+		mutationFn: (dto: DeleteAccountDto) => deleteAccount(dto),
+	});
+}
+
+/** `GET /users/me/export`, run on demand and never cached: each download is fresh. */
+export function useExportMyData() {
+	return useMutation({
+		mutationFn: async () => (await exportMyData()).data,
 	});
 }

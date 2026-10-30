@@ -26,7 +26,7 @@ The backend lives alongside this app at `../backend/` (see the root `CLAUDE.md`)
 - `.claude/AI_GUIDE.md` — project-level architectural rules (workspace scoping, optimistic updates, no monolithic components).
 - `.claude/FORM_GUIDE.md` — the canonical form pattern with a worked example.
 - `.claude/migrations/` — historical schema-change notes from the two-repo era (all applied).
-- `spec/` — feature specs written before implementation (`auth.md`, `layout.md`, `projects.md`, `cloudinary.md`, `sprint-on-create-issue.md`, `audit-log.md`). These document backend contracts and intended UX; consult the relevant one before changing a feature.
+- `spec/` — feature specs written before implementation (`auth.md`, `layout.md`, `projects.md`, `cloudinary.md`, `sprint-on-create-issue.md`, `audit-log.md`, `account.md`). These document backend contracts and intended UX; consult the relevant one before changing a feature.
 
 Never invent an API shape. If a contract is unclear, ask rather than guess.
 
@@ -175,6 +175,7 @@ Issue descriptions and comments are stored as HTML and the backend does not sani
 - The proxy at `src/proxy.ts` is an optimistic UX guard only; the `(dashboard)` server layout re-checks the session, and the backend is the real security boundary.
 - Settings → Profile also has `ChangePasswordCard` (`PATCH /auth/password`, only when `GET /users/me` says `hasPassword`; a Google-only account gets "Email me a link" to set one). Success ends every backend session, so it signs out to `/login?passwordChanged=1`, where the login form shows a notice.
 - "Forgot password?" on the login form leads to `/forgot-password`, which emails a link to `/reset-password?token=…`; setting the password there signs out to `/login?passwordReset=1`. Neither page is in `AUTH_ROUTES`, so a signed-in Google-only user can use them (`spec/auth.md`).
+- Settings → Profile ends with `DownloadDataCard` (`GET /users/me/export`, saved as a JSON file) and `DeleteAccountCard` (`DELETE /users/me`: type the email, plus the password when `hasPassword`; signs out to `/login?accountDeleted=1`; a 409 names the workspaces to transfer or delete first) — `spec/account.md`. A deleted user's issues and comments stay, so `Issue.reporterId`/`reporter`, `IssueComment.userId`/`user` and a `comment.deleted` row's `author` may be `null`: render them as `DELETED_USER_NAME` ("Deleted user", `src/types/common.ts`).
 - Profile edits call `useSession().update()`, which the `jwt` callback mirrors into `token.name`/`token.picture` so the header updates without re-login.
 
 ### Providers

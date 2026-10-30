@@ -27,7 +27,7 @@ Index: `@@index([workspaceId, entityType, entityId, createdAt])` serves the time
 | --- | --- | --- |
 | `issue.created` | An issue (or sub-issue) is created | `null` |
 | `issue.updated` | A `PATCH` changes at least one tracked field | `{ changes: IssueChange[] }` |
-| `comment.deleted` | Someone deletes **another person's** comment (moderation) | `{ author: { id, name } }` |
+| `comment.deleted` | Someone deletes **another person's** comment (moderation) | `{ author: { id, name } }`, or `{ author: null }` for a deleted user's comment |
 
 Not recorded:
 - A save that changes nothing tracked. A board reorder within a lane only changes `rank`, so it writes no row. A status change from a drag does.

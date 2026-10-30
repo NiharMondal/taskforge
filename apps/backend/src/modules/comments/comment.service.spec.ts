@@ -215,6 +215,37 @@ describe("CommentService", () => {
       });
     });
 
+    it("records a deleted user's comment with a null author", async () => {
+      prisma.comment.findFirst.mockResolvedValue({
+        id: commentId,
+        issueId,
+        userId: null,
+        user: null,
+      });
+      await remove(as(WorkspaceRole.ADMIN));
+
+      expect(prisma.auditLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          action: "comment.deleted",
+          metadata: { author: null },
+        }) as unknown,
+      });
+    });
+
+    it("refuses a MEMBER deleting a deleted user's comment", async () => {
+      prisma.comment.findFirst.mockResolvedValue({
+        id: commentId,
+        issueId,
+        userId: null,
+        user: null,
+      });
+
+      await expect(remove(as(WorkspaceRole.MEMBER))).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+      expect(prisma.comment.delete).not.toHaveBeenCalled();
+    });
+
     it("doesn't record an author deleting their own comment", async () => {
       author = me;
       await remove(as(WorkspaceRole.ADMIN));

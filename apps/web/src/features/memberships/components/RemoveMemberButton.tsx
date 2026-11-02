@@ -2,7 +2,7 @@
 
 import { Button, toast } from "@heroui/react";
 import { useBoolean } from "ahooks";
-import { Trash2 } from "lucide-react";
+import { Trash } from "lucide-react";
 
 import MyModal from "@/components/ui/my-modal";
 import { getApiErrorMessage } from "@/lib/api-error";
@@ -50,7 +50,7 @@ export default function RemoveMemberButton({ workspaceId, member }: Props) {
 				aria-label={`Remove ${memberName}`}
 				onClick={open}
 			>
-				<Trash2 className="size-4" />
+				<Trash className="size-4" />
 			</Button>
 
 			<MyModal

@@ -143,7 +143,7 @@ export function DetailItem({
 	return (
 		<div className="flex min-w-0 flex-col gap-0.5">
 			<dt className="text-xs text-muted">{label}</dt>
-			<dd className="min-w-0 text-sm break-words">{children}</dd>
+			<dd className="min-w-0 text-sm wrap-break-word">{children}</dd>
 		</div>
 	);
 }

@@ -13,7 +13,7 @@ import {
 	toast,
 } from "@heroui/react";
 import { useBoolean } from "ahooks";
-import { Trash2 } from "lucide-react";
+import { Trash } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { useState } from "react";
 
@@ -70,7 +70,7 @@ export default function DeleteAccountCard({
 			</CardHeader>
 			<CardContent>
 				<Button variant="danger" className="self-start" onClick={open}>
-					<Trash2 className="size-4" />
+					<Trash className="size-4" />
 					Delete account
 				</Button>
 

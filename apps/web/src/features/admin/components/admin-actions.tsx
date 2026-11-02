@@ -14,7 +14,7 @@ import {
 	CardTitle,
 	toast,
 } from "@heroui/react";
-import { Ban, LogOut, RotateCcw, Trash2 } from "lucide-react";
+import { Ban, LogOut, RotateCcw, Trash } from "lucide-react";
 
 import { getApiErrorMessage } from "@/lib/api-error";
 import { formatDate } from "@/util/format-date";
@@ -119,7 +119,7 @@ export function AdminUserActions({ user }: { user: AdminUserDetail }) {
 							Sign out everywhere
 						</Button>
 						<Button variant="danger" onPress={() => setOpen("delete")}>
-							<Trash2 className="size-4" aria-hidden />
+							<Trash className="size-4" aria-hidden />
 							Delete account
 						</Button>
 					</div>
@@ -255,7 +255,7 @@ export function AdminWorkspaceActions({
 						{isSuspended ? "Lift suspension" : "Suspend workspace"}
 					</Button>
 					<Button variant="danger" onPress={() => setOpen("delete")}>
-						<Trash2 className="size-4" aria-hidden />
+						<Trash className="size-4" aria-hidden />
 						Delete workspace
 					</Button>
 				</div>

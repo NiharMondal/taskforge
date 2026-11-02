@@ -12,7 +12,7 @@ import {
 	Spinner,
 	toast,
 } from "@heroui/react";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Pencil, Plus, Trash } from "lucide-react";
 
 import ConfirmModal from "@/components/ui/confirm-modal";
 import ErrorAlert from "@/components/ui/error-alert";
@@ -162,7 +162,7 @@ export default function LabelsSettings() {
 											aria-label={`Delete ${label.name}`}
 											onPress={() => setDialog({ kind: "delete", label })}
 										>
-											<Trash2 className="size-3.5" />
+											<Trash className="size-3.5" />
 										</Button>
 									</div>
 								)}

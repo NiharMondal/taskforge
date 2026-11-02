@@ -38,8 +38,19 @@ describe("PlatformRoleGuard", () => {
     await expect(guard.canActivate(contextFor(asUser))).resolves.toBe(true);
     expect(findUnique).toHaveBeenCalledWith({
       where: { id: "user-1" },
-      select: { platformRole: true },
+      select: { platformRole: true, suspendedAt: true },
     });
+  });
+
+  it("403s suspended staff, whose access token may still be valid", async () => {
+    findUnique.mockResolvedValue({
+      platformRole: PlatformRole.ADMIN,
+      suspendedAt: new Date(),
+    });
+
+    await expect(guard.canActivate(contextFor(asUser))).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
   });
 
   it("403s a user without a platform role", async () => {

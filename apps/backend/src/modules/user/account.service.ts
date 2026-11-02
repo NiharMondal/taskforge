@@ -15,23 +15,55 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import type { Prisma } from "generated/prisma/client";
 import { AuthProvider, WorkspaceRole } from "generated/prisma/enums";
 import { DeleteAccountDto } from "./dto/delete-account.dto";
-import { accountDeletedEmail } from "./user-emails";
+import { accountDeletedByStaffEmail, accountDeletedEmail } from "./user-emails";
 
-type WorkspaceRef = { id: string; name: string };
+export type WorkspaceRef = { id: string; name: string };
 
-/** 409: the caller owns workspaces other people still use. */
-const ownsSharedWorkspaces = (workspaces: WorkspaceRef[]) =>
-  new ConflictException({
+/** Who is deleting the account: its owner, or platform staff. */
+type Deleter = "self" | "staff";
+
+/** 409: the account owns workspaces other people still use. */
+const ownsSharedWorkspaces = (workspaces: WorkspaceRef[], by: Deleter) => {
+  const list = workspaces.map((w) => w.name).join(", ");
+  const some = workspaces.length === 1 ? "a workspace" : "workspaces";
+  return new ConflictException({
     statusCode: 409,
-    message: `You own ${workspaces.length === 1 ? "a workspace" : "workspaces"} other people use: ${workspaces
-      .map((w) => w.name)
-      .join(
-        ", ",
-      )}. Transfer ownership (Settings → General) or delete them first.`,
+    message:
+      by === "self"
+        ? `You own ${some} other people use: ${list}. Transfer ownership (Settings → General) or delete them first.`
+        : `This user owns ${some} other people use: ${list}. Delete ${workspaces.length === 1 ? "it" : "them"} first, or have the owner transfer ownership.`,
     workspaces,
   });
+};
+
+/** What deleting an account reads first. */
+const DELETION_SELECT = {
+  id: true,
+  name: true,
+  email: true,
+  avatarPublicId: true,
+  auths: {
+    where: { provider: AuthProvider.EMAIL },
+    select: { password: true },
+  },
+  memberships: {
+    select: {
+      workspaceId: true,
+      role: true,
+      assignedRole: { select: { id: true, name: true } },
+      workspace: {
+        select: { name: true, _count: { select: { memberships: true } } },
+      },
+    },
+  },
+} as const satisfies Prisma.UserSelect;
+
+type UserForDeletion = Prisma.UserGetPayload<{
+  select: typeof DELETION_SELECT;
+}>;
 
 /**
  * Leaving the product (`spec/user-spec.md`): deleting your own account and
@@ -59,33 +91,48 @@ export class AccountService {
    * still names them).
    */
   async deleteAccount(userId: string, dto: DeleteAccountDto) {
+    const user = await this.findForDeletion(userId);
+    await this.assertConfirmed(user, dto);
+    await this.remove(user, "self");
+  }
+
+  /**
+   * Platform staff delete an account (`DELETE /admin/users/:id`): the same as
+   * `deleteAccount` — still refused (409) while it owns a workspace other
+   * people use — without the owner's confirmation. `record` runs in the
+   * deleting transaction, with the solo workspaces being deleted, so the
+   * audit row commits with the deletion or not at all. The email says staff
+   * did it.
+   */
+  async deleteAccountAsStaff(
+    userId: string,
+    record: (
+      tx: Prisma.TransactionClient,
+      deletedWorkspaces: WorkspaceRef[],
+    ) => Promise<unknown>,
+  ) {
+    const user = await this.findForDeletion(userId);
+    await this.remove(user, "staff", record);
+  }
+
+  private async findForDeletion(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        avatarPublicId: true,
-        auths: {
-          where: { provider: AuthProvider.EMAIL },
-          select: { password: true },
-        },
-        memberships: {
-          select: {
-            workspaceId: true,
-            role: true,
-            assignedRole: { select: { id: true, name: true } },
-            workspace: {
-              select: { name: true, _count: { select: { memberships: true } } },
-            },
-          },
-        },
-      },
+      select: DELETION_SELECT,
     });
     if (!user) throw new NotFoundException("User not found");
+    return user;
+  }
 
-    await this.assertConfirmed(user, dto);
-
+  private async remove(
+    user: UserForDeletion,
+    by: Deleter,
+    record?: (
+      tx: Prisma.TransactionClient,
+      deletedWorkspaces: WorkspaceRef[],
+    ) => Promise<unknown>,
+  ) {
+    const userId = user.id;
     // `role` is kept in step with the Role row for the OWNER, who is never a
     // custom role (transfer-ownership writes both).
     const owned = user.memberships.filter(
@@ -96,6 +143,7 @@ export class AccountService {
     if (sharedOwned.length) {
       throw ownsSharedWorkspaces(
         sharedOwned.map((m) => ({ id: m.workspaceId, name: m.workspace.name })),
+        by,
       );
     }
 
@@ -115,7 +163,10 @@ export class AccountService {
           distinct: ["workspaceId"],
         });
         if (joined.length) {
-          throw ownsSharedWorkspaces(joined.map((m) => m.workspace));
+          throw ownsSharedWorkspaces(
+            joined.map((m) => m.workspace),
+            by,
+          );
         }
         await tx.workspace.deleteMany({ where: { id: { in: soloIds } } });
       }
@@ -133,16 +184,19 @@ export class AccountService {
         });
       }
 
+      await record?.(
+        tx,
+        owned.map((m) => ({ id: m.workspaceId, name: m.workspace.name })),
+      );
       await tx.user.delete({ where: { id: userId } });
     });
 
     await this.cloudinary.delete(user.avatarPublicId);
+    const email =
+      by === "self" ? accountDeletedEmail : accountDeletedByStaffEmail;
     this.mail.sendInBackground({
       to: user.email,
-      ...accountDeletedEmail({
-        name: user.name,
-        url: appUrl(this.config, "/"),
-      }),
+      ...email({ name: user.name, url: appUrl(this.config, "/") }),
     });
     // One fewer seat in each workspace they left (never throws).
     await Promise.all(left.map((m) => this.billing.syncSeats(m.workspaceId)));

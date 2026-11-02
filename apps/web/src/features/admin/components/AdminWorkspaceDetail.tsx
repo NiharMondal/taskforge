@@ -21,9 +21,15 @@ import { formatDate } from "@/util/format-date";
 import { initialsOf } from "@/util/initials";
 
 import { useAdminWorkspace } from "../hooks/use-admin";
+import { AdminWorkspaceActions, SuspensionBanner } from "./admin-actions";
+import { AdminHistory } from "./AdminAuditLog";
 import { stripeDashboardUrl } from "../lib/stripe-dashboard";
 import type { AdminWorkspaceDetail as Workspace } from "../types/admin-types";
-import { PlanChip, SubscriptionStatusChip } from "./admin-chips";
+import {
+	PlanChip,
+	SubscriptionStatusChip,
+	SuspendedChip,
+} from "./admin-chips";
 import {
 	AdminLoading,
 	AdminQueryError,
@@ -62,7 +68,10 @@ export default function AdminWorkspaceDetail({
 			<div className="flex flex-wrap items-center gap-3">
 				<h1 className="text-lg font-semibold">{workspace.name}</h1>
 				<PlanChip plan={workspace.plan} />
+				{workspace.suspendedAt && <SuspendedChip />}
 			</div>
+
+			<SuspensionBanner suspension={workspace} what="workspace" />
 
 			<Card>
 				<CardContent>
@@ -97,6 +106,8 @@ export default function AdminWorkspaceDetail({
 			<SubscriptionCard workspace={workspace} />
 			<MembersCard workspace={workspace} />
 			<ProjectsCard workspace={workspace} />
+			<AdminWorkspaceActions workspace={workspace} />
+			<AdminHistory targetType="WORKSPACE" targetId={workspace.id} />
 		</div>
 	);
 }

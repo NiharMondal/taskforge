@@ -1,3 +1,4 @@
+import { withoutStaffNote } from "@/common/utils/staff-note";
 import { CloudinaryService } from "@/cloudinary/cloudinary.service";
 import { UpdateUserDto } from "@/modules/user/dto/update-user.dto";
 import { PrismaService } from "@/prisma/prisma.service";
@@ -49,7 +50,7 @@ export class UserService {
     }
 
     const { auths, ...profile } = user;
-    return { ...profile, hasPassword: auths.length > 0 };
+    return { ...withoutStaffNote(profile), hasPassword: auths.length > 0 };
   }
 
   async findByEmail(email: string) {
@@ -58,7 +59,12 @@ export class UserService {
     });
   }
 
+  /** Name and avatar; the saved row, without the staff's suspension note. */
   async update(id: string, dto: UpdateUserDto) {
+    return withoutStaffNote(await this.save(id, dto));
+  }
+
+  private async save(id: string, dto: UpdateUserDto) {
     const existing = await this.findOne(id);
 
     const { avatarPublicId } = dto;

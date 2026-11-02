@@ -33,6 +33,7 @@ describe("PermissionsGuard", () => {
       role: WorkspaceRole.MEMBER,
       roleId: null,
       assignedRole: null,
+      workspace: { suspendedAt: null },
     });
     guard = new PermissionsGuard(
       { getAllAndOverride: () => required } as unknown as Reflector,

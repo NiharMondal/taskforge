@@ -60,7 +60,7 @@ app/
     settings/       — members, roles, general, labels, billing, audit-log (`audit:read` only), profile
     issues/         — redirect → /projects (no workspace-wide issues endpoint)
   (admin)/admin/    — platform admin console (platform staff only; own server layout, no workspace)
-    workspaces/[workspaceId]/, users/[userId]/
+    workspaces/[workspaceId]/, users/[userId]/, audit-log/ (ADMIN only)
   invitations/accept/
 ```
 
@@ -151,10 +151,23 @@ platform staff (`User.platformRole`, from `GET /users/me`), granted only by the 
 `(dashboard)` (no `WorkspaceProvider`): it calls `auth()`, reads `/users/me` with the session's
 access token (`fetchPlatformRole`, plain `fetch`) and calls `notFound()` without a role. The sidebar's
 `AdminNavLink` shows "Admin" only to staff. Both are UX: the backend checks the role on every
-request. `adminKeys` carry **no workspace id** (the data is platform-wide), and the admin API
+request. ADMIN (not SUPPORT) gets action cards on the detail pages (suspend/lift, sign out
+everywhere, delete — each with a required reason, `AdminActionDialog`) and the Audit log tab;
+`useAdminViewer()` says which (`canAct`), and hides actions on yourself and other admins. `adminKeys` carry **no workspace id** (the data is platform-wide), and the admin API
 functions don't use `inWorkspace`. List state (`?search=&plan=&page=`) lives in the URL: the server
 page parses it (`parseAdminListParams`) and the client list navigates (`useAdminListNavigation`), so
 "back" keeps it. Lists fetch one page at a time, like the audit log.
+
+### Suspensions
+
+Platform staff can suspend an account or a workspace (`spec/admin.md`). A suspended account's
+sign-in shows `SUSPENDED_MESSAGE` (`features/auth/constants.ts`; code `account_suspended` from the
+Credentials and verification providers, `/login?suspended=1` from Google's `signIn` callback and from
+a session that ends with `session.error === "AccountSuspended"`). A suspended workspace stays in
+`GET /workspaces` with `suspended: true`; `SuspendedWorkspaceGate` replaces the dashboard's pages
+with a notice and the user's other workspaces, and `WorkspaceProvider` refetches the list on any
+403 `WORKSPACE_SUSPENDED` (`apiErrorCode` in `lib/api-error.ts`). The staff's reason never reaches
+the app.
 
 ### Billing and plan limits
 

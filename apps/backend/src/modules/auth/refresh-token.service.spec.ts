@@ -181,12 +181,30 @@ describe("RefreshTokenService.revoke", () => {
 });
 
 describe("RefreshTokenService.revokeAllForUser", () => {
-  it("revokes every live token of the user, through the given client", async () => {
-    const tx = { refreshToken: { updateMany: jest.fn() } };
+  it("revokes every token of the user, through the given client, and counts the usable ones", async () => {
+    const tx = {
+      refreshToken: {
+        updateMany: jest
+          .fn()
+          .mockResolvedValueOnce({ count: 2 })
+          .mockResolvedValueOnce({ count: 1 }),
+      },
+    };
 
-    await service.revokeAllForUser("user-1", tx as never);
+    await expect(service.revokeAllForUser("user-1", tx as never)).resolves.toBe(
+      2,
+    );
 
-    expect(tx.refreshToken.updateMany).toHaveBeenCalledWith({
+    expect(tx.refreshToken.updateMany).toHaveBeenNthCalledWith(1, {
+      where: {
+        userId: "user-1",
+        revokedAt: null,
+        replacedAt: null,
+        expiresAt: { gt: expect.any(Date) as Date },
+      },
+      data: { revokedAt: expect.any(Date) as Date },
+    });
+    expect(tx.refreshToken.updateMany).toHaveBeenNthCalledWith(2, {
       where: { userId: "user-1", revokedAt: null },
       data: { revokedAt: expect.any(Date) as Date },
     });

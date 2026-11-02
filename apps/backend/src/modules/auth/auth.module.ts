@@ -36,6 +36,7 @@ import { RefreshTokenService } from "./refresh-token.service";
     GoogleTokenVerifier,
     RefreshTokenService,
   ],
-  exports: [AuthService],
+  // RefreshTokenService: the admin console ends a user's sessions.
+  exports: [AuthService, RefreshTokenService],
 })
 export class AuthModule {}

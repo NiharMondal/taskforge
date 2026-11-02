@@ -169,6 +169,11 @@ model User {
   // Null for everyone but the people who run the product. Read from the
   // database on every admin request (PlatformRoleGuard), never put in the JWT.
   platformRole    PlatformRole?
+  // Set by platform staff (`PATCH /admin/users/:id`): the account can't sign
+  // in, verify an email or refresh a session. The reason is a staff note,
+  // returned only by /admin routes. Both are cleared on unsuspend.
+  suspendedAt     DateTime?
+  suspendedReason String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -193,6 +198,11 @@ model Workspace {
   name        String
   slug        String  @default(cuid())
   description String?
+  // Set by platform staff (`PATCH /admin/workspaces/:id`): every
+  // workspace-scoped request is a 403 WORKSPACE_SUSPENDED. Billing is left to
+  // Stripe. The reason is a staff note, returned only by /admin routes.
+  suspendedAt     DateTime?
+  suspendedReason String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

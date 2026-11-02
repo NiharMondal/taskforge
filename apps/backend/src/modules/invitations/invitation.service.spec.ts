@@ -1,3 +1,4 @@
+import { WorkspaceSuspendedException } from "@/common/exceptions/suspended.exception";
 import { accessAs } from "@/common/permissions/test-access";
 import { PrismaService } from "@/prisma/prisma.service";
 import {
@@ -469,6 +470,7 @@ describe("InvitationService", () => {
       role: WorkspaceRole.MEMBER,
       status: InvitationStatus.PENDING,
       expiresAt: new Date(Date.now() + DAY),
+      workspace: { suspendedAt: null },
       ...overrides,
     });
 
@@ -616,6 +618,17 @@ describe("InvitationService", () => {
       expect(prisma.membership.create).not.toHaveBeenCalled();
     });
 
+    it("refuses to join a suspended workspace, writing nothing", async () => {
+      prisma.invitation.findUnique.mockResolvedValue(
+        pendingInvite({ workspace: { suspendedAt: new Date() } }),
+      );
+
+      await expect(
+        service.acceptInvitation(token, invitee.userId),
+      ).rejects.toBeInstanceOf(WorkspaceSuspendedException);
+      expect(prisma.membership.create).not.toHaveBeenCalled();
+    });
+
     it("expires and refuses an out-of-date invitation", async () => {
       prisma.invitation.findUnique.mockResolvedValue(
         pendingInvite({ expiresAt: new Date(Date.now() - DAY) }),
@@ -670,6 +683,7 @@ describe("InvitationService", () => {
         roleId: "role-triage",
         status: InvitationStatus.PENDING,
         expiresAt: new Date(Date.now() + DAY),
+        workspace: { suspendedAt: null },
       });
       prisma.user.findUnique.mockResolvedValue({
         id: invitee.userId,

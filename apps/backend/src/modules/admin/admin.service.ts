@@ -70,11 +70,15 @@ const ROLE_SUMMARY_SELECT = {
   systemKey: true,
 } as const satisfies Prisma.RoleSelect;
 
+/** The staff's suspension, shown only on /admin. */
+const SUSPENSION_SELECT = { suspendedAt: true, suspendedReason: true } as const;
+
 const WORKSPACE_ROW_SELECT = {
   id: true,
   name: true,
   slug: true,
   createdAt: true,
+  ...SUSPENSION_SELECT,
   subscription: {
     select: {
       plan: true,
@@ -104,6 +108,7 @@ const USER_ROW_SELECT = {
   emailVerifiedAt: true,
   platformRole: true,
   createdAt: true,
+  ...SUSPENSION_SELECT,
   // The provider only: never the password hash or the provider's account id.
   auths: { select: { provider: true }, orderBy: { createdAt: "asc" } },
   _count: { select: { memberships: true } },
@@ -128,19 +133,24 @@ export class AdminService {
       createdAt: { gte: new Date(now - days * DAY_MS) },
     });
 
+    const suspended = { suspendedAt: { not: null } };
     const [
       users,
       newLast7Days,
       newLast30Days,
       platformStaff,
+      suspendedUsers,
       workspaces,
+      suspendedWorkspaces,
       groups,
     ] = await Promise.all([
       this.prisma.user.count(),
       this.prisma.user.count({ where: since(7) }),
       this.prisma.user.count({ where: since(30) }),
       this.prisma.user.count({ where: { platformRole: { not: null } } }),
+      this.prisma.user.count({ where: suspended }),
       this.prisma.workspace.count(),
+      this.prisma.workspace.count({ where: suspended }),
       this.prisma.subscription.groupBy({
         by: ["plan", "status"],
         _count: { _all: true },
@@ -167,8 +177,18 @@ export class AdminService {
     byPlan.FREE += workspaces - withSubscription;
 
     return {
-      users: { total: users, newLast7Days, newLast30Days, platformStaff },
-      workspaces: { total: workspaces, byPlan },
+      users: {
+        total: users,
+        newLast7Days,
+        newLast30Days,
+        platformStaff,
+        suspended: suspendedUsers,
+      },
+      workspaces: {
+        total: workspaces,
+        byPlan,
+        suspended: suspendedWorkspaces,
+      },
       // `noStatus`: a checkout was started (a Stripe customer exists) but
       // nothing was subscribed.
       subscriptions: { total: withSubscription, byStatus, noStatus },
@@ -236,6 +256,7 @@ export class AdminService {
           description: true,
           createdAt: true,
           updatedAt: true,
+          ...SUSPENSION_SELECT,
           subscription: {
             select: {
               plan: true,
@@ -382,6 +403,7 @@ export class AdminService {
           platformRole: true,
           createdAt: true,
           updatedAt: true,
+          ...SUSPENSION_SELECT,
           auths: {
             select: { provider: true, createdAt: true },
             orderBy: { createdAt: "asc" },

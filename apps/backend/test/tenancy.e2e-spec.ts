@@ -2,6 +2,7 @@ import { AppModule } from "@/app.module";
 import { configureApp } from "@/app.setup";
 import { MailService } from "@/modules/mail/mail.service";
 import { setPlatformRole } from "@/modules/admin/set-platform-role";
+import { RefreshTokenService } from "@/modules/auth/refresh-token.service";
 import { PrismaService } from "@/prisma/prisma.service";
 import { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
@@ -68,6 +69,13 @@ describe("Tenancy (e2e)", () => {
   const ivy = {
     name: "Ivy",
     email: `ivy-${run}@e2e.test`,
+    password: "secret123",
+  };
+
+  /** The target of the platform admin actions. */
+  const jack = {
+    name: "Jack",
+    email: `jack-${run}@e2e.test`,
     password: "secret123",
   };
 
@@ -221,6 +229,7 @@ describe("Tenancy (e2e)", () => {
       gina.email,
       hank.email,
       ivy.email,
+      jack.email,
     ];
     await prisma.user.deleteMany({ where: { email: { in: emails } } });
     await prisma.pendingRegistration.deleteMany({
@@ -1976,7 +1985,9 @@ describe("Tenancy (e2e)", () => {
 
     afterAll(async () => {
       // The script's rows have no actor, so they don't go with Ivy's account.
-      await prisma.platformAuditLog.deleteMany({ where: { targetId: ivyId } });
+      await prisma.platformAuditLog.deleteMany({
+        where: { OR: [{ targetId: ivyId }, { actorId: ivyId }] },
+      });
     });
 
     const routes = () => [
@@ -2154,6 +2165,258 @@ describe("Tenancy (e2e)", () => {
         await api().get(route).set(as(ivyToken)).expect(200);
       }
       await setPlatformRole(prisma, ivy.email, null);
+    });
+
+    describe("actions", () => {
+      let jackId: string;
+      let jackToken: string;
+      let jackRefresh: string;
+      let jackWs: string;
+      const reason = { reason: "e2e: chargeback investigation" };
+
+      /** Platform audit rows about `targetId`, oldest first. */
+      const auditOf = (targetId: string) =>
+        prisma.platformAuditLog.findMany({
+          where: { targetId, actorId: ivyId },
+          orderBy: { createdAt: "asc" },
+        });
+
+      beforeAll(async () => {
+        await setPlatformRole(prisma, ivy.email, "ADMIN");
+        ({
+          token: jackToken,
+          refreshToken: jackRefresh,
+          workspaceId: jackWs,
+        } = await signUp(jack));
+        jackId = (
+          await prisma.user.findUniqueOrThrow({ where: { email: jack.email } })
+        ).id;
+      });
+
+      afterAll(() => setPlatformRole(prisma, ivy.email, null));
+
+      it("refuses SUPPORT, yourself and other admins", async () => {
+        await setPlatformRole(prisma, ivy.email, "SUPPORT");
+        await api()
+          .patch(`/api/v1/admin/users/${jackId}`)
+          .set(as(ivyToken))
+          .send({ suspended: true, ...reason })
+          .expect(403);
+        await api()
+          .get("/api/v1/admin/audit-log")
+          .set(as(ivyToken))
+          .expect(403);
+        await setPlatformRole(prisma, ivy.email, "ADMIN");
+
+        await api()
+          .patch(`/api/v1/admin/users/${ivyId}`)
+          .set(as(ivyToken))
+          .send({ suspended: true, ...reason })
+          .expect(403);
+
+        await setPlatformRole(prisma, carol.email, "ADMIN");
+        const carolId = (
+          await prisma.user.findUniqueOrThrow({ where: { email: carol.email } })
+        ).id;
+        await api()
+          .delete(`/api/v1/admin/users/${carolId}`)
+          .set(as(ivyToken))
+          .send(reason)
+          .expect(403);
+        await setPlatformRole(prisma, carol.email, null);
+        await prisma.platformAuditLog.deleteMany({
+          where: { targetId: carolId },
+        });
+
+        await expect(auditOf(jackId)).resolves.toEqual([]);
+        await api()
+          .delete(`/api/v1/admin/users/${jackId}`)
+          .set(as(ivyToken))
+          .send({})
+          .expect(400); // a reason is required
+      });
+
+      it("suspends an account: no sign-in or refresh, then lifts it", async () => {
+        const suspended = data<{ suspendedReason: string | null }>(
+          await api()
+            .patch(`/api/v1/admin/users/${jackId}`)
+            .set(as(ivyToken))
+            .send({ suspended: true, ...reason })
+            .expect(200),
+        );
+        expect(suspended.suspendedReason).toBe(reason.reason);
+
+        const refused = await api()
+          .post("/api/v1/auth/login")
+          .send({ email: jack.email, password: jack.password })
+          .expect(403);
+        expect(refused.body).toMatchObject({
+          success: false,
+          code: "ACCOUNT_SUSPENDED",
+        });
+        expect(JSON.stringify(refused.body)).not.toContain(reason.reason);
+        // (A wrong password still gets the usual 401: unit-tested, since the
+        // auth routes' throttle is nearly spent by this point of the suite.)
+        // Suspending ended every session.
+        await api()
+          .post("/api/v1/auth/refresh")
+          .send({ refreshToken: jackRefresh })
+          .expect(401);
+        // A session that somehow survived it can't be refreshed either.
+        // (Minted directly: the refresh route isn't throttled, login is.)
+        const sessions = app.get(RefreshTokenService);
+        const survivor = await api()
+          .post("/api/v1/auth/refresh")
+          .send({ refreshToken: await sessions.issue(jackId) })
+          .expect(403);
+        expect(survivor.body).toMatchObject({ code: "ACCOUNT_SUSPENDED" });
+        // Suspending twice is a conflict.
+        await api()
+          .patch(`/api/v1/admin/users/${jackId}`)
+          .set(as(ivyToken))
+          .send({ suspended: true, ...reason })
+          .expect(409);
+
+        await api()
+          .patch(`/api/v1/admin/users/${jackId}`)
+          .set(as(ivyToken))
+          .send({ suspended: false, reason: "e2e: resolved" })
+          .expect(200);
+        const refreshed = await api()
+          .post("/api/v1/auth/refresh")
+          .send({ refreshToken: await sessions.issue(jackId) })
+          .expect(200);
+        ({ accessToken: jackToken, refreshToken: jackRefresh } = data<{
+          accessToken: string;
+          refreshToken: string;
+        }>(refreshed));
+
+        const rows = await auditOf(jackId);
+        expect(rows.map((r) => r.action)).toEqual([
+          "user.suspended",
+          "user.unsuspended",
+        ]);
+        expect(rows[0].metadata).toMatchObject({
+          email: jack.email,
+          reason: reason.reason,
+        });
+      });
+
+      it("suspends a workspace: every scoped route 403s, it stays listed, then it's lifted", async () => {
+        await api()
+          .patch(`/api/v1/admin/workspaces/${jackWs}`)
+          .set(as(ivyToken))
+          .send({ suspended: true, ...reason })
+          .expect(200);
+
+        for (const route of ["/projects", "/labels", "/billing", "/roles"]) {
+          const res = await api()
+            .get(`/api/v1${route}`)
+            .set(as(jackToken, jackWs))
+            .expect(403);
+          expect(res.body).toMatchObject({ code: "WORKSPACE_SUSPENDED" });
+        }
+        type Listed = {
+          id: string;
+          suspended: boolean;
+          suspendedReason?: unknown;
+        };
+        const listed = data<Listed[]>(
+          await api().get("/api/v1/workspaces").set(as(jackToken)).expect(200),
+        ).find((w) => w.id === jackWs);
+        expect(listed).toMatchObject({ suspended: true });
+        expect(listed).not.toHaveProperty("suspendedReason");
+
+        await api()
+          .patch(`/api/v1/admin/workspaces/${jackWs}`)
+          .set(as(ivyToken))
+          .send({ suspended: false, reason: "e2e: resolved" })
+          .expect(200);
+        await api()
+          .get("/api/v1/projects")
+          .set(as(jackToken, jackWs))
+          .expect(200);
+
+        await expect(
+          auditOf(jackWs).then((rows) => rows.map((r) => r.action)),
+        ).resolves.toEqual(["workspace.suspended", "workspace.unsuspended"]);
+      });
+
+      it("revokes every session", async () => {
+        const res = await api()
+          .post(`/api/v1/admin/users/${jackId}/revoke-sessions`)
+          .set(as(ivyToken))
+          .send(reason)
+          .expect(200);
+        expect(data<{ revoked: number }>(res).revoked).toBeGreaterThanOrEqual(
+          1,
+        );
+        await api()
+          .post("/api/v1/auth/refresh")
+          .send({ refreshToken: jackRefresh })
+          .expect(401);
+      });
+
+      it("deletes a workspace, recording its owner, and then the account", async () => {
+        const second = data<{ id: string }>(
+          await api()
+            .post("/api/v1/workspaces")
+            .set(as(jackToken))
+            .send({ name: "Jack's second" })
+            .expect(201),
+        ).id;
+        createdWorkspaces.push(second);
+
+        await api()
+          .delete(`/api/v1/admin/workspaces/${second}`)
+          .set(as(ivyToken))
+          .send(reason)
+          .expect(200);
+        await expect(
+          prisma.workspace.count({ where: { id: second } }),
+        ).resolves.toBe(0);
+        const [deleted] = await auditOf(second);
+        expect(deleted).toMatchObject({
+          action: "workspace.deleted",
+          metadata: {
+            name: "Jack's second",
+            owner: { id: jackId, email: jack.email },
+            memberCount: 1,
+          },
+        });
+
+        await api()
+          .delete(`/api/v1/admin/users/${jackId}`)
+          .set(as(ivyToken))
+          .send(reason)
+          .expect(200);
+        await expect(
+          prisma.user.count({ where: { id: jackId } }),
+        ).resolves.toBe(0);
+        // His only other workspace went with him.
+        await expect(
+          prisma.workspace.count({ where: { id: jackWs } }),
+        ).resolves.toBe(0);
+
+        // One row per action, readable through the API.
+        type Row = { action: string; actor: { id: string } | null };
+        const rows = data<Row[]>(
+          await api()
+            .get(`/api/v1/admin/audit-log?targetType=USER&targetId=${jackId}`)
+            .set(as(ivyToken))
+            .expect(200),
+        );
+        expect(rows.map((r) => r.action)).toEqual([
+          "user.deleted",
+          "user.sessions_revoked",
+          "user.unsuspended",
+          "user.suspended",
+        ]);
+        expect(rows.every((r) => r.actor?.id === ivyId)).toBe(true);
+        expect((await auditOf(jackId)).at(-1)?.metadata).toMatchObject({
+          deletedWorkspaces: [{ id: jackWs }],
+        });
+      });
     });
   });
 });

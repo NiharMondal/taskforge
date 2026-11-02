@@ -11,7 +11,11 @@ import { formatDate } from "@/util/format-date";
 import { useAdminWorkspaces } from "../hooks/use-admin";
 import { useAdminListNavigation } from "../hooks/use-admin-list-navigation";
 import type { AdminListParams } from "../lib/list-params";
-import { PlanChip, SubscriptionStatusChip } from "./admin-chips";
+import {
+	PlanChip,
+	SubscriptionStatusChip,
+	SuspendedChip,
+} from "./admin-chips";
 import { AdminLoading, AdminPager, AdminQueryError } from "./admin-states";
 import AdminSearchField from "./AdminSearchField";
 
@@ -67,12 +71,15 @@ export default function AdminWorkspaceList({ params }: { params: AdminListParams
 							{(row) => (
 								<Table.Row id={row.id}>
 									<Table.Cell>
-										<Link
-											href={`/admin/workspaces/${row.id}`}
-											className="font-medium hover:underline"
-										>
-											{row.name}
-										</Link>
+										<span className="flex items-center gap-2">
+											<Link
+												href={`/admin/workspaces/${row.id}`}
+												className="font-medium hover:underline"
+											>
+												{row.name}
+											</Link>
+											{row.suspendedAt && <SuspendedChip />}
+										</span>
 									</Table.Cell>
 									<Table.Cell>
 										{row.owner ? (

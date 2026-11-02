@@ -1,9 +1,9 @@
-import type { SubscriptionPlan } from "@taskforge/shared";
+import {
+	MAX_ADMIN_SEARCH_LENGTH,
+	type SubscriptionPlan,
+} from "@taskforge/shared";
 
 import { isSubscriptionPlan } from "../constants";
-
-/** The longest search the backend accepts (`MAX_ADMIN_SEARCH_LENGTH`). */
-const MAX_SEARCH_LENGTH = 200;
 
 /** An admin list's state, kept in the URL so "back" from a detail page keeps it. */
 export interface AdminListParams {
@@ -23,7 +23,7 @@ const first = (value: string | string[] | undefined) =>
  * (which would 400).
  */
 export function parseAdminListParams(raw: RawSearchParams): AdminListParams {
-	const search = first(raw.search)?.trim().slice(0, MAX_SEARCH_LENGTH);
+	const search = first(raw.search)?.trim().slice(0, MAX_ADMIN_SEARCH_LENGTH);
 	const plan = first(raw.plan);
 	const page = Number(first(raw.page));
 

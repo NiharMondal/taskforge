@@ -281,7 +281,14 @@ re-read the session every 4 minutes (`SessionProvider refetchInterval`), so it r
 A backend `401` on a signed request asks the auth layer for a new token
 (`useSession().update({ refreshAccessToken: true })`, which forces the exchange), retries once,
 and signs the user out if that fails. A refused refresh token sets `session.error =
-"SessionExpired"`, which also signs the user out.
+"SessionExpired"`, which also signs the user out — or `"AccountSuspended"` when the backend answered
+403 `ACCOUNT_SUSPENDED`, which signs out to `/login?suspended=1`.
+
+**Suspended accounts** (`apps/backend/spec/admin-spec.md`): the Credentials and email-verification
+providers turn a 403 `ACCOUNT_SUSPENDED` into the code `account_suspended`, which the login form and
+the verify-email page show as `SUSPENDED_MESSAGE` (`features/auth/constants.ts`). Google can't carry
+a code, so its `profile` returns a user flagged `suspended` and the `signIn` callback (in `auth.ts`)
+redirects to `/login?suspended=1`, where the login form shows the same message as a notice.
 
 A Server Component's `auth()` can't save a renewed cookie, so the backend accepts a just-replaced
 refresh token for 60 seconds instead of treating it as stolen.

@@ -19,6 +19,12 @@ export interface Workspace {
   description?: string | null;
   /** The plan in force now (`GET /workspaces`); a lapsed subscription is FREE. */
   plan?: SubscriptionPlan;
+  /**
+   * Suspended by platform staff (`GET /workspaces`): still listed, but every
+   * workspace-scoped request is a 403 `WORKSPACE_SUSPENDED`.
+   */
+  suspended?: boolean;
+  suspendedAt?: string | null;
 }
 
 /** The user's membership in a workspace, carrying their RBAC role. */

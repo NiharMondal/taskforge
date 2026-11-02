@@ -11,6 +11,7 @@ import {
 import { ConfigService } from "@nestjs/config";
 import { JwtService } from "@nestjs/jwt";
 import { AuthProvider, WorkspaceRole } from "generated/prisma/enums";
+import { AccountSuspendedException } from "@/common/exceptions/suspended.exception";
 import { AuthService } from "./auth.service";
 import { GoogleIdentity, GoogleTokenVerifier } from "./google-token-verifier";
 import { RefreshTokenService } from "./refresh-token.service";
@@ -1089,5 +1090,105 @@ describe("AuthService.resetPassword", () => {
     expect(prisma.auth.upsert).not.toHaveBeenCalled();
     expect(refreshTokens.revokeAllForUser).not.toHaveBeenCalled();
     expect(mail.sendInBackground).not.toHaveBeenCalled();
+  });
+});
+
+describe("suspended accounts (spec/admin-spec.md)", () => {
+  const sam = {
+    id: "user-sam",
+    name: "Sam",
+    email: "sam@example.com",
+    avatarUrl: null,
+    emailVerifiedAt: new Date("2026-10-01"),
+    suspendedAt: new Date("2026-11-01"),
+  };
+  const nothingIssued = () => {
+    expect(jwt.sign).not.toHaveBeenCalled();
+    expect(refreshTokens.issue).not.toHaveBeenCalled();
+  };
+
+  it("refuses the right password with ACCOUNT_SUSPENDED, issuing nothing", async () => {
+    prisma.auth.findFirst.mockResolvedValue({
+      provider: AuthProvider.EMAIL,
+      password: await passwordUtils.hashPassword("secret1"),
+      userId: sam.id,
+      user: sam,
+    });
+
+    const error: unknown = await service
+      .signIn({ email: sam.email, password: "secret1" })
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(AccountSuspendedException);
+    expect((error as AccountSuspendedException).getResponse()).toMatchObject({
+      code: "ACCOUNT_SUSPENDED",
+    });
+    nothingIssued();
+  });
+
+  it("answers a wrong password with the usual 401, so suspension isn't revealed", async () => {
+    prisma.auth.findFirst.mockResolvedValue({
+      provider: AuthProvider.EMAIL,
+      password: await passwordUtils.hashPassword("secret1"),
+      userId: sam.id,
+      user: sam,
+    });
+
+    await expect(
+      service.signIn({ email: sam.email, password: "wrong-one" }),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  it("refuses a Google sign-in to a linked suspended account", async () => {
+    prisma.auth.findUnique.mockResolvedValue({ user: sam });
+
+    await expect(service.googleSignIn({ idToken: "t" })).rejects.toBeInstanceOf(
+      AccountSuspendedException,
+    );
+    nothingIssued();
+  });
+
+  it("doesn't link Google to a suspended account with the same email", async () => {
+    prisma.auth.findUnique.mockResolvedValue(null);
+    prisma.user.findFirst.mockResolvedValue({ ...sam, auths: [] });
+
+    await expect(service.googleSignIn({ idToken: "t" })).rejects.toBeInstanceOf(
+      AccountSuspendedException,
+    );
+    expect(prisma.auth.create).not.toHaveBeenCalled();
+    nothingIssued();
+  });
+
+  it("refuses to refresh a suspended account's session", async () => {
+    refreshTokens.consume.mockResolvedValue({
+      userId: sam.id,
+      familyId: "family-1",
+    });
+    prisma.user.findUnique.mockResolvedValue(sam);
+
+    await expect(service.refresh("old-token")).rejects.toBeInstanceOf(
+      AccountSuspendedException,
+    );
+    nothingIssued();
+  });
+
+  it("refuses a verification link that would take over a suspended account", async () => {
+    const token = "b".repeat(64);
+    prisma.pendingRegistration.findUnique.mockResolvedValue({
+      id: "pending-sam",
+      email: sam.email,
+      name: "Sam",
+      passwordHash: "$2b$12$hash",
+      tokenHash: hashToken(token),
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    prisma.user.findFirst.mockResolvedValue({ ...sam, emailVerifiedAt: null });
+
+    await expect(service.verifyEmail(token)).rejects.toBeInstanceOf(
+      AccountSuspendedException,
+    );
+    expect(prisma.auth.upsert).not.toHaveBeenCalled();
+    expect(refreshTokens.revokeAllForUser).not.toHaveBeenCalled();
+    nothingIssued();
   });
 });

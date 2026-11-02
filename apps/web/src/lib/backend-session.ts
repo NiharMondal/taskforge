@@ -1,4 +1,7 @@
+import { ACCOUNT_SUSPENDED_ERROR_CODE } from "@taskforge/shared";
+
 import type { AuthTokens } from "@/features/auth/types/auth-types";
+import type { SessionEndReason } from "@/types/next-auth";
 
 import { API_URL } from "./api-url";
 
@@ -17,14 +20,22 @@ const post = (path: string, body: unknown) =>
 
 /**
  * Exchange a refresh token for a new pair (the old refresh token stops
- * working). `null` when the backend refuses it — the session is over. Throws
- * when the backend can't be reached, so a blip doesn't end the session.
+ * working). When the backend refuses it the session is over, and this says
+ * why: `AccountSuspended` for a suspended account (403 `ACCOUNT_SUSPENDED`),
+ * else `SessionExpired`. Throws when the backend can't be reached, so a blip
+ * doesn't end the session.
  */
 export async function refreshBackendTokens(
 	refreshToken: string,
-): Promise<AuthTokens | null> {
+): Promise<AuthTokens | SessionEndReason> {
 	const res = await post("/auth/refresh", { refreshToken });
-	if (res.status === 400 || res.status === 401) return null;
+	if (res.status === 400 || res.status === 401) return "SessionExpired";
+	if (res.status === 403) {
+		const body = (await res.json().catch(() => null)) as {
+			code?: unknown;
+		} | null;
+		if (body?.code === ACCOUNT_SUSPENDED_ERROR_CODE) return "AccountSuspended";
+	}
 	if (!res.ok) throw new Error(`Refreshing the session failed: ${res.status}`);
 	const { data } = (await res.json()) as { data: AuthTokens };
 	return data;

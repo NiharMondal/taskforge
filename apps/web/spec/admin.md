@@ -1,8 +1,8 @@
 # Platform admin console
 
-`/admin`: a read-only console for platform staff (`User.platformRole` `ADMIN` or `SUPPORT`) across
-every workspace and account. Backend contract: `apps/backend/spec/admin-spec.md`. Write actions
-(suspend, revoke sessions, delete) arrive with step 12 of `docs/saas-readiness-plan-2026-10-29.md`.
+`/admin`: a console for platform staff (`User.platformRole` `ADMIN` or `SUPPORT`) across every
+workspace and account. SUPPORT reads; ADMIN also suspends, signs users out, deletes, and reads the
+platform audit log. Backend contract: `apps/backend/spec/admin-spec.md`.
 
 ## Who sees it
 
@@ -33,6 +33,7 @@ The `(admin)` route group is deliberately **not** under `(dashboard)`. That grou
 | `/admin/workspaces/[workspaceId]` | Owner, counts, subscription (with links to the Stripe customer and subscription), members with roles, projects with issue and sprint counts. |
 | `/admin/users?search=&page=` | Name, email, platform role, sign-in methods, verified, workspaces, joined. Search by name, email or id. |
 | `/admin/users/[userId]` | Verification, sign-in methods, signed-in sessions, counts, and every workspace with role and plan. |
+| `/admin/audit-log?targetType=&targetId=&page=` | ADMIN only (the tab is hidden for SUPPORT): what staff did, newest first, with the reason; filter by users or workspaces, or one target. |
 
 Names link across: a workspace's owner and members go to their user page, and a user's workspaces go
 to the workspace page.
@@ -46,9 +47,42 @@ to the workspace page.
 - Detail pages list at most `ADMIN_DETAIL_LIST_LIMIT` (100, `@taskforge/shared`) members, projects
   or workspaces, and say "Showing the first 100 of N" when they were capped.
 
+## Actions (ADMIN only)
+
+The layout reads the viewer's id with their role (`fetchPlatformViewer`) and `AdminShell` provides it
+(`useAdminViewer()`, whose `canAct` is ADMIN). The detail pages then show:
+
+- a **suspension banner** with the date and the staff's reason, and a "Suspended" chip (also in the
+  lists and the overview's count);
+- an **Actions** card (`admin-actions.tsx`): suspend or lift, "Sign out everywhere" (users), delete.
+  Each opens `AdminActionDialog`, a `ConfirmModal` with a required reason. Deletes also ask to type
+  the email or workspace name. Success toasts and refetches everything under `adminKeys.all`; a
+  delete returns to its list. A refusal (e.g. the 409 for a user owning a workspace others use)
+  is a toast with the backend's message;
+- a **History** card: that target's last 10 audit rows, linking to the full log.
+
+Not offered on your own account or another admin's (the card says why), and not to SUPPORT: the
+backend refuses all three anyway. Plans are changed in Stripe, never here.
+
+`describePlatformEvent` (`lib/describe-platform-event.ts`) turns a row into a sentence; a new action
+in `@taskforge/shared`'s `PlatformAuditMetadata` fails the build until it has a case there.
+
+## Suspensions in the app
+
+- **Account:** see `spec/auth.md`. Sign-in shows "This account has been suspended…"; a session that
+  ends because of it signs out to `/login?suspended=1`. The reason is never shown.
+- **Workspace:** `GET /workspaces` marks it `suspended`. The workspace menu shows "Suspended" in its
+  place of the plan, and `SuspendedWorkspaceGate` (around the dashboard's pages in `AppLayout`)
+  replaces every page with a notice offering the user's other workspaces, instead of a page of 403s.
+  A workspace suspended while open: its next request is a 403 `WORKSPACE_SUSPENDED`, and
+  `WorkspaceProvider` (watching the query and mutation caches) refetches the workspace list, so the
+  notice appears.
+
 ## Data
 
-`features/admin/` (`api`, `hooks`, `types`, `components`, `lib`). `adminKeys` carries **no
+`features/admin/` (`api`, `hooks`, `types`, `components`, `context`, `lib`). `adminKeys` carries **no
 workspace id**: the data is platform-wide, the same whichever workspace is active. Every page,
 search and filter is its own key. The lists fetch one page with its `metaData` and never walk every
-page. Queries refetch on mount (`staleTime: 0`). A 403 or 404 isn't retried.
+page. Queries refetch on mount (`staleTime: 0`). A 403 or 404 isn't retried. The action mutations
+(`useSetUserSuspended`, `useRevokeUserSessions`, `useDeleteUser`, `useSetWorkspaceSuspended`,
+`useDeleteWorkspace`) invalidate `adminKeys.all`.

@@ -81,6 +81,7 @@ describe("AdminService", () => {
         (args?: { where?: Record<string, unknown> }) => {
           const where = args?.where ?? {};
           if ("platformRole" in where) return Promise.resolve(2);
+          if ("suspendedAt" in where) return Promise.resolve(1);
           const gte = (where.createdAt as { gte?: Date } | undefined)?.gte;
           if (!gte) return Promise.resolve(40);
           // 7 days back → 3 new, 30 days back → 9 new.
@@ -89,7 +90,9 @@ describe("AdminService", () => {
           );
         },
       );
-      prisma.workspace.count.mockResolvedValue(10);
+      prisma.workspace.count.mockImplementation((args?: { where?: object }) =>
+        Promise.resolve(args?.where ? 2 : 10),
+      );
       prisma.subscription.groupBy.mockResolvedValue([
         { plan: "PRO", status: "ACTIVE", _count: { _all: 3 } },
         { plan: "PRO", status: "PAST_DUE", _count: { _all: 1 } },
@@ -106,11 +109,13 @@ describe("AdminService", () => {
         newLast7Days: 3,
         newLast30Days: 9,
         platformStaff: 2,
+        suspended: 1,
       });
       // 8 rows with a subscription, 2 workspaces without one (Free).
       expect(stats.workspaces).toEqual({
         total: 10,
         byPlan: { FREE: 5, PRO: 4, ENTERPRISE: 1 },
+        suspended: 2,
       });
       expect(stats.subscriptions).toMatchObject({
         total: 8,

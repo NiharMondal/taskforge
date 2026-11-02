@@ -238,18 +238,24 @@ describe("WorkspaceService", () => {
 
   describe("getUserWorkspaces", () => {
     it("lists each workspace with the plan it is on now", async () => {
+      const row = { suspendedAt: null, suspendedReason: null };
       prisma.workspace.findMany.mockResolvedValue([
-        { id: "ws-1", subscription: null },
-        { id: "ws-2", subscription: { plan: "PRO", status: "TRIALING" } },
-        { id: "ws-3", subscription: { plan: "PRO", status: "UNPAID" } },
+        { id: "ws-1", ...row, subscription: null },
+        {
+          id: "ws-2",
+          ...row,
+          subscription: { plan: "PRO", status: "TRIALING" },
+        },
+        { id: "ws-3", ...row, subscription: { plan: "PRO", status: "UNPAID" } },
       ]);
 
       const { data } = await service.getUserWorkspaces("user-1", {});
 
+      const listed = { suspendedAt: null, suspended: false };
       expect(data).toEqual([
-        { id: "ws-1", plan: "FREE" },
-        { id: "ws-2", plan: "PRO" },
-        { id: "ws-3", plan: "FREE" },
+        { id: "ws-1", ...listed, plan: "FREE" },
+        { id: "ws-2", ...listed, plan: "PRO" },
+        { id: "ws-3", ...listed, plan: "FREE" },
       ]);
     });
   });
@@ -271,6 +277,45 @@ describe("WorkspaceService", () => {
         BadGatewayException,
       );
       expect(prisma.workspace.delete).not.toHaveBeenCalled();
+    });
+
+    it("runs beforeDelete in the deleting transaction, before the rows go", async () => {
+      const beforeDelete = jest.fn().mockResolvedValue(undefined);
+
+      await service.delete("ws-1", beforeDelete);
+
+      expect(beforeDelete).toHaveBeenCalledWith(prisma);
+      expect(beforeDelete.mock.invocationCallOrder[0]).toBeLessThan(
+        prisma.workspace.delete.mock.invocationCallOrder[0],
+      );
+    });
+  });
+
+  describe("the staff's suspension note", () => {
+    const suspended = {
+      id: "ws-1",
+      name: "Acme",
+      suspendedAt: new Date("2026-11-01"),
+      suspendedReason: "Chargeback investigation",
+      subscription: null,
+    };
+
+    it("is left out of GET /workspaces, which flags the workspace as suspended", async () => {
+      prisma.workspace.findMany.mockResolvedValue([suspended]);
+      prisma.workspace.count.mockResolvedValue(1);
+
+      const { data } = await service.getUserWorkspaces("user-1", {});
+
+      expect(data[0]).toMatchObject({ suspended: true, plan: "FREE" });
+      expect(data[0]).not.toHaveProperty("suspendedReason");
+    });
+
+    it("is left out of GET /workspaces/:id", async () => {
+      prisma.workspace.findUnique.mockResolvedValue(suspended);
+
+      await expect(service.findOne("ws-1")).resolves.not.toHaveProperty(
+        "suspendedReason",
+      );
     });
   });
 });

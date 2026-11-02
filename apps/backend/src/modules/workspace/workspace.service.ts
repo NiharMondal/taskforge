@@ -1,3 +1,4 @@
+import { withoutStaffNote } from "@/common/utils/staff-note";
 import { PaginationQueryDto } from "@/common/dto/pagination-query.dto";
 import { assertCanOwnAnotherFreeWorkspace } from "@/common/plans/plan-limits";
 import PrismaQueryBuilder from "@/lib/PrismQueryBuilder";
@@ -67,8 +68,10 @@ export class WorkspaceService {
 
     return {
       data: (data as WorkspaceRow[]).map(({ subscription, ...workspace }) => ({
-        ...workspace,
+        ...withoutStaffNote(workspace),
         plan: effectivePlan(subscription),
+        // Still listed, so the web can say why it can't be opened.
+        suspended: !!workspace.suspendedAt,
       })),
       metaData,
     };
@@ -84,7 +87,7 @@ export class WorkspaceService {
       throw new NotFoundException("Workspace not found");
     }
 
-    return workspace;
+    return withoutStaffNote(workspace);
   }
   // update workspace (`workspace:manage` is checked on the route)
   async update(workspaceId: string, actorId: string, data: UpdateWorkspaceDto) {
@@ -116,16 +119,26 @@ export class WorkspaceService {
           },
         });
       }
-      return updated;
+      return withoutStaffNote(updated);
     });
   }
 
-  // delete workspace (owner only). A paid subscription is canceled first; if
-  // Stripe can't be reached the delete is refused rather than left billing.
-  async delete(workspaceId: string) {
+  /**
+   * Delete a workspace: its owner (`workspace:delete`), or platform staff
+   * (`AdminService`). A paid subscription is canceled first; if Stripe can't
+   * be reached the delete is refused rather than left billing. `beforeDelete`
+   * runs in the deleting transaction, while the workspace's rows still exist
+   * (the admin console records its audit row there).
+   */
+  async delete(
+    workspaceId: string,
+    beforeDelete?: (tx: Prisma.TransactionClient) => Promise<unknown>,
+  ) {
     await this.billing.cancelForDeletion(workspaceId);
-    return this.prisma.workspace.delete({
-      where: { id: workspaceId },
+    const deleted = await this.prisma.$transaction(async (tx) => {
+      await beforeDelete?.(tx);
+      return tx.workspace.delete({ where: { id: workspaceId } });
     });
+    return withoutStaffNote(deleted);
   }
 }

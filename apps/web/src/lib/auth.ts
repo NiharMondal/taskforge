@@ -1,3 +1,4 @@
+import { ACCOUNT_SUSPENDED_ERROR_CODE } from "@taskforge/shared";
 import NextAuth, { CredentialsSignin } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import GoogleProvider from "next-auth/providers/google";
@@ -5,7 +6,7 @@ import GoogleProvider from "next-auth/providers/google";
 import { login, verifyEmail } from "@/features/auth/api/auth-api";
 import { loginSchema } from "@/features/auth/schemas/auth-schema";
 import type { LoginResponse } from "@/features/auth/types/auth-types";
-import { ApiError } from "@/lib/api-error";
+import { ApiError, apiErrorCode } from "@/lib/api-error";
 
 import { API_URL } from "./api-url";
 import { authConfig } from "./auth.config";
@@ -39,6 +40,14 @@ class InvalidVerificationLink extends CredentialsSignin {
 }
 
 /** The address got an account (e.g. through Google) after the link was sent. */
+/** Platform staff suspended the account (403 `ACCOUNT_SUSPENDED`). */
+class AccountSuspended extends CredentialsSignin {
+  code = "account_suspended";
+}
+
+/** Where a suspended account lands; the login form explains. */
+const SUSPENDED_LOGIN_URL = "/login?suspended=1";
+
 class EmailTaken extends CredentialsSignin {
   code = "email_taken";
 }
@@ -76,6 +85,16 @@ async function googleProfile(idToken: string | undefined) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ idToken }),
   });
+
+  // A suspended account: the `signIn` callback below turns this away.
+  if (res.status === 403) {
+    const body = (await res.clone().json().catch(() => null)) as {
+      code?: unknown;
+    } | null;
+    if (body?.code === ACCOUNT_SUSPENDED_ERROR_CODE) {
+      return { id: "suspended", suspended: true };
+    }
+  }
 
   if (!res.ok) {
     const text = await res.text();
@@ -120,6 +139,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           return toAuthUser((await login(parsed.data)).data);
         } catch (error) {
           // Only reachable with the right password, so saying why is safe.
+          if (apiErrorCode(error) === ACCOUNT_SUSPENDED_ERROR_CODE) {
+            throw new AccountSuspended();
+          }
           if (error instanceof ApiError && error.status === 403) {
             throw new EmailUnverified();
           }
@@ -161,11 +183,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           if (error instanceof ApiError && error.status === 409) {
             throw new EmailTaken();
           }
+          if (apiErrorCode(error) === ACCOUNT_SUSPENDED_ERROR_CODE) {
+            throw new AccountSuspended();
+          }
           throw error;
         }
       },
     }),
   ],
+  callbacks: {
+    ...authConfig.callbacks,
+    // Google can't throw a code the login form reads, so a suspended account
+    // comes back flagged from `profile` and is sent to the login notice.
+    signIn({ user }) {
+      return user.suspended ? SUSPENDED_LOGIN_URL : true;
+    },
+  },
   events: {
     // End the backend session too, so the refresh token can't outlive the
     // cookie it was in.

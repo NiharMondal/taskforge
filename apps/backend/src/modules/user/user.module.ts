@@ -9,6 +9,7 @@ import { UserService } from "./user.service";
   imports: [BillingModule, MailModule],
   controllers: [UserController],
   providers: [UserService, AccountService],
-  exports: [UserService],
+  // AccountService: platform staff delete accounts through it (AdminModule).
+  exports: [UserService, AccountService],
 })
 export class UserModule {}

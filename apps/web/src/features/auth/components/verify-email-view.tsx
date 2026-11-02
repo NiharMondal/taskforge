@@ -6,9 +6,11 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 
+import { SUSPENDED_MESSAGE } from "../constants";
 import { takePostVerificationTarget } from "../lib/callback-url";
 
 const ERRORS: Record<string, string> = {
+	account_suspended: SUSPENDED_MESSAGE,
 	invalid_link:
 		"This link is invalid, has expired or was already used. Sign up again to get a new one.",
 	email_taken: "This email already has an account. Sign in instead.",

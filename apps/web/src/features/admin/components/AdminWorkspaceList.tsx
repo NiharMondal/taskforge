@@ -134,7 +134,7 @@ export default function AdminWorkspaceList({ params }: { params: AdminListParams
 				<div
 					role="group"
 					aria-label="Plan"
-					className="flex w-fit flex-wrap rounded-md border border-border p-0.5 text-xs"
+					className="flex w-fit flex-wrap rounded border p-0.5 text-xs h-10"
 				>
 					{PLAN_FILTERS.map((filter) => (
 						<button

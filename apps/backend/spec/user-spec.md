@@ -6,12 +6,15 @@ no list route.
 
 | Route | What it does |
 |---|---|
-| `GET /users/me` (or `/users/<own id>`) | The profile, plus `hasPassword` (`spec/auth-spec.md`). |
+| `GET /users/me` (or `/users/<own id>`) | The profile, plus `hasPassword` (`spec/auth-spec.md`) and `platformRole` (`spec/admin-spec.md`). |
 | `PATCH /users/me` (or `/users/<own id>`) | Name and avatar (`spec/cloudinary.md` in the web app). |
 | `GET /users/me/export` | Everything the account holds about the caller, as JSON. |
 | `DELETE /users/me` | Deletes the caller's account. |
 
 Any other id on `/users/:id` is a 403. `DELETE /users/:id` does not exist, not even for your own id.
+`PATCH` never sets `platformRole` (it is a 400 like any undeclared key): only the
+`set-platform-role` script does. Platform staff read other accounts through `/admin`
+(`spec/admin-spec.md`), never through `/users`.
 
 ## `GET /users/me/export`
 

@@ -70,3 +70,15 @@ export type SubscriptionStatus = (typeof SUBSCRIPTION_STATUS_VALUES)[number];
 
 /** Built-in roles an invitation may grant. OWNER is never granted by invitation. */
 export const INVITABLE_ROLES = ["ADMIN", "MEMBER", "VIEWER"] as const;
+
+/** A way to sign in (the backend's `Auth.provider`). FACEBOOK is unused so far. */
+export const AUTH_PROVIDER_VALUES = ["EMAIL", "GOOGLE", "FACEBOOK"] as const;
+export type AuthProvider = (typeof AUTH_PROVIDER_VALUES)[number];
+
+/**
+ * A platform (super) admin's role, on `User.platformRole`; null for everyone
+ * else. ADMIN may act, SUPPORT only reads (`apps/backend/spec/admin-spec.md`).
+ * Granted only by the backend's `set-platform-role` script, never the API.
+ */
+export const PLATFORM_ROLE_VALUES = ["ADMIN", "SUPPORT"] as const;
+export type PlatformRole = (typeof PLATFORM_ROLE_VALUES)[number];

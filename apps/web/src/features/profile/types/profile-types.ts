@@ -1,3 +1,5 @@
+import type { PlatformRole } from "@taskforge/shared";
+
 /**
  * User profile contract types.
  *
@@ -12,6 +14,11 @@ export interface User {
 	avatarUrl: string | null;
 	avatarPublicId: string | null;
 	emailVerifiedAt: string | null;
+	/**
+	 * Platform staff only (ADMIN or SUPPORT); `null` for everyone else. Shows
+	 * the "Admin" link — the backend checks it on every `/admin` request.
+	 */
+	platformRole: PlatformRole | null;
 	createdAt: string;
 	updatedAt: string;
 	/**

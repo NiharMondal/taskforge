@@ -21,7 +21,8 @@
     "test:e2e": "jest --config ./test/jest-e2e.json --runInBand",
     "studio": "prisma studio",
     "backfill:issue-rank": "tsx scripts/backfill-issue-rank.ts",
-    "cleanup": "tsx scripts/cleanup.ts"
+    "cleanup": "tsx scripts/cleanup.ts",
+    "set-platform-role": "tsx scripts/set-platform-role.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",

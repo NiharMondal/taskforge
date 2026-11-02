@@ -1,6 +1,7 @@
 import { cn } from "@heroui/react";
 
 import BrandLink from "@/components/ui/brand-link";
+import AdminNavLink from "@/features/admin/components/AdminNavLink";
 
 import { NAV_ITEMS } from "./nav-items";
 import SidebarItem from "./SidebarItem";
@@ -29,6 +30,8 @@ export default function Sidebar({ className }: { className?: string }) {
         {NAV_ITEMS.map((item) => (
           <SidebarItem key={item.href} {...item} />
         ))}
+        {/* Platform staff only. */}
+        <AdminNavLink />
       </nav>
 
       <div className="shrink-0 border-t border-border p-2">

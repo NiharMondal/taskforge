@@ -42,3 +42,10 @@ export const PASSWORD_RESET_TTL_MINUTES = 60;
 /** `?limit=` on paginated lists: the default page and the most one page holds. */
 export const DEFAULT_PAGE_SIZE = 20;
 export const MAX_PAGE_SIZE = 100;
+
+/**
+ * How many members, projects or memberships an admin console detail page
+ * (`GET /admin/workspaces/:id`, `/admin/users/:id`) lists; its `counts` carry
+ * the totals.
+ */
+export const ADMIN_DETAIL_LIST_LIMIT = 100;

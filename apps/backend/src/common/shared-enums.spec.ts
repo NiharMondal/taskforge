@@ -1,16 +1,20 @@
 import {
+  AUTH_PROVIDER_VALUES,
   INVITATION_STATUS_VALUES,
   ISSUE_PRIORITY_VALUES,
   ISSUE_TYPE_VALUES,
+  PLATFORM_ROLE_VALUES,
   STATUS_CATEGORY_VALUES,
   SUBSCRIPTION_PLAN_VALUES,
   SUBSCRIPTION_STATUS_VALUES,
   WORKSPACE_ROLE_VALUES,
 } from "@taskforge/shared";
 import {
+  AuthProvider,
   InvitationStatus,
   IssuePriority,
   IssueType,
+  PlatformRole,
   StatusCategory,
   SubscriptionPlan,
   SubscriptionStatus,
@@ -31,6 +35,8 @@ describe("shared enums match the Prisma schema", () => {
     ["InvitationStatus", INVITATION_STATUS_VALUES, InvitationStatus],
     ["SubscriptionPlan", SUBSCRIPTION_PLAN_VALUES, SubscriptionPlan],
     ["SubscriptionStatus", SUBSCRIPTION_STATUS_VALUES, SubscriptionStatus],
+    ["PlatformRole", PLATFORM_ROLE_VALUES, PlatformRole],
+    ["AuthProvider", AUTH_PROVIDER_VALUES, AuthProvider],
   ] as const)("%s", (_name, shared, prisma) => {
     // Same values in the same order (the web lists categories in this order).
     expect([...shared]).toEqual(Object.values(prisma));

@@ -144,6 +144,17 @@ describe("UserService.findProfile", () => {
     });
   });
 
+  it("returns the platform role, so the web can show the admin console", async () => {
+    findUnique.mockResolvedValueOnce({
+      id: "u3",
+      platformRole: "SUPPORT",
+      auths: [],
+    });
+    await expect(service.findProfile("u3")).resolves.toMatchObject({
+      platformRole: "SUPPORT",
+    });
+  });
+
   it("is a 404 for a user that no longer exists", async () => {
     findUnique.mockResolvedValueOnce(null);
     await expect(service.findProfile("gone")).rejects.toThrow(

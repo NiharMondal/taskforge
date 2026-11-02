@@ -31,6 +31,18 @@ export class StripeService {
     );
   }
 
+  /**
+   * Which Stripe mode the secret key is for (`sk_test_…`/`rk_test_…` or
+   * `sk_live_…`/`rk_live_…`), or null without a key. Customers and
+   * subscriptions only exist in the mode they were made in, so the admin
+   * console links to that half of Stripe's dashboard.
+   */
+  mode(): "test" | "live" | null {
+    const key = this.config.get<string>("STRIPE_SECRET_KEY");
+    const match = key ? /^[sr]k_(test|live)_/.exec(key) : null;
+    return match ? (match[1] as "test" | "live") : null;
+  }
+
   async createCustomer(params: {
     workspaceId: string;
     workspaceName: string;

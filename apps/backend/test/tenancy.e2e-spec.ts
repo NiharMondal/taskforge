@@ -1,6 +1,7 @@
 import { AppModule } from "@/app.module";
 import { configureApp } from "@/app.setup";
 import { MailService } from "@/modules/mail/mail.service";
+import { setPlatformRole } from "@/modules/admin/set-platform-role";
 import { PrismaService } from "@/prisma/prisma.service";
 import { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
@@ -60,6 +61,13 @@ describe("Tenancy (e2e)", () => {
   const hank = {
     name: "Hank",
     email: `hank-${run}@e2e.test`,
+    password: "secret123",
+  };
+
+  /** Platform staff in the platform admin tests only. */
+  const ivy = {
+    name: "Ivy",
+    email: `ivy-${run}@e2e.test`,
     password: "secret123",
   };
 
@@ -212,6 +220,7 @@ describe("Tenancy (e2e)", () => {
       frank.email,
       gina.email,
       hank.email,
+      ivy.email,
     ];
     await prisma.user.deleteMany({ where: { email: { in: emails } } });
     await prisma.pendingRegistration.deleteMany({
@@ -1947,6 +1956,204 @@ describe("Tenancy (e2e)", () => {
       await expect(
         prisma.issue.count({ where: { id: sharedIssue } }),
       ).resolves.toBe(0);
+    });
+  });
+
+  describe("platform admin", () => {
+    let ivyToken: string;
+    let ivyId: string;
+    let bobId: string;
+
+    beforeAll(async () => {
+      ({ token: ivyToken } = await signUp(ivy));
+      ivyId = (
+        await prisma.user.findUniqueOrThrow({ where: { email: ivy.email } })
+      ).id;
+      bobId = (
+        await prisma.user.findUniqueOrThrow({ where: { email: bob.email } })
+      ).id;
+    });
+
+    afterAll(async () => {
+      // The script's rows have no actor, so they don't go with Ivy's account.
+      await prisma.platformAuditLog.deleteMany({ where: { targetId: ivyId } });
+    });
+
+    const routes = () => [
+      "/api/v1/admin/stats",
+      "/api/v1/admin/workspaces",
+      `/api/v1/admin/workspaces/${aliceWs}`,
+      "/api/v1/admin/users",
+      `/api/v1/admin/users/${bobId}`,
+    ];
+
+    it("403s every admin route for anyone without a platform role, even a workspace owner", async () => {
+      for (const route of routes()) {
+        await api().get(route).set(as(aliceToken, aliceWs)).expect(403);
+        await api().get(route).set(as(ivyToken)).expect(403);
+      }
+      const me = data<{ platformRole: string | null }>(
+        await api().get("/api/v1/users/me").set(as(ivyToken)).expect(200),
+      );
+      expect(me.platformRole).toBeNull();
+    });
+
+    it("never takes a platform role from the API", async () => {
+      await api()
+        .patch("/api/v1/users/me")
+        .set(as(ivyToken))
+        .send({ platformRole: "ADMIN" })
+        .expect(400);
+      await expect(
+        prisma.user.findUniqueOrThrow({ where: { id: ivyId } }),
+      ).resolves.toMatchObject({ platformRole: null });
+    });
+
+    it("lets SUPPORT read across workspaces without secrets, and the script grants and clears it", async () => {
+      await expect(
+        setPlatformRole(prisma, ivy.email.toUpperCase(), "SUPPORT"),
+      ).resolves.toMatchObject({ from: null, to: "SUPPORT", changed: true });
+
+      // Her existing token works at once: the role is read per request.
+      const me = data<{ platformRole: string | null }>(
+        await api().get("/api/v1/users/me").set(as(ivyToken)).expect(200),
+      );
+      expect(me.platformRole).toBe("SUPPORT");
+
+      const responses: Response[] = [];
+      const read = async (route: string) => {
+        const res = await api().get(route).set(as(ivyToken)).expect(200);
+        responses.push(res);
+        return res;
+      };
+
+      type Stats = {
+        users: { total: number };
+        workspaces: { total: number; byPlan: Record<string, number> };
+      };
+      const stats = data<Stats>(await read("/api/v1/admin/stats"));
+      expect(stats.users.total).toBeGreaterThanOrEqual(3);
+      const { FREE, PRO, ENTERPRISE } = stats.workspaces.byPlan;
+      expect(FREE + PRO + ENTERPRISE).toBe(stats.workspaces.total);
+
+      // Alice's workspace, found by its owner's email, as the database has it.
+      const owner = await prisma.membership.findFirstOrThrow({
+        where: { workspaceId: aliceWs, role: "OWNER" },
+        include: { user: true },
+      });
+      const memberCount = await prisma.membership.count({
+        where: { workspaceId: aliceWs },
+      });
+      type Row = {
+        id: string;
+        plan: string;
+        memberCount: number;
+        owner: { email: string } | null;
+      };
+      const search = encodeURIComponent(owner.user.email);
+      const rows = data<Row[]>(
+        await read(`/api/v1/admin/workspaces?search=${search}&limit=100`),
+      );
+      const row = rows.find((r) => r.id === aliceWs);
+      expect(row).toMatchObject({
+        memberCount,
+        owner: { email: owner.user.email },
+      });
+      // The plan filter agrees with the plan each row reports.
+      for (const plan of ["FREE", "PRO"]) {
+        const filtered = data<Row[]>(
+          await read(
+            `/api/v1/admin/workspaces?search=${search}&plan=${plan}&limit=100`,
+          ),
+        );
+        expect(filtered.some((r) => r.id === aliceWs)).toBe(row!.plan === plan);
+      }
+
+      type Detail = {
+        counts: { members: number; issues: number };
+        members: { user: { id: string } }[];
+        projects: { id: string; issueCount: number }[];
+      };
+      const detail = data<Detail>(
+        await read(`/api/v1/admin/workspaces/${aliceWs}`),
+      );
+      expect(detail.counts.members).toBe(memberCount);
+      const memberIds = (
+        await prisma.membership.findMany({ where: { workspaceId: aliceWs } })
+      ).map((m) => m.userId);
+      expect(detail.members.map((m) => m.user.id).sort()).toEqual(
+        memberIds.sort(),
+      );
+      expect(detail.projects.find((p) => p.id === projectId)).toMatchObject({
+        issueCount: await prisma.issue.count({ where: { projectId } }),
+      });
+
+      const users = data<{ id: string }[]>(
+        await read(
+          `/api/v1/admin/users?search=${encodeURIComponent(bob.email)}`,
+        ),
+      );
+      expect(users.map((u) => u.id)).toEqual([bobId]);
+
+      type UserDetail = {
+        signInMethods: { provider: string }[];
+        memberships: { workspace: { id: string } }[];
+        counts: { activeSessions: number };
+      };
+      const bobDetail = data<UserDetail>(
+        await read(`/api/v1/admin/users/${bobId}`),
+      );
+      expect(bobDetail.signInMethods).toEqual([
+        expect.objectContaining({ provider: "EMAIL" }),
+      ]);
+      const bobsWorkspaces = (
+        await prisma.membership.findMany({ where: { userId: bobId } })
+      ).map((m) => m.workspaceId);
+      expect(bobsWorkspaces).toContain(bobWs);
+      expect(bobDetail.memberships.map((m) => m.workspace.id).sort()).toEqual(
+        bobsWorkspaces.sort(),
+      );
+      expect(bobDetail.counts.activeSessions).toBeGreaterThanOrEqual(1);
+
+      // Nothing read contains a credential.
+      const body = JSON.stringify(responses.map((r) => r.body as unknown));
+      expect(body).not.toContain("$2"); // a bcrypt hash
+      expect(body).not.toMatch(
+        /"(password|passwordHash|tokenHash|token|refreshToken|providerId)"/,
+      );
+
+      await api()
+        .get("/api/v1/admin/workspaces/no-such-workspace")
+        .set(as(ivyToken))
+        .expect(404);
+
+      // Recorded with no actor, then cleared — and the same token is out again.
+      await expect(
+        prisma.platformAuditLog.findFirst({
+          where: { targetId: ivyId, action: "platform_role.changed" },
+        }),
+      ).resolves.toMatchObject({
+        actorId: null,
+        targetType: "USER",
+        metadata: { email: ivy.email, from: null, to: "SUPPORT" },
+      });
+      await expect(
+        setPlatformRole(prisma, ivy.email, null),
+      ).resolves.toMatchObject({ from: "SUPPORT", to: null, changed: true });
+      for (const route of routes()) {
+        await api().get(route).set(as(ivyToken)).expect(403);
+      }
+      await expect(
+        prisma.platformAuditLog.count({ where: { targetId: ivyId } }),
+      ).resolves.toBe(2);
+    });
+
+    it("lets ADMIN read too", async () => {
+      await setPlatformRole(prisma, ivy.email, "ADMIN");
+      for (const route of routes()) {
+        await api().get(route).set(as(ivyToken)).expect(200);
+      }
+      await setPlatformRole(prisma, ivy.email, null);
     });
   });
 });

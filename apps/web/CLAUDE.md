@@ -58,7 +58,7 @@ app/
           [slug]/   — issue detail page ([slug] is the issue id)
         workflow/   — the project's statuses and allowed moves (editable on Pro)
     settings/       — members, roles, general, labels, billing, audit-log (`audit:read` only), profile
-    issues/         — redirect → /projects (no workspace-wide issues endpoint)
+    issues/         — redirect → /projects (the only workspace-wide issue read is the dashboard's `GET /issues/assigned`, `useAssignedIssues`)
   (admin)/admin/    — platform admin console (platform staff only; own server layout, no workspace)
     workspaces/[workspaceId]/, users/[userId]/, audit-log/ (ADMIN only)
   invitations/accept/

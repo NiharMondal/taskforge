@@ -166,6 +166,20 @@ Base path: `/projects/:projectId/issues`
 
 ---
 
+### 2a. My Assigned Issues (dashboard)
+
+**`GET /issues/assigned`** — the one workspace-wide issue route (`AssignedIssuesController`).
+
+**Auth:** Required. Any workspace member (`x-workspace-id`).
+
+**Query params (optional):** `page`, `limit` (default 20, max 100). Nothing else — the assignee is always the caller (`sub`), so it can't list another member's work.
+
+**What the backend does:** returns the caller's issues in this workspace, across every project, whose status category isn't `COMPLETED`; ordered by priority (`URGENT` first), then `updatedAt` desc. Each row embeds `status`, `sprint` (`{ id, name }` or `null`) and `project: { id, name, key }`. `metaData.totalData` is the caller's total open count.
+
+**Success:** `200 OK`, `data: Issue[]` with `metaData` as above.
+
+---
+
 ### 3. Get Single Issue
 
 **`GET /projects/:projectId/issues/:issueId`**

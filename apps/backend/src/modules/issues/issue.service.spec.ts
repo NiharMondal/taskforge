@@ -1284,3 +1284,62 @@ describe("IssueService history", () => {
     expect(prisma.auditLog.create).not.toHaveBeenCalled();
   });
 });
+
+describe("IssueService.findAssigned (dashboard)", () => {
+  let prisma: { issue: { findMany: jest.Mock; count: jest.Mock } };
+  let service: IssueService;
+
+  beforeEach(() => {
+    prisma = {
+      issue: {
+        findMany: jest.fn().mockResolvedValue([{ id: "i-1" }]),
+        count: jest.fn().mockResolvedValue(25),
+      },
+    };
+    service = new IssueService(prisma as unknown as PrismaService);
+  });
+
+  it("reads only the caller's open issues in this workspace", async () => {
+    await service.findAssigned("ws-A", "user-A", { page: 1, limit: 10 });
+
+    const where = {
+      workspaceId: "ws-A",
+      assigneeId: "user-A",
+      status: { category: { not: StatusCategory.COMPLETED } },
+    };
+    expect(prisma.issue.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where }),
+    );
+    expect(prisma.issue.count).toHaveBeenCalledWith({ where });
+  });
+
+  it("puts the most urgent first, then the most recently updated", async () => {
+    await service.findAssigned("ws-A", "user-A", {});
+
+    expect(prisma.issue.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: [{ priority: "desc" }, { updatedAt: "desc" }, { id: "asc" }],
+      }),
+    );
+  });
+
+  it("paginates and reports the total for the count in the header", async () => {
+    const { issues, metaData } = await service.findAssigned("ws-A", "user-A", {
+      page: 2,
+      limit: 10,
+    });
+
+    expect(prisma.issue.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ skip: 10, take: 10 }),
+    );
+    expect(issues).toEqual([{ id: "i-1" }]);
+    expect(metaData).toEqual({
+      currentPage: 2,
+      totalPages: 3,
+      totalData: 25,
+      pageSize: 10,
+      hasNextPage: true,
+      hasPreviousPage: true,
+    });
+  });
+});

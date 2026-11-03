@@ -25,7 +25,13 @@ import { IssueType, StatusCategory } from "generated/prisma/enums";
 import { CreateIssueDto } from "./dto/create-issue.dto";
 import { QueryIssuesDto } from "./dto/query-issues.dto";
 import { UpdateIssueDto } from "./dto/update-issue.dto";
-import { isValidRank, rankBetween } from "@taskforge/shared";
+import { PaginationQueryDto } from "@/common/dto/pagination-query.dto";
+import {
+  DEFAULT_PAGE_SIZE,
+  isValidRank,
+  type PaginationMeta,
+  rankBetween,
+} from "@taskforge/shared";
 import { type IssueLane, lastRankInLane, lockIssueLane } from "./issue-lane";
 
 /** The Prisma client, or a transaction client from `$transaction`. */
@@ -199,6 +205,55 @@ export class IssueService {
     const { data, metaData } = await qb.execute(this.prisma.issue);
 
     return { issues: data.map(flattenLabels), metaData };
+  }
+
+  /**
+   * The caller's open work across every project of the workspace, for the
+   * dashboard (`GET /issues/assigned`): issues assigned to `userId` whose
+   * status isn't `COMPLETED`, most urgent first (the enum is declared
+   * LOW → URGENT, so `desc` puts URGENT on top), then most recently touched.
+   * Each row embeds its project, since the rows span projects.
+   */
+  async findAssigned(
+    workspaceId: string,
+    userId: string,
+    query: PaginationQueryDto,
+  ) {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? DEFAULT_PAGE_SIZE;
+    const where: Prisma.IssueWhereInput = {
+      workspaceId,
+      assigneeId: userId,
+      status: { category: { not: StatusCategory.COMPLETED } },
+    };
+
+    const [issues, totalData] = await Promise.all([
+      this.prisma.issue.findMany({
+        where,
+        orderBy: [{ priority: "desc" }, { updatedAt: "desc" }, { id: "asc" }],
+        skip: (page - 1) * limit,
+        take: limit,
+        include: {
+          status: STATUS_SELECT,
+          project: { select: { id: true, name: true, key: true } },
+          sprint: { select: { id: true, name: true } },
+        },
+      }),
+      this.prisma.issue.count({ where }),
+    ]);
+
+    const totalPages = Math.ceil(totalData / limit);
+    return {
+      issues,
+      metaData: {
+        currentPage: page,
+        totalPages,
+        totalData,
+        pageSize: limit,
+        hasNextPage: page < totalPages,
+        hasPreviousPage: page > 1,
+      } satisfies PaginationMeta,
+    };
   }
 
   /**

@@ -5,6 +5,7 @@ import {  Spinner } from "@heroui/react";
 import { useWorkspace } from "@/features/workspace/context/workspace-context";
 
 import { useDashboardStats } from "../hooks/use-dashboard-stats";
+import AssignedIssues from "./AssignedIssues";
 import DashboardStatsRow from "./DashboardStats";
 import RecentProjects from "./RecentProjects";
 
@@ -45,6 +46,7 @@ export default function DashboardOverview({ userName }: { userName: string }) {
 			) : (
 				<>
 					<DashboardStatsRow stats={stats} />
+					<AssignedIssues workspaceId={workspaceId} />
 					<RecentProjects projects={recentProjects} />
 				</>
 			)}

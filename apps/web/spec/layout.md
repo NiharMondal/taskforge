@@ -24,7 +24,7 @@ The layout must support:
   ├── AppLayout.tsx
   ├── Sidebar.tsx
   ├── SidebarItem.tsx
-  ├── WorkspaceSwitcher.tsx
+  ├── WorkspaceMenu.tsx   (was WorkspaceSwitcher.tsx)
   ├── Header.tsx (optional)
 
 /app/(dashboard)/
@@ -79,7 +79,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 ### Responsibilities:
 
 * Navigation (Projects, Issues, Settings, etc.)
-* Workspace switcher at top
+* Brand row on top, as tall as the header (`h-14`) so their bottom borders line up
+* The workspace menu pinned to the bottom (2026-10-29; it was a switcher at the top plus a header sign-out button): one card — the workspace's initial on a tinted tile, its name and its plan — that opens a menu upward to switch workspace, create one, or sign out
 * Active route highlighting
 
 ---
@@ -145,6 +146,8 @@ export default function SidebarItem({ href, label }: { href: string; label: stri
 ---
 
 ## 🔄 Workspace Switcher
+
+> **Superseded (2026-10-29).** The switcher is now `WorkspaceMenu` at the bottom of the sidebar: a HeroUI `Dropdown` (not a `Select`) whose items are the workspaces (initial tile, name, Pro badge, check on the active one), then "New workspace" (`CreateWorkspaceModal`) and "Sign out". The `Select` sample below is the original design.
 
 ### Responsibilities:
 

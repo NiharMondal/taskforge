@@ -6,6 +6,7 @@ import {
   assertActorHolds,
   WorkspaceAccess,
 } from "@/common/permissions/workspace-access";
+import { assertCanCreateCustomRole } from "@/common/plans/plan-limits";
 import { PrismaService } from "@/prisma/prisma.service";
 import {
   ConflictException,
@@ -80,6 +81,9 @@ export class RoleService {
     dto: CreateRoleDto,
   ) {
     assertActorHolds(actor, dto.permissions, "create a role with more access");
+    // Only creating is a Pro feature: a workspace back on Free keeps editing,
+    // assigning and deleting the custom roles it has.
+    await assertCanCreateCustomRole(this.prisma, workspaceId);
     await this.assertNameFree(workspaceId, dto.name);
 
     return this.prisma.role.create({

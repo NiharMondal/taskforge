@@ -9,6 +9,7 @@ import { ConfigModule } from "@nestjs/config";
 import { APP_GUARD } from "@nestjs/core";
 import { CloudinaryModule } from "@/cloudinary/cloudinary.module";
 import { ActivityModule } from "./modules/activity/activity.module";
+import { BillingModule } from "./modules/billing/billing.module";
 import { CommentModule } from "./modules/comments/comment.module";
 import { InvitationModule } from "./modules/invitations/invitation.module";
 import { IssueModule } from "./modules/issues/issue.module";
@@ -36,6 +37,7 @@ import { WorkspaceModule } from "./modules/workspace/workspace.module";
     RoleModule,
     ActivityModule,
     SprintModule,
+    BillingModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: JwtAuthGuard }],

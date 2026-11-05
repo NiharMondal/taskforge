@@ -55,7 +55,7 @@ app/
         backlog/    — sprint planning: sprint sections + unscheduled backlog, move issues between them
         list/       — every issue as a filterable table, sub-issues nested
           [slug]/   — issue detail page ([slug] is the issue id)
-    settings/       — members, roles, general, labels, profile
+    settings/       — members, roles, general, labels, billing, profile
     issues/         — redirect → /projects (no workspace-wide issues endpoint)
   invitations/accept/
 ```
@@ -64,7 +64,7 @@ Issues are project-scoped: pages live under `/projects/[projectId]/` (`active-sp
 
 ### Feature structure
 
-Each domain lives in `src/features/<name>/` (`activity`, `auth`, `comments`, `dashboard`, `invitations`, `issues`, `labels`, `memberships`, `profile`, `projects`, `roles`, `settings`, `sprint`, `workspace`):
+Each domain lives in `src/features/<name>/` (`activity`, `auth`, `billing`, `comments`, `dashboard`, `invitations`, `issues`, `labels`, `memberships`, `profile`, `projects`, `roles`, `settings`, `sprint`, `workspace`):
 
 ```
 api/          — async functions calling `api.*` from lib/axios
@@ -121,9 +121,26 @@ Mutations use `.message` from the envelope for toast feedback. Every rejection i
 
 ### Roles and permissions
 
-The JWT has no role. `useWorkspacePermissions()` (`features/memberships/hooks/`) reads `GET /memberships/me` (`useMyMembership`, key `membershipKeys.me`, under the roster's key so invalidating the roster refreshes it) — the backend resolves the viewer's role, built-in or custom, into permission keys — and `permissionsFrom` (`features/memberships/lib/permissions.ts`) turns them into flags: `canManageWorkspace`, `canManageMembers`, `canManageInvitations`, `canManageRoles`, `canCreateIssue`, `canEditAnyIssue`, `canEditOwnIssues`, `canChangeIssueStatus`, `canMarkIssueDone`, `canDeleteIssue`, `canManageProjects`, `canManageSprints`, `canManageLabels`, `canComment`, `canDeleteAnyComment`, `canDeleteWorkspace`, `canTransferOwnership`, `canLeaveWorkspace`, plus `granted` (the key set), `isOwner` and `userId` ("me": the backend's answer, else the access token's `sub`). There is no copy of the role rules on the web. Per-row rules are helpers: `canEditIssue(permissions, issue)` (any issue, or one you reported or are assigned to), `canSetIssueStatus`, `holdsAll(permissions, keys)` — the backend's no-escalation rule, used to offer only roles the viewer could hand out — and `outranks(permissions, keys)` — holding all of a member's keys plus one more, the backend's rule for changing or removing a member, used to lock roster rows (an Admin can't act on another Admin). Flags are all `false` *while loading*; if `/memberships/me` still can't be read afterwards the hook **fails open** (`UNRESTRICTED_PERMISSIONS`, `isRoleKnown: false`, plus a dev-only `[permissions]` console warning) so a lookup problem never locks an owner out. Hide or disable controls with these flags rather than letting users hit a 403 toast — but they are UX only; the backend is the authority.
+The JWT has no role. `useWorkspacePermissions()` (`features/memberships/hooks/`) reads `GET /memberships/me` (`useMyMembership`, key `membershipKeys.me`, under the roster's key so invalidating the roster refreshes it) — the backend resolves the viewer's role, built-in or custom, into permission keys — and `permissionsFrom` (`features/memberships/lib/permissions.ts`) turns them into flags: `canManageWorkspace`, `canManageMembers`, `canManageInvitations`, `canManageRoles`, `canCreateIssue`, `canEditAnyIssue`, `canEditOwnIssues`, `canChangeIssueStatus`, `canMarkIssueDone`, `canDeleteIssue`, `canManageProjects`, `canManageSprints`, `canManageLabels`, `canComment`, `canDeleteAnyComment`, `canDeleteWorkspace`, `canTransferOwnership`, `canManageBilling`, `canLeaveWorkspace`, plus `granted` (the key set), `isOwner` and `userId` ("me": the backend's answer, else the access token's `sub`). There is no copy of the role rules on the web. Per-row rules are helpers: `canEditIssue(permissions, issue)` (any issue, or one you reported or are assigned to), `canSetIssueStatus`, `holdsAll(permissions, keys)` — the backend's no-escalation rule, used to offer only roles the viewer could hand out — and `outranks(permissions, keys)` — holding all of a member's keys plus one more, the backend's rule for changing or removing a member, used to lock roster rows (an Admin can't act on another Admin). Flags are all `false` *while loading*; if `/memberships/me` still can't be read afterwards the hook **fails open** (`UNRESTRICTED_PERMISSIONS`, `isRoleKnown: false`, plus a dev-only `[permissions]` console warning) so a lookup problem never locks an owner out. Hide or disable controls with these flags rather than letting users hit a 403 toast — but they are UX only; the backend is the authority.
 
 Roles live in `features/roles/` (`useRoles`, `roleKeys.list`; `GET /roles` for any member). Settings → Roles (`RolesSettings`) creates custom roles — from scratch or copied from any role — and edits and deletes them with `role:manage`; built-ins are view-only. The role editor (`RoleForm`) lists `PERMISSION_GROUPS` from `features/roles/constants.ts`: labels and descriptions for the grantable keys in `@taskforge/shared`, each of which needs an entry there. The Members tab and the invite form pick from the same roles by `roleId`; show a role with `RoleChip` (`assignedRole`, falling back to the enum for rows predating roles). A role mutation invalidates the roles list and everything under `["memberships", workspaceId]`.
+
+### Billing and plan limits
+
+`features/billing/` (backend contract: `apps/backend/spec/billing-spec.md`). Settings → Billing
+(`BillingSettings`, `useBilling`, key `billingKeys.detail(workspaceId)`) shows any member the plan,
+usage and plan cards; the owner (`canManageBilling`) gets "Upgrade" (`POST /billing/checkout`) and
+"Manage billing" (`/billing/portal`), both of which return a Stripe URL the browser is sent to.
+**The plan changes only when Stripe's webhook reaches the backend**, so on return
+(`?checkout=success`) the page polls `GET /billing` every 2s for up to 30s, then drops the param.
+Limit numbers come from `@taskforge/shared` (`PLAN_LIMITS`, `FREE_OWNED_WORKSPACES`,
+`PRO_TRIAL_DAYS`). A write the plan refuses is a **402 with `code: "PLAN_LIMIT"`**: show it with
+`useErrorToast()` (`features/billing/lib/plan-limit.ts`), which adds an "Upgrade" action, instead of
+a plain danger toast. The invite button and "New role" also read `useBilling` and disable
+themselves with an upgrade hint when the limit is already reached; the browser never counts
+workspaces itself (the create-workspace cap is the backend's 402). Mutations that change seat usage
+(sending or revoking an invitation, removing a member) invalidate the billing key. `GET /workspaces`
+carries each workspace's `plan`; `ProBadge` shows it in the switcher.
 
 ### Rendering user HTML
 

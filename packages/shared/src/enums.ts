@@ -53,5 +53,21 @@ export const INVITATION_STATUS_VALUES = [
 ] as const;
 export type InvitationStatus = (typeof INVITATION_STATUS_VALUES)[number];
 
+export const SUBSCRIPTION_PLAN_VALUES = ["FREE", "PRO", "ENTERPRISE"] as const;
+export type SubscriptionPlan = (typeof SUBSCRIPTION_PLAN_VALUES)[number];
+
+/** Stripe's subscription statuses, one for one. */
+export const SUBSCRIPTION_STATUS_VALUES = [
+  "ACTIVE",
+  "TRIALING",
+  "PAST_DUE",
+  "UNPAID",
+  "CANCELED",
+  "INCOMPLETE",
+  "INCOMPLETE_EXPIRED",
+  "PAUSED",
+] as const;
+export type SubscriptionStatus = (typeof SUBSCRIPTION_STATUS_VALUES)[number];
+
 /** Built-in roles an invitation may grant. OWNER is never granted by invitation. */
 export const INVITABLE_ROLES = ["ADMIN", "MEMBER", "VIEWER"] as const;

@@ -6,7 +6,7 @@
  * backend models exactly — extend them only when a real contract is documented.
  */
 
-import type { WorkspaceRole } from "@taskforge/shared";
+import type { SubscriptionPlan, WorkspaceRole } from "@taskforge/shared";
 
 /** The Prisma `WorkspaceRole` enum (via `@taskforge/shared`). */
 export type { WorkspaceRole };
@@ -17,6 +17,8 @@ export interface Workspace {
   name: string;
   slug: string;
   description?: string | null;
+  /** The plan in force now (`GET /workspaces`); a lapsed subscription is FREE. */
+  plan?: SubscriptionPlan;
 }
 
 /** The user's membership in a workspace, carrying their RBAC role. */

@@ -62,7 +62,7 @@ Three layers, applied in order. `src/modules/auth/CLAUDE.md` has module-level de
    every route, so you do not need `@UseGuards(JwtAuthGuard)` (existing controllers still list it
    redundantly; harmless). Opt out with `@Public()` (used on every `/auth/*` route —
    `register`, `verify-email`, `login`, `google`, `refresh`, `logout` — plus
-   `GET /invitations/validate` and `GET /`).
+   `GET /invitations/validate`, `POST /billing/webhook` and `GET /`).
    It throws `UnauthorizedException("Token not provided!")` (401) when the `authorization` header is missing.
    `JwtStrategy.validate()` returns the payload unchanged, so `req.user` is `{ sub, email }`.
 2. **`WorkspaceGuard` — opt-in per controller/route.** Resolves the tenant from the
@@ -96,7 +96,7 @@ workspace. The permission catalog and the built-ins' defaults are in
 add up to `DEFAULT_ROLE_PERMISSIONS`.
 
 - **OWNER holds every permission in code** (its stored list is ignored), including the
-  owner-only `workspace:delete` and `workspace:transfer`, which no role can be granted. It can't be
+  owner-only `workspace:delete`, `workspace:transfer` and `billing:manage`, which no role can be granted. It can't be
   assigned, invited to or removed; the owner leaves the role only through
   `POST /memberships/transfer-ownership`, which swaps OWNER and ADMIN in one transaction (the
   step-down matches on still being the owner, so a racing transfer gets a 409). Any non-owner can
@@ -346,6 +346,26 @@ records `comment.deleted` only when a moderator removes someone else's comment. 
 those names are copied into the row so history survives renames and deletes. Adding a tracked field
 means extending `IssueSnapshot`/`issueChanges` and the web's `describeChange` together.
 
+## Billing and plan limits
+
+`src/modules/billing/` (`spec/billing-spec.md`). The workspace is the customer; Pro is per seat
+through Stripe Checkout and the Customer Portal. `GET /billing` is open to any member;
+`POST /billing/checkout` and `/portal` need `billing:manage` (owner-only) and return a Stripe URL.
+**The plan changes only through the webhook** (`POST /billing/webhook`, `@Public()`, signature
+checked against `req.rawBody` — hence `rawBody: true` in `main.ts` and the e2e app). Each event id is
+stored in `StripeEvent` in the same transaction it is applied, and the subscription is re-read from
+Stripe rather than taken from the event, so duplicates and out-of-order delivery are harmless. Every
+Stripe call goes through `StripeService` (mock it in tests, not the SDK).
+
+The plan in force is `effectivePlan(subscription)` from `@taskforge/shared` (`plans.ts`, which also
+holds `PLAN_LIMITS`, `FREE_OWNED_WORKSPACES`, `PRO_TRIAL_DAYS`); no row is FREE. Limits are checked
+by the writing service through `src/common/plans/plan-limits.ts` and refused with a **402**
+`{ code: "PLAN_LIMIT", limit }` (`PlanLimitException`) — `InvitationService.sendInvitation`
+(members + live invitations), `RoleService.create` (custom roles), `WorkspaceService.create` (owned
+Free workspaces). A new limit goes there, not in a guard. `BillingService.syncSeats` runs after a
+membership is created or deleted (never throws); `WorkspaceService.delete` calls
+`cancelForDeletion` first and is refused (502/503) if a billing subscription can't be canceled.
+
 ## Tests
 
 `pnpm run test` runs Jest specs colocated with the code (`*.spec.ts`). They use a hand-rolled fake
@@ -353,15 +373,18 @@ means extending `IssueSnapshot`/`issueChanges` and the web's `describeChange` to
 they need no database. Current coverage: `WorkspaceGuard`, `JwtAuthGuard`, `PermissionsGuard`, `IssueService`
 permission rules and tenant isolation, `MembershipService` role changes/removal, `UserController`/`UserService`,
 `InvitationService`/controller, register/verify/login/Google sign-in/refresh (`AuthService`,
-`RefreshTokenService`, `GoogleTokenVerifier`, throttling), `WorkspaceService`, `SprintService.endSprint`, `CommentService`, `LabelService`, `ActivityService`, `RoleService` and the role DTOs, `issueChanges`, the history rows `IssueService` writes, and the issue, comment and label DTOs.
+`RefreshTokenService`, `GoogleTokenVerifier`, throttling), `WorkspaceService`, `BillingService` (with `StripeService` mocked) and the plan limits, `SprintService.endSprint`, `CommentService`, `LabelService`, `ActivityService`, `RoleService` and the role DTOs, `issueChanges`, the history rows `IssueService` writes, and the issue, comment and label DTOs.
 `jest` maps `@/` and `generated/` in `package.json` and transforms the ESM-only `fractional-indexing` (a dependency of `@taskforge/shared`, which Jest loads as TypeScript source).
 
 `pnpm run test:e2e` (`test/*.e2e-spec.ts`) boots the real `AppModule` through `configureApp()` and
 drives it with supertest against Postgres: sign-up through the emailed link (read from the
 mocked `MailService`), refresh-token rotation and sign-out, unknown body keys, cross-workspace isolation, the header/path-param
 check, invite → accept, MEMBER limits, comments (isolation, authorship, cascade on issue delete), labels (isolation, MEMBER limits, cascade on label delete), custom roles (create, assign by
-`roleId`, enforcement, built-ins locked, delete refused while in use), and an issue's history. `MailService` is overridden; other boot-time secrets get
-placeholders in `test/setup-e2e.ts`. Rules:
+`roleId`, enforcement, built-ins locked, delete refused while in use), an issue's history, and
+billing without Stripe (the three plan limits as 402s, Pro lifting them, checkout's 503, and a
+webhook signed with Stripe's test helper — which proves the raw body reaches the check). `MailService` is overridden; other boot-time secrets get
+placeholders in `test/setup-e2e.ts`, which also overrides the Stripe variables (placeholder key and
+webhook secret, no price) so a developer's `.env` keys are never used. Rules:
 
 - `DATABASE_URL` must point at a **migrated** database whose name has `e2e` or `test` as a whole word, e.g. `taskforge_e2e` (`latest` doesn't count)
   (`setup-e2e.ts` refuses anything else, so it can't touch a dev DB). Locally:
@@ -387,6 +410,9 @@ See `.env.example`. What the code actually does with each:
   (`http://localhost:3000`, used in invitation and email-verification links), `MAIL_FROM` (falls back to `SMTP_USER`),
   `SMTP_SECURE` (`"true"`, or implied by port 465).
 - `NODE_ENV` only switches `PrismaService` query logging on (`development`).
+- `STRIPE_SECRET_KEY`, `STRIPE_PRO_PRICE_ID` and `STRIPE_WEBHOOK_SECRET` are read lazily by
+  `StripeService`: the backend boots without them, the Free limits still apply, and checkout,
+  portal and webhook answer 503.
 - `GOOGLE_CLIENT_ID` is read lazily, only by Google sign-in (the backend boots without it;
   `POST /auth/google` then answers 503) and must match the web app's `GOOGLE_CLIENT_ID`.
 

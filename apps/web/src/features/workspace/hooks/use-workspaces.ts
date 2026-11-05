@@ -30,7 +30,7 @@ export function useWorkspaces() {
 /**
  * Create a workspace. Callers receive the full `ApiResponse` envelope (for the
  * toast message and the new workspace's id); the workspace list is refetched so
- * the switcher and the context's quota check pick it up.
+ * the switcher picks it up.
  */
 export function useCreateWorkspace() {
   const queryClient = useQueryClient();

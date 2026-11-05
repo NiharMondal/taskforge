@@ -50,6 +50,8 @@ export interface Permissions {
 	canDeleteWorkspace: boolean;
 	/** OWNER only (`workspace:transfer`, never grantable). */
 	canTransferOwnership: boolean;
+	/** OWNER only (`billing:manage`, never grantable): upgrade, open Stripe's portal. */
+	canManageBilling: boolean;
 	/** Anyone but the OWNER, who must transfer or delete the workspace first. */
 	canLeaveWorkspace: boolean;
 }
@@ -87,6 +89,7 @@ export function permissionsFrom(
 		canDeleteAnyComment: has("comment:delete:any"),
 		canDeleteWorkspace: has("workspace:delete"),
 		canTransferOwnership: has("workspace:transfer"),
+		canManageBilling: has("billing:manage"),
 		canLeaveWorkspace: isOwner === false,
 	};
 }

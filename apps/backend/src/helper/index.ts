@@ -2,6 +2,13 @@ import crypto from "crypto";
 
 export const generateToken = () => crypto.randomBytes(32).toString("hex");
 
+/**
+ * How a secret token is stored: its SHA-256. Enough for 256-bit random tokens
+ * (no salt or slow hash needed), and a database leak doesn't hand them out.
+ */
+export const hashToken = (token: string) =>
+  crypto.createHash("sha256").update(token).digest("hex");
+
 export const futureDate = (days = 7) =>
   new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 

@@ -16,11 +16,17 @@ declare module "next-auth" {
   interface User {
     /** Backend-issued JWT. Attached to API requests as a Bearer token. */
     accessToken?: string;
+    /** ISO timestamp when `accessToken` expires (15 minutes after issue). */
+    accessTokenExpiresAt?: string;
+    /** Exchanged for a new token pair. Kept in the JWT, never in the session. */
+    refreshToken?: string;
   }
 
   interface Session {
     /** Backend-issued JWT, mirrored from the token in the `session` callback. */
     accessToken?: string;
+    /** Set when the backend refused the refresh token: the session is over. */
+    error?: "SessionExpired";
     user: {
       id: string;
     } & DefaultSession["user"];

@@ -15,7 +15,7 @@ Reads secretOrKey from `ConfigService.getOrThrow<string>("JWT_ACCESS_SECRET")` �
 ## Guard usage
 Only JwtAuthGuard is global (APP_GUARD in app.module.ts). Everything else is applied per controller or route.
 
-- `@Public()`                                → skips JwtAuthGuard (e.g. /auth/login, /auth/register, /auth/google, GET /invitations/validate)
+- `@Public()`                                → skips JwtAuthGuard (every /auth/* route, GET /invitations/validate)
 - `@UseGuards(JwtAuthGuard, WorkspaceGuard)` → JWT + workspace membership check (used in workspace-scoped controllers)
 - `@RequirePermission("project:manage")`     → applies PermissionsGuard; 403 unless the caller's role holds every listed permission
 
@@ -36,9 +36,17 @@ Throws ForbiddenException if the user has no membership for that workspace.
 JwtPayload = { sub: string, email: string }
 ```
 workspaceId is NOT in the JWT. Workspace context is request-scoped via the x-workspace-id header + WorkspaceGuard DB lookup.
-Token expiry: 1d (configured in auth.module.ts JwtModule.registerAsync).
+Access token expiry: 15 minutes (`ACCESS_TOKEN_TTL_SECONDS` in auth.constants.ts, used by auth.module.ts JwtModule.registerAsync).
+
+## Refresh tokens
+`RefreshTokenService` (refresh-token.service.ts) issues, rotates and revokes opaque refresh tokens; only their SHA-256 is stored (`RefreshToken`). It never signs JWTs — `AuthService.issueTokens` pairs a signed access token with a refresh token. Revoke a user's tokens (`revokeAllForUser`, inside the same transaction) whenever an account changes hands. Details: `spec/auth-spec.md`.
+
+## Email verification
+`register` stores a `PendingRegistration` and emails a link (templates in auth-emails.ts); `verifyEmail` creates the account. Tokens in links are `generateToken()` values stored as `hashToken()`.
 
 ## What NOT to do
 - Never call JwtService.sign() outside AuthService
+- Never store a refresh or verification token itself — only `hashToken(token)`
+- Never let `register` answer differently for a taken address
 - Never trust workspaceId from request body or query params — always read from request.workspaceId (injected by WorkspaceGuard)
 - Never add workspaceId to a JWT claim from client input

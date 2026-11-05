@@ -9,6 +9,7 @@ import type {
   LoginResponse,
   RegisterRequest,
   RegisterResponse,
+  VerifyEmailRequest,
 } from "../types/auth-types";
 
 /**
@@ -43,11 +44,22 @@ export async function login(
 }
 
 /**
- * Create a new account. Registration is owned entirely by the backend;
- * on success the UI redirects the user to /login (spec/auth.md).
+ * Start a sign-up. Nothing is created yet: the backend emails a link to
+ * `/verify-email`, and following it creates the account. The answer is the
+ * same for an address that already has an account.
  */
 export async function register(
   payload: RegisterRequest,
 ): Promise<ApiResponse<RegisterResponse>> {
   return api.post<RegisterResponse>("/auth/register", payload);
+}
+
+/**
+ * Finish a sign-up from the emailed link: creates the account and signs in.
+ * Called from the Auth.js `email-verification` provider (server side).
+ */
+export async function verifyEmail(
+  payload: VerifyEmailRequest,
+): Promise<ApiResponse<LoginResponse>> {
+  return api.post<LoginResponse>("/auth/verify-email", payload);
 }

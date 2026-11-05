@@ -16,16 +16,24 @@ export interface AuthUser {
 }
 
 /**
- * Payload of a successful `POST /auth/login` — i.e. the `data` field of the
- * backend envelope (see {@link ApiResponse}):
- *
- * ```json
- * { "success": true, "data": { "accessToken": "jwt", "user": { "id", "name", "email" } } }
- * ```
+ * The backend's token pair. The access token lasts 15 minutes; the refresh
+ * token is exchanged for a new pair (`POST /auth/refresh`) and is replaced
+ * every time. Both live only in the Auth.js JWT cookie — the refresh token is
+ * never copied into the client-visible session.
  */
-export interface LoginResponse {
-  user: AuthUser;
+export interface AuthTokens {
   accessToken: string;
+  /** ISO timestamp when `accessToken` stops working. */
+  accessTokenExpiresAt: string;
+  refreshToken: string;
+}
+
+/**
+ * Payload of a successful sign-in (`POST /auth/login`, `/auth/google` and
+ * `/auth/verify-email`) — i.e. the `data` field of the backend envelope.
+ */
+export interface LoginResponse extends AuthTokens {
+  user: AuthUser;
 }
 
 /** `POST /auth/login` request body. */
@@ -41,8 +49,18 @@ export interface RegisterRequest {
   password: string;
 }
 
+/**
+ * `POST /auth/register` answers 202 with only the (normalized) address,
+ * whether or not it was new: the account is created when the emailed link is
+ * followed (`POST /auth/verify-email`).
+ */
 export interface RegisterResponse {
-  user: AuthUser
+  email: string;
+}
+
+/** `POST /auth/verify-email` request body: the token from the emailed link. */
+export interface VerifyEmailRequest {
+  token: string;
 }
 
 /**
@@ -53,7 +71,4 @@ export interface GoogleAuthRequest {
   idToken: string;
 }
 
-export interface GoogleAuthResponse {
-  user: AuthUser;
-  accessToken: string;
-}
+export type GoogleAuthResponse = LoginResponse;

@@ -60,7 +60,8 @@ Three layers, applied in order. `src/modules/auth/CLAUDE.md` has module-level de
 
 1. **`JwtAuthGuard` — global.** Registered once in `app.module.ts` via `APP_GUARD`. It applies to
    every route, so you do not need `@UseGuards(JwtAuthGuard)` (existing controllers still list it
-   redundantly; harmless). Opt out with `@Public()` (used on `POST /auth/register`, `POST /auth/login`, `POST /auth/google`,
+   redundantly; harmless). Opt out with `@Public()` (used on every `/auth/*` route —
+   `register`, `verify-email`, `login`, `google`, `refresh`, `logout` — plus
    `GET /invitations/validate` and `GET /`).
    It throws `UnauthorizedException("Token not provided!")` (401) when the `authorization` header is missing.
    `JwtStrategy.validate()` returns the payload unchanged, so `req.user` is `{ sub, email }`.
@@ -78,8 +79,11 @@ Parameter decorators (in `src/common/decorators/`): `@CurrentUser(): JwtPayload`
 `@WorkspaceId(): string` (throws if `WorkspaceGuard` did not run), `@Access(): WorkspaceAccess`.
 
 Token secret is `JWT_ACCESS_SECRET`, read via `ConfigService.getOrThrow` — never `process.env`
-directly and never hardcoded. Access token expiry is `1d` (`auth.module.ts`). There is currently
-**no refresh token implementation**.
+directly and never hardcoded. Access tokens last 15 minutes (`ACCESS_TOKEN_TTL_SECONDS` in
+`auth.constants.ts`). Every sign-in also returns an opaque refresh token (`RefreshTokenService`,
+stored as a SHA-256 hash): `POST /auth/refresh` replaces it with the next one in its family, a
+replaced token reused after 60 seconds revokes the family, and `POST /auth/logout` revokes it
+(`spec/auth-spec.md`).
 
 ### Roles and permissions
 
@@ -112,13 +116,18 @@ add up to `DEFAULT_ROLE_PERMISSIONS`.
 
 `User.email` (unique) is the one email for a person. `Auth` holds one row per sign-in method,
 `@@unique([userId, provider])`: an `EMAIL` row carries the bcrypt `password`, a `GOOGLE` row carries
-Google's `sub` as `providerId` (`@@unique([provider, providerId])`). Registering creates User +
-EMAIL auth + workspace + OWNER membership in one transaction; a first Google sign-in does the same
-with a GOOGLE auth. The email column is on `User`, never on `Auth`. Password login starts from
+Google's `sub` as `providerId` (`@@unique([provider, providerId])`). Registering creates **no**
+user: it stores a `PendingRegistration` (name, email, password hash, hashed token) and emails a
+link; `POST /auth/verify-email` then creates User + EMAIL auth + workspace + OWNER membership in one
+transaction (`AuthService.createAccount`), and a first Google sign-in does the same with a GOOGLE
+auth. Register answers 202 for any address — a taken one gets a "you already have an account" email
+instead — so it doesn't reveal which emails are registered. The email column is on `User`, never on `Auth`. Password login starts from
 the `EMAIL` `Auth` row, matched through its user's email (`auth.findFirst({ where: { provider:
 EMAIL, user: { email } } })`), and answers every failure with the same 401 "Invalid email or
 password" — after a bcrypt comparison against a dummy hash when nothing matched, so neither the
-message nor the timing reveals whether an email is registered.
+message nor the timing reveals whether an email is registered. The right password on an
+unverified account (only ones registered before verification existed) is a 403; registering again
+sends a link that replaces that password.
 
 ### Google sign-in
 
@@ -126,12 +135,16 @@ message nor the timing reveals whether an email is registered.
 `{ idToken }`; `GoogleTokenVerifier` verifies it with `google-auth-library` (signature, expiry,
 `audience = GOOGLE_CLIENT_ID`, `email_verified`) and `AuthService.googleSignIn` takes `sub`, `email`
 and `picture` from the verified payload. Accounts match on Google's `sub` first, then link by
-(case-insensitive) email. Registration does not verify email, so `User.emailVerifiedAt` records
-who has proven ownership (Google sign-ups; every account that predates the column was backfilled
-as verified). Linking Google to an account whose `emailVerifiedAt` is null deletes its `EMAIL` auth
-and sets the timestamp in one transaction — otherwise whoever pre-registered the address would
-keep password access to the owner's account. The auth routes are rate-limited by `@nestjs/throttler` (`AUTH_THROTTLE`:
+(case-insensitive) email. `User.emailVerifiedAt` records who has proven ownership (Google sign-ups
+and verified registrations; every account that predates the column was backfilled as verified, so
+only password accounts registered between that and email verification are null). Linking Google to
+an account whose `emailVerifiedAt` is null deletes its `EMAIL` auth, sets the timestamp and revokes
+its refresh tokens in one transaction — otherwise whoever pre-registered the address would keep
+access to the owner's account. The auth routes are rate-limited by `@nestjs/throttler` (`AUTH_THROTTLE`:
 10/min per client) — behind a reverse proxy, set Express `trust proxy` or every client shares one bucket.
+`refresh` and `logout` are `@SkipThrottle()`: the web app calls them from its server for every
+user. (So does `login`, through the Auth.js Credentials provider, which means today the whole web
+app shares one login bucket.)
 
 ## Multi-workspace isolation — CRITICAL
 
@@ -190,16 +203,20 @@ straight into `sendResponse`. Defaults: page 1, limit 10, maxLimit 100.
 
 Two sharp edges: `.filter()` turns **every** unrecognized query param into a Prisma `where` clause
 (reserved keys are only `search`, `page`, `limit`, `sort`), so list DTOs must be tight — the global
-`ValidationPipe` has `whitelist: true`, which is what actually stops arbitrary column filtering.
+`ValidationPipe` has `whitelist: true` (and `forbidNonWhitelisted`, so an undeclared key is a 400),
+which is what actually stops arbitrary column filtering.
 And `.withDefaultFilter()` is the only thing scoping the query to a tenant, so never omit it.
 
 ## Conventions
 
 - Controllers are thin: guards + decorators + service call + `sendResponse`. No business logic.
-- DTOs use class-validator/class-transformer. Global `ValidationPipe({ whitelist: true, transform: true })`.
+- DTOs use class-validator/class-transformer. Global `ValidationPipe(VALIDATION_PIPE_OPTIONS)`
+  (`app.setup.ts`: `whitelist`, `forbidNonWhitelisted`, `transform`): a body or query key the DTO
+  doesn't declare is a 400, not silently dropped. Controller specs build their pipe from the same
+  options.
 - Services throw Nest HTTP exceptions (`NotFoundException`, `ForbiddenException`, `ConflictException`).
-- Prisma only, no raw SQL. Multi-step writes use `this.prisma.$transaction` (see `AuthService.register`,
-  which creates user + workspace + OWNER membership atomically).
+- Prisma only, no raw SQL. Multi-step writes use `this.prisma.$transaction` (see `AuthService.verifyEmail`,
+  which creates user + workspace + OWNER membership atomically through `createAccount`).
 - New feature modules go in `src/modules/<name>/` as `<name>.module.ts`, `.controller.ts`, `.service.ts`, `dto/`.
   Cross-cutting pieces go in `src/common/` (`decorators/`, `guards/`, `strategies/`, `types/`, `utils/`).
 - Read before editing: `src/common/decorators/`, `src/common/guards/`, `src/common/strategies/`, `prisma/schema.prisma`.
@@ -310,12 +327,13 @@ means extending `IssueSnapshot`/`issueChanges` and the web's `describeChange` to
 `PrismaService` (and `supertest` against a Nest app with mocked services for HTTP-level checks), so
 they need no database. Current coverage: `WorkspaceGuard`, `JwtAuthGuard`, `PermissionsGuard`, `IssueService`
 permission rules and tenant isolation, `MembershipService` role changes/removal, `UserController`/`UserService`,
-`InvitationService`/controller, register/login/Google sign-in (`AuthService`, `GoogleTokenVerifier`,
-throttling), `WorkspaceService`, `SprintService.endSprint`, `CommentService`, `LabelService`, `ActivityService`, `issueChanges`, the history rows `IssueService` writes, and the issue, comment and label DTOs.
+`InvitationService`/controller, register/verify/login/Google sign-in/refresh (`AuthService`,
+`RefreshTokenService`, `GoogleTokenVerifier`, throttling), `WorkspaceService`, `SprintService.endSprint`, `CommentService`, `LabelService`, `ActivityService`, `issueChanges`, the history rows `IssueService` writes, and the issue, comment and label DTOs.
 `jest` maps `@/` and `generated/` in `package.json` and transforms the ESM-only `fractional-indexing`.
 
 `pnpm run test:e2e` (`test/*.e2e-spec.ts`) boots the real `AppModule` through `configureApp()` and
-drives it with supertest against Postgres: sign-up, cross-workspace isolation, the header/path-param
+drives it with supertest against Postgres: sign-up through the emailed link (read from the
+mocked `MailService`), refresh-token rotation and sign-out, unknown body keys, cross-workspace isolation, the header/path-param
 check, invite → accept, MEMBER limits, comments (isolation, authorship, cascade on issue delete), labels (isolation, MEMBER limits, cascade on label delete), and an issue's history. `MailService` is overridden; other boot-time secrets get
 placeholders in `test/setup-e2e.ts`. Rules:
 
@@ -340,7 +358,7 @@ See `.env.example`. What the code actually does with each:
   `SMTP_PASS`, `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY` and `CLOUDINARY_API_SECRET` (read with
   `getOrThrow` in constructors — which is why `test/setup-e2e.ts` gives them placeholders).
 - **Optional, with defaults:** `PORT` (5001), `CORS_ORIGINS` (`localhost:3000`/`:3001`), `APP_URL`
-  (`http://localhost:3000`, used in invitation links), `MAIL_FROM` (falls back to `SMTP_USER`),
+  (`http://localhost:3000`, used in invitation and email-verification links), `MAIL_FROM` (falls back to `SMTP_USER`),
   `SMTP_SECURE` (`"true"`, or implied by port 465).
 - `NODE_ENV` only switches `PrismaService` query logging on (`development`).
 - `GOOGLE_CLIENT_ID` is read lazily, only by Google sign-in (the backend boots without it;

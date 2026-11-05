@@ -119,7 +119,11 @@ export class CommentService {
         issueId,
         userId: access.userId,
         action: IssueActivity.commentDeleted,
-        metadata: { author: { id: comment.user.id, name: comment.user.name } },
+        metadata: {
+          author: comment.user
+            ? { id: comment.user.id, name: comment.user.name }
+            : null,
+        },
       });
       return deleted;
     });

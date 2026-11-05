@@ -22,6 +22,10 @@ type Props = {
 	 * button stays disabled until this exact text is typed.
 	 */
 	typeToConfirm?: string;
+	/** Extra fields below the description, e.g. a password to re-enter. */
+	children?: ReactNode;
+	/** `false` keeps the confirm button disabled, e.g. until `children` are filled in. */
+	canConfirm?: boolean;
 };
 
 /** Confirmation dialog for destructive actions (delete, revoke, ...). */
@@ -35,9 +39,12 @@ export default function ConfirmModal({
 	isPending,
 	onConfirm,
 	typeToConfirm,
+	children,
+	canConfirm = true,
 }: Props) {
 	const [typed, setTyped] = useState("");
-	const isConfirmed = !typeToConfirm || typed.trim() === typeToConfirm;
+	const isConfirmed =
+		canConfirm && (!typeToConfirm || typed.trim() === typeToConfirm);
 
 	const close = () => {
 		setTyped("");
@@ -56,9 +63,9 @@ export default function ConfirmModal({
 
 				{typeToConfirm && (
 					<TextField value={typed} onChange={setTyped}>
-						<Label className="font-normal">
+						<Label className="font-normal text-xs">
 							Type{" "}
-							<span className="font-medium text-foreground">
+							<span className="font-medium text-foreground text-sm">
 								{typeToConfirm}
 							</span>{" "}
 							to confirm
@@ -66,6 +73,8 @@ export default function ConfirmModal({
 						<Input className="w-full shadow-none" />
 					</TextField>
 				)}
+
+				{children}
 
 				<div className="flex justify-end gap-2">
 					<Button variant="outline" type="button" onClick={close}>

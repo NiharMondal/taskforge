@@ -15,7 +15,7 @@ The steps go from easiest to hardest. Each one is one PR from `develop` and leav
 | 7 | ✅ Scheduled cleanup jobs — done | M | (6, for its table) |
 | 8 | Email on issue assignment | M | 1 |
 | 9 | ✅ Workspace audit log — done | M | — |
-| 10 | Account deletion and data export | M–L | 1 |
+| 10 | ✅ Account deletion and data export — done | M–L | 1 |
 | 11 | Platform admin: foundation + read-only console | L | — |
 | 12 | Platform admin: actions (suspend, revoke, delete) | L | 10, 11 |
 | 13 | Production and later | — | external choices |
@@ -260,7 +260,15 @@ Unit tests, typecheck and lint pass in both apps. An e2e case (Alice sees the in
 - A user without `audit:read` gets a 403.
 - Rows from another workspace are never returned.
 
-## Step 10 — Account deletion and data export
+## Step 10 — Account deletion and data export ✅
+
+**Status: done (2026-10-30, branch `account-deletion-and-data-export`).** The schema change (`20261030180000_keep_deleted_users_issues_and_comments`), `DELETE /users/me`, `GET /users/me/export`, the two Settings → Profile cards and "Deleted user" everywhere a reporter or author can be missing. Specs: `apps/backend/spec/user-spec.md`, `apps/web/spec/account.md`. Beyond the plan:
+- Leaving each shared workspace is logged as `member.left` in its audit log, in the deletion's transaction; the row's actor becomes null with the user and the web already names them from the metadata.
+- The transaction re-checks that nobody joined a solo workspace since the 409 check, and refuses (409) if someone did.
+- Both routes are throttled per user (`UserThrottlerGuard` tracks `req.user.sub`): export 5 an hour, delete 5 per 15 minutes.
+- The export reads issues and comments only in workspaces the user still belongs to, so leaving a workspace also ends reading its data.
+- A moderator deleting a deleted user's comment records `author: null` in the issue history.
+- `api.delete` already passed a body (`config.data`); no change was needed there.
 
 **Depends on:** 1.
 

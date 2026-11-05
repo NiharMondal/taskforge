@@ -2,9 +2,12 @@ import { VALIDATION_PIPE_OPTIONS } from "@/app.setup";
 import { HttpExceptionFilter } from "@/lib/http-exception.filter";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
+import { ThrottlerModule } from "@nestjs/throttler";
 import { NextFunction, Request, Response } from "express";
 import request from "supertest";
 import type { App } from "supertest/types";
+import { AUTH_THROTTLE } from "../auth/auth.constants";
+import { AccountService } from "./account.service";
 import { UserController } from "./user.controller";
 import { UserService } from "./user.service";
 
@@ -15,16 +18,25 @@ describe("UserController (HTTP)", () => {
   let app: INestApplication;
   const server = () => app.getHttpServer() as App;
   let userService: { findProfile: jest.Mock; update: jest.Mock };
+  let accountService: { deleteAccount: jest.Mock; exportData: jest.Mock };
 
   beforeEach(async () => {
     userService = {
       findProfile: jest.fn().mockResolvedValue({ id: me, name: "Me" }),
       update: jest.fn().mockResolvedValue({ id: me, name: "Renamed" }),
     };
+    accountService = {
+      deleteAccount: jest.fn().mockResolvedValue(undefined),
+      exportData: jest.fn().mockResolvedValue({ profile: { id: me } }),
+    };
 
     const moduleRef = await Test.createTestingModule({
+      imports: [ThrottlerModule.forRoot(AUTH_THROTTLE)],
       controllers: [UserController],
-      providers: [{ provide: UserService, useValue: userService }],
+      providers: [
+        { provide: UserService, useValue: userService },
+        { provide: AccountService, useValue: accountService },
+      ],
     }).compile();
 
     app = moduleRef.createNestApplication();
@@ -50,9 +62,11 @@ describe("UserController (HTTP)", () => {
       expect(userService.findProfile).not.toHaveBeenCalled();
     });
 
-    it("DELETE /users/:id does not delete anyone", async () => {
+    it("DELETE /users/:id does not delete anyone, even the caller by id", async () => {
       await request(server()).delete(`/users/${me}`).expect(404);
       await request(server()).delete(`/users/${someoneElse}`).expect(404);
+
+      expect(accountService.deleteAccount).not.toHaveBeenCalled();
     });
   });
 
@@ -119,6 +133,65 @@ describe("UserController (HTTP)", () => {
         .expect(400);
 
       expect(userService.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("DELETE /users/me", () => {
+    it("deletes the caller, resolved from the token", async () => {
+      await request(server())
+        .delete("/users/me")
+        .send({ password: "secret-password" })
+        .expect(200);
+
+      expect(accountService.deleteAccount).toHaveBeenCalledWith(me, {
+        password: "secret-password",
+      });
+    });
+
+    it("rejects a body key the DTO doesn't declare, such as userId", async () => {
+      await request(server())
+        .delete("/users/me")
+        .send({ password: "secret-password", userId: someoneElse })
+        .expect(400);
+
+      expect(accountService.deleteAccount).not.toHaveBeenCalled();
+    });
+
+    it("throttles attempts per user", async () => {
+      for (let i = 0; i < 5; i++) {
+        await request(server())
+          .delete("/users/me")
+          .send({ password: "guess" })
+          .expect(200);
+      }
+      await request(server())
+        .delete("/users/me")
+        .send({ password: "guess" })
+        .expect(429);
+    });
+  });
+
+  describe("GET /users/me/export", () => {
+    it("exports the caller's data", async () => {
+      const res = await request(server()).get("/users/me/export").expect(200);
+
+      expect(accountService.exportData).toHaveBeenCalledWith(me);
+      expect((res.body as { data: unknown }).data).toEqual({
+        profile: { id: me },
+      });
+    });
+
+    it("is not mistaken for /users/:id", async () => {
+      await request(server()).get("/users/me/export").expect(200);
+
+      expect(userService.findProfile).not.toHaveBeenCalled();
+    });
+
+    it("throttles downloads per user", async () => {
+      for (let i = 0; i < 5; i++) {
+        await request(server()).get("/users/me/export").expect(200);
+      }
+      await request(server()).get("/users/me/export").expect(429);
     });
   });
 });

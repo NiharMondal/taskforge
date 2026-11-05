@@ -8,7 +8,7 @@ Out of scope for now: @mentions, notifications, reactions, real-time updates, at
 
 ## Data model
 
-The existing `Comment` model (`prisma/schema.prisma`): `id`, `content`, `issueId`, `userId` (the author), `createdAt`, `updatedAt`. Deleting an issue or a user cascades to their comments.
+The existing `Comment` model (`prisma/schema.prisma`): `id`, `content`, `issueId`, `userId` (the author), `createdAt`, `updatedAt`. Deleting an issue cascades to its comments. Deleting a user keeps theirs with `userId: null` and `user: null` (`spec/user-spec.md`): nobody is its author any more, so only `comment:delete:any` deletes it.
 
 `Comment` has **no `workspaceId`**. Every query reaches the tenant through the issue:
 

@@ -27,7 +27,7 @@ import {
 import { Sprint } from "../types/issue-types";
 import { NO_SPRINT, UNASSIGNED } from "./IssueForm";
 import Avatar from "@/components/ui/avatar";
-import { ICommonUserEntity } from "@/types/common";
+import { DELETED_USER_NAME, ICommonUserEntity } from "@/types/common";
 
 type Props = {
 	workspaceId: string;
@@ -39,8 +39,11 @@ type Props = {
 	sprints: Sprint[];
 	/** The workspace's labels to pick from. */
 	labels: Label[];
-	/** Read-only — the reporter is set at creation and never edited here. */
-	reporter?: ICommonUserEntity;
+	/**
+	 * Read-only — the reporter is set at creation and never edited here.
+	 * `null` once their account is deleted; `undefined` if not embedded.
+	 */
+	reporter?: ICommonUserEntity | null;
 	/** Which of the controls below the viewer's role may actually change. */
 	permissions: Permissions;
 	/** Whether the viewer may edit this issue's fields (`canEditIssue`). */
@@ -189,7 +192,9 @@ export default function IssueDetailsPanel({
 							src={reporter?.avatarUrl}
 						/>
 					)}
-					<p className="text-sm">{reporter?.name ?? "--"}</p>
+					<p className={reporter === null ? "text-sm text-muted" : "text-sm"}>
+						{reporter === null ? DELETED_USER_NAME : (reporter?.name ?? "--")}
+					</p>
 				</div>
 			</div>
 		</div>

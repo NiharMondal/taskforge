@@ -9,7 +9,8 @@ import type { ICommonUserEntity } from "@/types/common";
 export type IssueActivity =
 	| ActivityBase<"issue.created", null>
 	| ActivityBase<"issue.updated", { changes: IssueChange[] }>
-	| ActivityBase<"comment.deleted", { author: Ref }>;
+	/** `author` is `null` when their account was deleted before the comment was. */
+	| ActivityBase<"comment.deleted", { author: Ref | null }>;
 
 interface ActivityBase<A extends string, M> {
 	id: string;

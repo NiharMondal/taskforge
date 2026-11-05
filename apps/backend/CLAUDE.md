@@ -187,8 +187,26 @@ that follows is already proven to be in-tenant.
 
 `User` and `Workspace` are the only models without a `workspaceId`. `UserController`
 (`/api/v1/users`) therefore has no tenant scope to lean on, so it is strictly self-only: `GET`/`PATCH`
-`/users/me` and `/users/:id` where `:id` must equal the JWT `sub` (anything else is 403). There is no
-list and no delete route — don't add one without a tenant-scoped design.
+`/users/me` and `/users/:id` where `:id` must equal the JWT `sub` (anything else is 403), plus
+`GET /users/me/export` and `DELETE /users/me` (`AccountService`, below). There is no list route and
+no delete-by-id — don't add one without a tenant-scoped design.
+
+## Account deletion and data export
+
+`src/modules/user/account.service.ts` (`spec/user-spec.md`). `DELETE /users/me` confirms with the
+password (an `EMAIL` auth) or, for a Google-only account, `confirmEmail`; a wrong one is a 400. It is
+a 409 (body `workspaces: [{ id, name }]`) while the caller owns a workspace with another member.
+Workspaces only they belong to are deleted the way `WorkspaceService.delete` does it —
+`cancelForDeletion` first, outside the transaction — then one transaction re-checks nobody joined
+them, deletes them, writes `member.left` into every other workspace's audit log and deletes the
+`User`. `Issue.reporterId` and `Comment.userId` are nullable with `onDelete: SetNull` (the
+`keep_deleted_users_issues_and_comments` migration), so shared work survives with a null reporter or
+author; code reading them must handle `null` (`issue:edit:own` never matches it, nobody is a
+null-author comment's author). After the commit: the avatar is deleted, a confirmation email is
+sent, and `syncSeats` runs for each workspace left. `GET /users/me/export` returns the profile,
+sign-in methods, memberships, and the issues and comments in workspaces they still belong to. Both
+routes are throttled per user by `UserThrottlerGuard` (the auth module's global `ThrottlerModule`,
+tracked by `req.user.sub` instead of the client address).
 
 ## API response shape
 
@@ -450,13 +468,13 @@ membership is created or deleted (never throws); `WorkspaceService.delete` calls
 `PrismaService` (and `supertest` against a Nest app with mocked services for HTTP-level checks), so
 they need no database. Current coverage: `WorkspaceGuard`, `JwtAuthGuard`, `PermissionsGuard`, `IssueService`
 permission rules and tenant isolation, `MembershipService` role changes/removal, `UserController`/`UserService`,
-`InvitationService`/controller, register/verify/login/Google sign-in/refresh/change, forgot and reset password (`AuthService`,
+`InvitationService`/controller, account deletion and data export (`AccountService` and its routes, throttling included), register/verify/login/Google sign-in/refresh/change, forgot and reset password (`AuthService`,
 `RefreshTokenService`, `GoogleTokenVerifier`, throttling), `WorkspaceService`, `BillingService` (with `StripeService` mocked) and the plan limits, `SprintService.endSprint`, `CommentService`, `LabelService`, `ActivityService`, `RoleService` and the role DTOs, `WorkflowService`, `issueChanges`, the history rows `IssueService` writes, the workspace audit rows (each action, inside its transaction) and `GET /audit-log`, the health check, the cleanup (`CleanupService` and its route), and the issue, comment and label DTOs.
 `jest` maps `@/` and `generated/` in `package.json` and transforms the ESM-only `fractional-indexing` (a dependency of `@taskforge/shared`, which Jest loads as TypeScript source).
 
 `pnpm run test:e2e` (`test/*.e2e-spec.ts`) boots the real `AppModule` through `configureApp()` and
 drives it with supertest against Postgres: sign-up through the emailed link (read from the
-mocked `MailService`), refresh-token rotation and sign-out, changing and resetting the password, unknown body keys, cross-workspace isolation, the header/path-param
+mocked `MailService`), refresh-token rotation and sign-out, changing and resetting the password, exporting data and deleting an account (409 while owning a shared workspace, shared issues and comments kept), unknown body keys, cross-workspace isolation, the header/path-param
 check, invite → accept, MEMBER limits, comments (isolation, authorship, cascade on issue delete), labels (isolation, MEMBER limits, cascade on label delete), custom roles (create, assign by
 `roleId`, enforcement, built-ins locked, delete refused while in use), workflows (the default, Free's 402s, moves along custom transitions, copying, deleting a status with issues), an issue's history, and
 billing without Stripe (the three plan limits as 402s, Pro lifting them, checkout's 503, and a

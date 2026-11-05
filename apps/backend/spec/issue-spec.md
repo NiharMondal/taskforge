@@ -30,7 +30,7 @@ model Issue {
   projectId   String
   sprintId    String?
 
-  reporterId String
+  reporterId String?   // null once the reporter's account is deleted
   assigneeId String?
 
   createdAt DateTime @default(now())
@@ -40,7 +40,7 @@ model Issue {
   project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   sprint    Sprint?   @relation(fields: [sprintId], references: [id], onDelete: SetNull)
 
-  reporter User  @relation("CreatedIssues", fields: [reporterId], references: [id], onDelete: Cascade)
+  reporter User? @relation("CreatedIssues", fields: [reporterId], references: [id], onDelete: SetNull)
   assignee User? @relation("AssignedIssues", fields: [assigneeId], references: [id], onDelete: SetNull)
 
   comments Comment[]

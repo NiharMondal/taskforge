@@ -12,6 +12,7 @@ import ConfirmModal from "@/components/ui/confirm-modal";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { sanitizeHtml } from "@/lib/sanitize-html";
 import { formatDate } from "@/util/format-date";
+import { DELETED_USER_NAME } from "@/types/common";
 import { initialsOf } from "@/util/initials";
 
 import { useDeleteComment, useUpdateComment } from "../hooks/use-comments";
@@ -82,17 +83,23 @@ export default function CommentItem({
 		}
 	};
 
+	const authorName = comment.user?.name ?? DELETED_USER_NAME;
+
 	return (
 		<li className="flex gap-3 py-3 first:pt-0 last:pb-0">
 			<Avatar
 				size="sm"
-				src={comment.user.avatarUrl ?? undefined}
-				alt={comment.user.name}
-				fallback={initialsOf(comment.user.name)}
+				src={comment.user?.avatarUrl ?? undefined}
+				alt={authorName}
+				fallback={comment.user ? initialsOf(comment.user.name) : "?"}
 			/>
 			<div className="flex min-w-0 flex-1 flex-col gap-1">
 				<div className="flex flex-wrap items-center gap-x-2 text-sm">
-					<span className="font-medium">{comment.user.name}</span>
+					<span
+						className={comment.user ? "font-medium" : "font-medium text-muted"}
+					>
+						{authorName}
+					</span>
 					<time
 						dateTime={comment.createdAt}
 						title={formatDate(comment.createdAt, "dd MMM yyyy, hh:mm a")}

@@ -10,6 +10,7 @@ import type {
 } from "@/features/issues/types/issue-types";
 import { LabelChips } from "@/features/labels/components/LabelChip";
 import { formatDate } from "@/util/format-date";
+import { DELETED_USER_NAME } from "@/types/common";
 import { initialsOf } from "@/util/initials";
 
 import type { IssueActivity, IssueChange } from "../types/activity-types";
@@ -170,7 +171,8 @@ export default function ActivityItem({ entry }: { entry: IssueActivity }) {
 			"created the issue"
 		) : entry.action === "comment.deleted" ? (
 			<>
-				deleted a comment by <V>{entry.metadata.author.name}</V>
+				deleted a comment by{" "}
+				<V>{entry.metadata.author?.name ?? DELETED_USER_NAME.toLowerCase()}</V>
 			</>
 		) : changes.length === 1 ? (
 			describeChange(changes[0])

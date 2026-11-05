@@ -21,12 +21,15 @@ import { getApiErrorMessage } from "@/lib/api-error";
 import { isTempPublicId } from "@/lib/cloudinary";
 
 import ChangePasswordCard from "./ChangePasswordCard";
+import DeleteAccountCard from "./DeleteAccountCard";
+import DownloadDataCard from "./DownloadDataCard";
 
 /**
  * Settings → Profile. Lets the signed-in user update their display name and
  * avatar (`PATCH /users/me`). Email is shown read-only. On save we also push
  * the new name/image into the Auth.js session via `update()` so the header
- * reflects the change without a re-login. Below it, `ChangePasswordCard`.
+ * reflects the change without a re-login. Below it, `ChangePasswordCard`,
+ * `DownloadDataCard` and `DeleteAccountCard`.
  */
 export default function ProfileSettings() {
 	const { update } = useSession();
@@ -123,10 +126,17 @@ export default function ProfileSettings() {
 				</CardContent>
 			</Card>
 			{user && (
-				<ChangePasswordCard
-					hasPassword={user.hasPassword ?? true}
-					email={user.email}
-				/>
+				<>
+					<ChangePasswordCard
+						hasPassword={user.hasPassword ?? true}
+						email={user.email}
+					/>
+					<DownloadDataCard />
+					<DeleteAccountCard
+						hasPassword={user.hasPassword ?? true}
+						email={user.email}
+					/>
+				</>
 			)}
 		</div>
 	);

@@ -16,7 +16,8 @@ import { LoginInput, loginSchema } from "../schemas/auth-schema";
 
 /**
  * Why the user just landed here signed out, by query parameter: set after a
- * password change (Settings → Profile) or a reset (`/reset-password`).
+ * password change or account deletion (Settings → Profile) or a reset
+ * (`/reset-password`).
  */
 const NOTICES = {
 	passwordChanged: {
@@ -28,6 +29,11 @@ const NOTICES = {
 		title: "Password reset",
 		description:
 			"You were signed out everywhere. Sign in with your new password.",
+	},
+	accountDeleted: {
+		title: "Account deleted",
+		description:
+			"Your account and the workspaces only you belonged to are gone. We emailed you a confirmation.",
 	},
 } as const;
 

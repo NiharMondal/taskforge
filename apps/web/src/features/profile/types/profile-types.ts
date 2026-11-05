@@ -22,6 +22,12 @@ export interface User {
 }
 
 /**
+ * `DELETE /users/me`: an account with a password confirms with it; a
+ * Google-only one (`hasPassword: false`) with its email.
+ */
+export type DeleteAccountDto = { password: string } | { confirmEmail: string };
+
+/**
  * Editable fields for `PATCH /users/:id`. Sending `avatarPublicId` (a temp
  * publicId) tells the backend to promote that upload and persist the resulting
  * permanent `avatarUrl`/`avatarPublicId` (see spec/cloudinary.md).

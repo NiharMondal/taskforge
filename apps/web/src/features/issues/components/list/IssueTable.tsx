@@ -10,6 +10,7 @@ import Avatar from "@/components/ui/avatar";
 import { LabelChips } from "@/features/labels/components/LabelChip";
 import type { Permissions } from "@/features/memberships/lib/permissions";
 import { formatDate } from "@/util/format-date";
+import { DELETED_USER_NAME } from "@/types/common";
 import { initialsOf } from "@/util/initials";
 
 import { PRIORITY_META } from "../../constants";
@@ -73,7 +74,9 @@ export default function IssueTable({
 		const assignee = issue.assigneeId
 			? memberNames.get(issue.assigneeId) ?? issue.assignee?.name
 			: undefined;
-		const reporter = memberNames.get(issue.reporterId) ?? issue.reporter?.name;
+		const reporter = issue.reporterId
+			? memberNames.get(issue.reporterId) ?? issue.reporter?.name
+			: DELETED_USER_NAME;
 
 		return (
 			<tr

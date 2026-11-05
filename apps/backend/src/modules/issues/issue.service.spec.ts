@@ -414,10 +414,15 @@ describe("IssueService lane ranks", () => {
   let service: IssueService;
   /** The highest stored rank in the lane, as the DB would return it. */
   let laneMax: string | null;
+  /** A rank another issue in the lane already holds, and the one after it. */
+  let takenRank: string | null;
+  let rankAfterTaken: string | null;
 
   beforeEach(() => {
     calls = [];
     laneMax = "a3";
+    takenRank = null;
+    rankAfterTaken = null;
     const track =
       <T>(name: string, value: (args: never) => T) =>
       (args: never) => {
@@ -427,17 +432,31 @@ describe("IssueService lane ranks", () => {
     prisma = {
       issue: {
         findFirst: jest.fn(
-          track("findFirst", (args: { orderBy?: unknown }) =>
-            args.orderBy
-              ? laneMax && { rank: laneMax }
-              : {
-                  id: "issue-1",
-                  status: IssueStatus.TODO,
-                  reporterId: "u",
-                  assigneeId: null,
-                  labels: [],
-                  sprint: null,
-                },
+          track(
+            "findFirst",
+            (args: {
+              where: { rank?: unknown };
+              orderBy?: { rank: "asc" | "desc" };
+            }) =>
+              // Is this exact key taken?
+              typeof args.where.rank === "string"
+                ? args.where.rank === takenRank
+                  ? { id: "issue-2" }
+                  : null
+                : // The first key after it.
+                  args.orderBy?.rank === "asc"
+                  ? rankAfterTaken && { rank: rankAfterTaken }
+                  : // The lane's last key.
+                    args.orderBy
+                    ? laneMax && { rank: laneMax }
+                    : {
+                        id: "issue-1",
+                        status: IssueStatus.TODO,
+                        reporterId: "u",
+                        assigneeId: null,
+                        labels: [],
+                        sprint: null,
+                      },
           ),
         ),
         findMany: jest.fn(
@@ -493,15 +512,59 @@ describe("IssueService lane ranks", () => {
     expect(rankWritten(prisma.issue.update)).toBe("a4");
   });
 
-  it("stores a client-computed rank as sent, without locking", async () => {
+  /** The lane an advisory lock was taken on (the tagged template's value). */
+  const lockedLane = () =>
+    (prisma.$executeRaw.mock.calls[0] as [TemplateStringsArray, string])[1];
+
+  it("locks the target lane and stores a free client-computed rank as sent", async () => {
     await service.update(workspaceId, projectId, "issue-1", owner, {
       status: IssueStatus.IN_PROGRESS,
       rank: "a0V",
     });
 
-    // A transaction (for the history row) but no lane lock.
-    expect(prisma.$executeRaw).not.toHaveBeenCalled();
+    // Lock, then check the key isn't taken, then write.
+    expect(calls).toEqual([
+      "findFirst",
+      "begin",
+      "lock",
+      "findFirst",
+      "update",
+      "audit",
+    ]);
+    expect(lockedLane()).toBe(`issue-lane:${projectId}:IN_PROGRESS`);
     expect(rankWritten(prisma.issue.update)).toBe("a0V");
+  });
+
+  it("locks the card's own lane for a reorder within it", async () => {
+    await service.update(workspaceId, projectId, "issue-1", owner, {
+      rank: "a0V",
+    });
+
+    expect(lockedLane()).toBe(`issue-lane:${projectId}:TODO`);
+    expect(rankWritten(prisma.issue.update)).toBe("a0V");
+  });
+
+  it("places a drop just after a card that already holds its rank", async () => {
+    // Someone else dropped into the same gap first.
+    takenRank = "a0V";
+    rankAfterTaken = "a1";
+
+    await service.update(workspaceId, projectId, "issue-1", owner, {
+      rank: "a0V",
+    });
+
+    const rank = rankWritten(prisma.issue.update)!;
+    expect(rank > "a0V" && rank < "a1").toBe(true);
+  });
+
+  it("places a drop after the lane's last card when that card holds its rank", async () => {
+    takenRank = "a3";
+
+    await service.update(workspaceId, projectId, "issue-1", owner, {
+      rank: "a3",
+    });
+
+    expect(rankWritten(prisma.issue.update)! > "a3").toBe(true);
   });
 
   it("appends after the highest valid key when the stored maximum is corrupt", async () => {

@@ -81,8 +81,10 @@ export default function IssueDetailModal({
 					</div>
 					<div className="xl:col-span-2 flex flex-col gap-3 border-0 xl:border-l pl-4">
 						<IssueDetailsPanel
+							workspaceId={workspaceId}
+							projectId={projectId}
 							defaultValues={{
-								status: issue.status,
+								statusId: issue.statusId,
 								priority: issue.priority,
 								type: issue.type,
 								timeEstimate: formatEstimate(issue.timeEstimate),

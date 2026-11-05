@@ -21,18 +21,25 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import type { Prisma } from "generated/prisma/client";
-import { IssueStatus, IssueType } from "generated/prisma/enums";
+import { IssueType, StatusCategory } from "generated/prisma/enums";
 import { CreateIssueDto } from "./dto/create-issue.dto";
 import { QueryIssuesDto } from "./dto/query-issues.dto";
 import { UpdateIssueDto } from "./dto/update-issue.dto";
-import {
-  isAllowedTransition,
-  isValidRank,
-  rankBetween,
-} from "@taskforge/shared";
+import { isValidRank, rankBetween } from "@taskforge/shared";
+import { type IssueLane, lastRankInLane, lockIssueLane } from "./issue-lane";
 
 /** The Prisma client, or a transaction client from `$transaction`. */
 type Db = Pick<Prisma.TransactionClient, "issue" | "project" | "auditLog">;
+
+/**
+ * Every issue read embeds its workflow status. The project names its
+ * statuses, so rules read `category`, never `name`.
+ */
+const STATUS_SELECT = {
+  select: { id: true, name: true, color: true, category: true },
+} as const;
+
+type StatusRef = Prisma.WorkflowStatusGetPayload<typeof STATUS_SELECT>;
 
 /** Every issue read embeds its labels, alphabetically. */
 const LABELS_INCLUDE = {
@@ -54,7 +61,7 @@ function flattenLabels<T extends { labels: { label: unknown }[] }>({
 function snapshotOf(issue: {
   title: string;
   description: string | null;
-  status: string;
+  status: StatusRef;
   priority: string;
   type: string;
   timeEstimate: number | null;
@@ -65,7 +72,9 @@ function snapshotOf(issue: {
   return {
     title: issue.title,
     description: issue.description,
-    status: issue.status,
+    // By name, copied into the history row like assignee and sprint names, so
+    // history survives renames and deletes.
+    status: issue.status.name,
     priority: issue.priority,
     type: issue.type,
     timeEstimate: issue.timeEstimate,
@@ -76,19 +85,6 @@ function snapshotOf(issue: {
     sprint: issue.sprint,
     labels: issue.labels.map((l) => l.label),
   };
-}
-
-/**
- * "Backlog" means *not in a sprint* — the backlog view, Jira's sense. An issue
- * planned into a sprint is committed work, so the BACKLOG status becomes TODO
- * there; otherwise it would sit in the sprint invisible, since the board has no
- * BACKLOG lane. Any other status is kept.
- */
-function committedStatus(
-  status: IssueStatus,
-  sprintId: string | null | undefined,
-): IssueStatus {
-  return sprintId && status === IssueStatus.BACKLOG ? IssueStatus.TODO : status;
 }
 
 @Injectable()
@@ -103,7 +99,6 @@ export class IssueService {
     dto: CreateIssueDto,
   ) {
     // `issue:create` itself is checked on the route.
-    assertCanSetStatus(access, dto.status);
     await this.validateProject(workspaceId, projectId);
     await this.validateAssignee(workspaceId, dto.assigneeId);
     await this.validateSprint(workspaceId, projectId, dto.sprintId);
@@ -120,17 +115,26 @@ export class IssueService {
     // A sub-issue is part of its parent's work, so it starts in the parent's
     // sprint unless one was chosen.
     const sprintId = dto.sprintId ?? parent?.sprintId;
-    // Mirror the schema default explicitly: the lane a new card lands in decides
-    // which ranks it has to sort after. Work planned into a sprint starts as
-    // To Do (see `committedStatus`).
-    const status = committedStatus(dto.status ?? IssueStatus.BACKLOG, sprintId);
+    // Without a status, the project's default; the lane a new card lands in
+    // decides which ranks it has to sort after. Work planned into a sprint
+    // starts unstarted (see `committedStatus`).
+    const status = await this.committedStatus(
+      workspaceId,
+      projectId,
+      dto.statusId
+        ? await this.validateStatus(workspaceId, projectId, dto.statusId)
+        : await this.defaultStatus(workspaceId, projectId),
+      sprintId,
+    );
+    assertCanSetStatus(access, status.category);
+    const lane = { workspaceId, projectId, statusId: status.id };
 
-    return this.inLockedLane(projectId, status, async (tx) => {
+    return this.inLockedLane(lane, async (tx) => {
       const issue = await tx.issue.create({
         data: {
           title: dto.title,
           description: dto.description,
-          status,
+          statusId: status.id,
           priority: dto.priority,
           timeEstimate: dto.timeEstimate,
           sprintId,
@@ -146,11 +150,12 @@ export class IssueService {
             type: IssueType.SUBTASK,
           }),
           number: await this.nextIssueNumber(tx, projectId),
-          rank: await this.appendRank(tx, workspaceId, projectId, status),
+          rank: await this.appendRank(tx, lane),
           workspaceId,
           projectId,
           reporterId,
         },
+        include: { status: STATUS_SELECT },
       });
       await recordIssueActivity(tx, {
         workspaceId,
@@ -168,7 +173,7 @@ export class IssueService {
     const qb = new PrismaQueryBuilder(query, {
       defaultField: "createdAt",
       defaultOrder: "desc",
-      allowedFields: ["createdAt", "priority", "status", "rank"],
+      allowedFields: ["createdAt", "priority", "rank"],
     })
       .withDefaultFilter({ workspaceId, projectId })
       .filter()
@@ -176,6 +181,7 @@ export class IssueService {
       .paginate()
       .sort()
       .include({
+        status: STATUS_SELECT,
         // `email` lives on `Auth`, not `User` — selecting it here makes Prisma
         // reject the whole query. Mirrors `findOne`.
         assignee: { select: { id: true, name: true, avatarUrl: true } },
@@ -203,6 +209,7 @@ export class IssueService {
     const issue = await this.prisma.issue.findFirst({
       where: { id: issueId, workspaceId, projectId },
       include: {
+        status: STATUS_SELECT,
         reporter: { select: { id: true, name: true, avatarUrl: true } },
         assignee: { select: { id: true, name: true, avatarUrl: true } },
         parentIssue: { select: { id: true, number: true, title: true } },
@@ -213,7 +220,8 @@ export class IssueService {
             id: true,
             number: true,
             title: true,
-            status: true,
+            statusId: true,
+            status: STATUS_SELECT,
             priority: true,
             assigneeId: true,
             assignee: { select: { id: true, name: true, avatarUrl: true } },
@@ -230,13 +238,14 @@ export class IssueService {
   }
 
   /**
-   * The stored issue, as writes start from it: with its sprint and labels,
-   * which `update` compares against for the history.
+   * The stored issue, as writes start from it: with its status, sprint and
+   * labels, which `update` compares against for the history.
    */
   async findOne(workspaceId: string, projectId: string, issueId: string) {
     const issue = await this.prisma.issue.findFirst({
       where: { id: issueId, workspaceId, projectId },
       include: {
+        status: STATUS_SELECT,
         sprint: { select: { id: true, name: true } },
         ...LABELS_INCLUDE,
         reporter: {
@@ -274,20 +283,37 @@ export class IssueService {
 
     const issue = await this.findOne(workspaceId, projectId, issueId);
 
-    // Moving a BACKLOG-status issue into a sprint commits it to To Do — a legal
-    // transition — appended to that lane below like any rank-less status
-    // change. It is checked as if the caller had sent the status themselves.
-    const status =
-      dto.status ??
-      (dto.sprintId &&
-      committedStatus(issue.status, dto.sprintId) !== issue.status
-        ? IssueStatus.TODO
-        : undefined);
-    assertCanUpdateIssue(access, issue, { ...dto, status });
+    // Moving a backlog issue into a sprint commits it to the first unstarted
+    // status, appended to that lane below like any rank-less status change.
+    // The caller needs the permissions it would take to send that status, but
+    // not a transition for it: it's the sprint that moves the issue, and a
+    // workflow without that move shouldn't stop sprint planning.
+    let status: StatusRef | undefined;
+    let committed = false;
+    if (dto.statusId !== undefined) {
+      status = await this.validateStatus(workspaceId, projectId, dto.statusId);
+    } else if (dto.sprintId) {
+      const next = await this.committedStatus(
+        workspaceId,
+        projectId,
+        issue.status,
+        dto.sprintId,
+      );
+      if (next.id !== issue.statusId) {
+        status = next;
+        committed = true;
+      }
+    }
+    assertCanUpdateIssue(access, issue, { ...dto, statusId: status?.id });
+    assertCanSetStatus(access, status?.category);
 
-    if (status && !isAllowedTransition(issue.status, status)) {
+    if (
+      status &&
+      !committed &&
+      !(await this.canMove(issue.statusId, status.id))
+    ) {
       throw new BadRequestException(
-        `An issue can't move from ${issue.status} to ${status}`,
+        `An issue can't move from ${issue.status.name} to ${status.name}`,
       );
     }
 
@@ -309,7 +335,7 @@ export class IssueService {
     const changes = issueChanges(snapshotOf(issue), {
       title: dto.title,
       description: dto.description,
-      status,
+      status: status?.name,
       priority: dto.priority,
       type: dto.type,
       timeEstimate: dto.timeEstimate,
@@ -324,7 +350,7 @@ export class IssueService {
         data: {
           title: dto.title,
           description: dto.description,
-          status,
+          statusId: status?.id,
           priority: dto.priority,
           type: dto.type,
           timeEstimate: dto.timeEstimate,
@@ -337,6 +363,7 @@ export class IssueService {
           },
           rank,
         },
+        include: { status: STATUS_SELECT },
       });
 
     // The update and its history row commit together. A save that changes
@@ -361,12 +388,13 @@ export class IssueService {
       // dropping into the same gap) — then just after that card.
       const rank = dto.rank;
       this.validateRank(rank);
-      const lane = status ?? issue.status;
-      return this.inLockedLane(projectId, lane, async (tx) =>
-        save(
-          tx,
-          await this.freeRank(tx, workspaceId, projectId, lane, issueId, rank),
-        ),
+      const lane = {
+        workspaceId,
+        projectId,
+        statusId: status?.id ?? issue.statusId,
+      };
+      return this.inLockedLane(lane, async (tx) =>
+        save(tx, await this.freeRank(tx, lane, issueId, rank)),
       );
     }
 
@@ -374,10 +402,10 @@ export class IssueService {
     // PATCH when it can't compute a key) would keep the rank the card had in
     // the lane it left and sort arbitrarily in the new one, so append it to the
     // end of the target lane — the same way a create does.
-    const targetLane = status;
-    if (targetLane && targetLane !== issue.status) {
-      return this.inLockedLane(projectId, targetLane, async (tx) =>
-        save(tx, await this.appendRank(tx, workspaceId, projectId, targetLane)),
+    if (status && status.id !== issue.statusId) {
+      const lane = { workspaceId, projectId, statusId: status.id };
+      return this.inLockedLane(lane, async (tx) =>
+        save(tx, await this.appendRank(tx, lane)),
       );
     }
 
@@ -393,63 +421,27 @@ export class IssueService {
   }
 
   /**
-   * Run `write` in a transaction holding a lock on one `(project, status)`
-   * lane. Every rank write takes it. Appending reads the lane's last rank and
-   * writes the next one, and a drop checks its key isn't taken; without the
-   * lock, two writes at the same moment see the same lane and give both cards
-   * the same key, which the board can't place anything between. The advisory
-   * lock is released when the transaction ends.
+   * Run `write` in a transaction holding the lane's lock (`lockIssueLane`),
+   * which every rank write takes. The lock is released when the transaction
+   * ends.
    */
   private inLockedLane<T>(
-    projectId: string,
-    status: IssueStatus,
+    lane: IssueLane,
     write: (tx: Db) => Promise<T>,
   ): Promise<T> {
     return this.prisma.$transaction(async (tx) => {
-      const lane = `issue-lane:${projectId}:${status}`;
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lane}::text, 0))`;
+      await lockIssueLane(tx, lane.projectId, lane.statusId);
       return write(tx);
     });
   }
 
   /**
-   * A fractional index that sorts after every ranked issue in a
-   * `(project, status)` lane — i.e. appends to the end of the lane. Call it
-   * inside `inLockedLane` for that lane.
-   *
-   * Un-ranked rows are filtered out: Postgres sorts NULLs first on `DESC`, so
-   * a single un-backfilled row would otherwise shadow the real maximum. The
-   * column sorts in byte order (COLLATE "C"), matching the keys.
+   * A fractional index that sorts after every ranked issue in the lane — i.e.
+   * appends to the end of it. Call it inside `inLockedLane` for that lane.
    */
-  private async appendRank(
-    db: Db,
-    workspaceId: string,
-    projectId: string,
-    status: IssueStatus,
-  ) {
-    const where = { workspaceId, projectId, status, rank: { not: null } };
-    const last = await db.issue.findFirst({
-      where,
-      orderBy: { rank: "desc" },
-      select: { rank: true },
-    });
-
-    const appended = rankBetween(last?.rank, null);
-    if (appended) return appended;
-
-    // The highest stored key isn't a valid fractional index (hand-edited
-    // row, botched backfill). Append after the highest key that *is* valid
-    // rather than restarting at "a0", which would likely collide.
-    const ranks = await db.issue.findMany({ where, select: { rank: true } });
-    const highestValid = ranks
-      .map((r) => r.rank as string)
-      .filter(isValidRank)
-      .reduce<string | null>(
-        (max, r) => (max === null || r > max ? r : max),
-        null,
-      );
+  private async appendRank(db: Db, lane: IssueLane) {
     // A valid key or none at all, so this always builds.
-    return rankBetween(highestValid, null)!;
+    return rankBetween(await lastRankInLane(db, lane), null)!;
   }
 
   /**
@@ -460,29 +452,24 @@ export class IssueService {
    */
   private async freeRank(
     db: Db,
-    workspaceId: string,
-    projectId: string,
-    status: IssueStatus,
+    lane: IssueLane,
     issueId: string,
     rank: string,
   ) {
-    const lane = { workspaceId, projectId, status, id: { not: issueId } };
+    const others = { ...lane, id: { not: issueId } };
     const taken = await db.issue.findFirst({
-      where: { ...lane, rank },
+      where: { ...others, rank },
       select: { id: true },
     });
     if (!taken) return rank;
 
     const next = await db.issue.findFirst({
-      where: { ...lane, rank: { gt: rank } },
+      where: { ...others, rank: { gt: rank } },
       orderBy: { rank: "asc" },
       select: { rank: true },
     });
     // An invalid next key can't be built on: append instead.
-    return (
-      rankBetween(rank, next?.rank) ??
-      this.appendRank(db, workspaceId, projectId, status)
-    );
+    return rankBetween(rank, next?.rank) ?? this.appendRank(db, lane);
   }
 
   /**
@@ -505,6 +492,79 @@ export class IssueService {
     if (!isValidRank(rank)) {
       throw new BadRequestException("Invalid issue rank");
     }
+  }
+
+  /** A status of this project's workflow; one from anywhere else is a 400. */
+  private async validateStatus(
+    workspaceId: string,
+    projectId: string,
+    statusId: string,
+  ): Promise<StatusRef> {
+    const status = await this.prisma.workflowStatus.findFirst({
+      where: { id: statusId, workspaceId, projectId },
+      ...STATUS_SELECT,
+    });
+    if (!status) {
+      throw new BadRequestException("Invalid status for this project");
+    }
+    return status;
+  }
+
+  /**
+   * Where an issue created without a status lands. A project always has a
+   * default (`WorkflowService` keeps one); the first column covers a project
+   * that somehow lost it.
+   */
+  private async defaultStatus(
+    workspaceId: string,
+    projectId: string,
+  ): Promise<StatusRef> {
+    const status = await this.prisma.workflowStatus.findFirst({
+      where: { workspaceId, projectId },
+      orderBy: [{ isDefault: "desc" }, { position: "asc" }, { id: "asc" }],
+      ...STATUS_SELECT,
+    });
+    if (!status) {
+      throw new BadRequestException("This project has no workflow statuses");
+    }
+    return status;
+  }
+
+  /**
+   * "Backlog" means *not in a sprint* — the backlog view, Jira's sense. An
+   * issue planned into a sprint is committed work, so a BACKLOG-category status
+   * becomes the project's first UNSTARTED one; otherwise it would sit in the
+   * sprint invisible, since the board shows no backlog lanes. Any other status
+   * is kept.
+   */
+  private async committedStatus(
+    workspaceId: string,
+    projectId: string,
+    status: StatusRef,
+    sprintId: string | null | undefined,
+  ): Promise<StatusRef> {
+    if (!sprintId || status.category !== StatusCategory.BACKLOG) return status;
+
+    const unstarted = await this.prisma.workflowStatus.findFirst({
+      where: { workspaceId, projectId, category: StatusCategory.UNSTARTED },
+      orderBy: [{ position: "asc" }, { id: "asc" }],
+      ...STATUS_SELECT,
+    });
+    // Every workflow has one (`WorkflowService` refuses removing the last).
+    return unstarted ?? status;
+  }
+
+  /**
+   * Whether the project's workflow allows the move (staying put always
+   * does). Both statuses were checked to be this project's.
+   */
+  private async canMove(fromStatusId: string, toStatusId: string) {
+    if (fromStatusId === toStatusId) return true;
+    const transition = await this.prisma.workflowTransition.findUnique({
+      where: { fromStatusId_toStatusId: { fromStatusId, toStatusId } },
+      select: { projectId: true },
+    });
+    return transition !== null;
   }
 
   private async validateProject(workspaceId: string, projectId: string) {

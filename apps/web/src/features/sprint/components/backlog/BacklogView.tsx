@@ -146,7 +146,7 @@ export default function BacklogView({ projectId }: { projectId: string }) {
 				issues: orderSection(
 					issues.filter(
 						(i) =>
-							i.status !== "DONE" &&
+							i.status.category !== "COMPLETED" &&
 							!(i.sprintId && openIds.has(i.sprintId)),
 					),
 				),

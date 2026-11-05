@@ -41,7 +41,7 @@ export default function SubIssuesPanel({ issue, workspaceId, canCreate }: Props)
 	if (issue.parentIssueId) return null;
 	if (subIssues.length === 0 && !canCreate) return null;
 
-	const done = subIssues.filter((s) => s.status === "DONE").length;
+	const done = subIssues.filter((s) => s.status.category === "COMPLETED").length;
 	const percent = subIssues.length
 		? Math.round((done / subIssues.length) * 100)
 		: 0;

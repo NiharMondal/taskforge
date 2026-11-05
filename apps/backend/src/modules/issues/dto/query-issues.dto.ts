@@ -1,6 +1,6 @@
 import { PaginationQueryDto } from "@/common/dto/pagination-query.dto";
 import { IsEnum, IsOptional, IsString, IsUUID, Matches } from "class-validator";
-import { IssuePriority, IssueStatus } from "generated/prisma/enums";
+import { IssuePriority } from "generated/prisma/enums";
 
 export class QueryIssuesDto extends PaginationQueryDto {
   @IsOptional()
@@ -8,8 +8,8 @@ export class QueryIssuesDto extends PaginationQueryDto {
   search?: string;
 
   @IsOptional()
-  @IsEnum(IssueStatus)
-  status?: IssueStatus;
+  @IsUUID()
+  statusId?: string;
 
   @IsOptional()
   @IsEnum(IssuePriority)
@@ -28,9 +28,9 @@ export class QueryIssuesDto extends PaginationQueryDto {
    * keeps it; the fields match `allowedFields` in `IssueService.findAll`.
    */
   @IsOptional()
-  @Matches(/^(createdAt|priority|status|rank):(asc|desc)$/, {
+  @Matches(/^(createdAt|priority|rank):(asc|desc)$/, {
     message:
-      "sort must be one of createdAt, priority, status or rank, then :asc or :desc",
+      "sort must be one of createdAt, priority or rank, then :asc or :desc",
   })
   sort?: string;
 }

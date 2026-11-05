@@ -46,7 +46,7 @@ Consequences:
 
 - `generated/` is gitignored. A fresh clone will not compile until `pnpm exec prisma generate` runs (`pnpm install` does it via the root `postinstall`).
 - Import models/enums from the generated path, NOT from `@prisma/client`:
-  - enums: `import { WorkspaceRole, IssueStatus } from "generated/prisma/enums"`
+  - enums: `import { WorkspaceRole, StatusCategory } from "generated/prisma/enums"`
   - types: `import { User } from "generated/prisma/client"`
   - Note these are bare `generated/...` specifiers (resolved via the tsconfig `paths` entry `generated/*` → `./generated/*`; there is no `baseUrl`), not `@/`-prefixed.
 - `prisma/migrations/` is committed. History starts at the `*_init` baseline (generated from the schema on 2026-10-01); earlier migrations were never tracked. Add schema changes with `pnpm exec prisma migrate dev --name <change>` and commit the new folder.
@@ -104,9 +104,10 @@ add up to `DEFAULT_ROLE_PERMISSIONS`.
 - **Unknown stored keys are ignored**, and a membership with no `roleId` (written before roles)
   falls back to its enum's defaults.
 - **Issue writes are field-level** (`src/common/permissions/issue-access.ts`): an allow-list maps
-  each field to `issue:status` (`status`, `rank`) or the content permissions (`issue:edit:any`, or
+  each field to `issue:status` (`statusId`, `rank`) or the content permissions (`issue:edit:any`, or
   `issue:edit:own` when the *stored* issue's reporter or assignee is the caller). Fields missing from
-  the map are refused. DONE needs `issue:status:done`, on create too.
+  the map are refused. Moving into a `COMPLETED`-category status needs `issue:status:done`, on
+  create too (`assertCanSetStatus`, called by the service once it has resolved the status).
 - **No escalation:** `assertActorHolds` refuses handing out a role (role change, invitation) that
   holds a permission the actor doesn't. Changing or removing a member takes *strictly more* access
   (`assertActorOutranks`: every one of the target's permissions plus at least one more), so two
@@ -251,18 +252,37 @@ asset nor another user's pending upload can be destroyed through it. `User` stor
 `avatarUrl` and `avatarPublicId`; `avatarUrl` is never taken from the client (it is the promoted
 asset's URL, Google's picture, or `null` after `avatarPublicId: null` removes the avatar).
 
+## Workflows
+
+`src/modules/workflows/` serves `/projects/:projectId/workflow` (`spec/workflow-spec.md`). A
+project's statuses are `WorkflowStatus` rows (name, hex color, `category`, a fractional `position`,
+one `isDefault`) and its allowed moves are `WorkflowTransition` rows; `Issue.statusId` points at one
+of its own project's statuses. **Never test a status by name** — read its `category`: completing
+needs `issue:status:done`, `committedStatus` moves a `BACKLOG`-category issue joining a sprint to the
+first `UNSTARTED` status (skipping the transition check), and `endSprint` releases everything not
+`COMPLETED`. `ProjectService.create` seeds `DEFAULT_WORKFLOW_STATUSES` (`seedDefaultWorkflow`) or,
+with `workflowFromProjectId` on Pro, copies another project's (`copyWorkflow`), in the project's
+transaction. `WorkflowService` writes need `project:manage` and `assertCanCustomizeWorkflow` (402 on
+Free; a workflow customized on Pro keeps working after a downgrade, read-only), hold a per-project
+advisory lock (`workflow:<projectId>`), and refuse (409) leaving no `UNSTARTED` or `COMPLETED`
+status or deleting the default. Deleting a status with issues requires `?moveTo=`; they are appended
+to that lane under its lock, each with a history row. `Issue.status` is `onDelete: NoAction` (not
+Restrict, so project and workspace cascades work). The `custom_workflows` migration gave every
+existing project the eight statuses and moves it had.
+
 ## Issue board ordering
 
 `Issue.rank` is a nullable fractional index (base-62 string) for ordering cards within a
-`(project, status)` lane, backed by the `@@index([projectId, status, rank])`. Keys come from
+`(project, statusId)` lane, backed by the `@@index([projectId, statusId, rank])`. Keys come from
 `@taskforge/shared`'s `rankBetween`/`isValidRank` (`fractional-indexing`) — the same helpers the
 frontend uses, so both sides generate compatible keys.
 
 `IssueService` owns rank on writes:
 
 - **create** ignores any client-supplied rank and appends: `appendRank()` reads the lane's current
-  max rank (filtering `rank: null`, because Postgres sorts NULLs *first* on `DESC`) and generates a
-  key after it. The lane is `dto.status ?? BACKLOG`, mirroring the schema default.
+  max rank (`lastRankInLane` in `issue-lane.ts`, filtering `rank: null`, because Postgres sorts NULLs
+  *first* on `DESC`) and generates a key after it. The lane is `dto.statusId`, else the project's
+  default status.
 - **update** persists `dto.rank` as sent — the board computes it on drop from the neighbors the user
   actually sees, so it is authoritative — unless another issue in the target lane already holds that
   exact key (two people dropping into the same gap): `freeRank()` then stores a key between that
@@ -270,8 +290,8 @@ frontend uses, so both sides generate compatible keys.
   than storing junk that would break the next insert.
 - **update without a rank but with a new status** (the frontend's fallback when it can't compute a
   key) appends to the *target* lane, so a card can't carry a stale rank from the lane it left.
-- **Every rank write takes the lane's lock** (`inLockedLane`: `pg_advisory_xact_lock` on
-  `issue-lane:<projectId>:<status>`, released at commit), so concurrent appends and drops into one
+- **Every rank write takes the lane's lock** (`inLockedLane` → `lockIssueLane`: `pg_advisory_xact_lock`
+  on `issue-lane:<projectId>:<statusId>`, released at commit), so concurrent appends and drops into one
   lane queue and each sees the keys the others committed. A new rank write must go through it too.
 - `rank` is *not* in `update`'s MEMBER-restricted field list: a member allowed to re-status an issue
   is allowed to position it.
@@ -295,11 +315,12 @@ existing rows with the same key rule, so change both together.
 
 ## Sprint commitment
 
-"Backlog" means *not in a sprint*. `committedStatus` in `IssueService` moves a `BACKLOG`-status issue
-to `TODO` when it joins a sprint — on create (including a sub-issue inheriting its parent's sprint)
-and on a PATCH that sets `sprintId` without a `status` — because the web board shows the active
-sprint and has no BACKLOG lane. The implied status goes through `assertCanUpdateIssue` and the
-transition check like a sent one, and appends to the TODO lane. Leaving a sprint keeps the status.
+"Backlog" means *not in a sprint*. `committedStatus` in `IssueService` moves an issue in a
+`BACKLOG`-category status to the project's first `UNSTARTED` status when it joins a sprint — on
+create (including a sub-issue inheriting its parent's sprint) and on a PATCH that sets `sprintId`
+without a `statusId` — because the web board shows the active sprint and has no backlog lanes. The
+implied status goes through `assertCanUpdateIssue` like a sent one but not the transition check (a
+workflow without that move mustn't block sprint planning), and appends to that lane. Leaving a sprint keeps the status.
 The `sprint_issues_leave_backlog_status` migration converted existing rows (rank cleared).
 
 ## Sub-issues
@@ -361,8 +382,9 @@ The plan in force is `effectivePlan(subscription)` from `@taskforge/shared` (`pl
 holds `PLAN_LIMITS`, `FREE_OWNED_WORKSPACES`, `PRO_TRIAL_DAYS`); no row is FREE. Limits are checked
 by the writing service through `src/common/plans/plan-limits.ts` and refused with a **402**
 `{ code: "PLAN_LIMIT", limit }` (`PlanLimitException`) — `InvitationService.sendInvitation`
-(members + live invitations), `RoleService.create` (custom roles), `WorkspaceService.create` (owned
-Free workspaces). A new limit goes there, not in a guard. `BillingService.syncSeats` runs after a
+(members + live invitations), `RoleService.create` (custom roles), `WorkflowService` and
+`ProjectService.create` with `workflowFromProjectId` (custom workflows), `WorkspaceService.create`
+(owned Free workspaces). A new limit goes there, not in a guard. `BillingService.syncSeats` runs after a
 membership is created or deleted (never throws); `WorkspaceService.delete` calls
 `cancelForDeletion` first and is refused (502/503) if a billing subscription can't be canceled.
 
@@ -373,14 +395,14 @@ membership is created or deleted (never throws); `WorkspaceService.delete` calls
 they need no database. Current coverage: `WorkspaceGuard`, `JwtAuthGuard`, `PermissionsGuard`, `IssueService`
 permission rules and tenant isolation, `MembershipService` role changes/removal, `UserController`/`UserService`,
 `InvitationService`/controller, register/verify/login/Google sign-in/refresh (`AuthService`,
-`RefreshTokenService`, `GoogleTokenVerifier`, throttling), `WorkspaceService`, `BillingService` (with `StripeService` mocked) and the plan limits, `SprintService.endSprint`, `CommentService`, `LabelService`, `ActivityService`, `RoleService` and the role DTOs, `issueChanges`, the history rows `IssueService` writes, and the issue, comment and label DTOs.
+`RefreshTokenService`, `GoogleTokenVerifier`, throttling), `WorkspaceService`, `BillingService` (with `StripeService` mocked) and the plan limits, `SprintService.endSprint`, `CommentService`, `LabelService`, `ActivityService`, `RoleService` and the role DTOs, `WorkflowService`, `issueChanges`, the history rows `IssueService` writes, and the issue, comment and label DTOs.
 `jest` maps `@/` and `generated/` in `package.json` and transforms the ESM-only `fractional-indexing` (a dependency of `@taskforge/shared`, which Jest loads as TypeScript source).
 
 `pnpm run test:e2e` (`test/*.e2e-spec.ts`) boots the real `AppModule` through `configureApp()` and
 drives it with supertest against Postgres: sign-up through the emailed link (read from the
 mocked `MailService`), refresh-token rotation and sign-out, unknown body keys, cross-workspace isolation, the header/path-param
 check, invite → accept, MEMBER limits, comments (isolation, authorship, cascade on issue delete), labels (isolation, MEMBER limits, cascade on label delete), custom roles (create, assign by
-`roleId`, enforcement, built-ins locked, delete refused while in use), an issue's history, and
+`roleId`, enforcement, built-ins locked, delete refused while in use), workflows (the default, Free's 402s, moves along custom transitions, copying, deleting a status with issues), an issue's history, and
 billing without Stripe (the three plan limits as 402s, Pro lifting them, checkout's 503, and a
 webhook signed with Stripe's test helper — which proves the raw body reaches the check). `MailService` is overridden; other boot-time secrets get
 placeholders in `test/setup-e2e.ts`, which also overrides the Stripe variables (placeholder key and

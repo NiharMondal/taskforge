@@ -2,7 +2,7 @@ import { generateKeyBetween, generateNKeysBetween } from "fractional-indexing";
 
 /**
  * Board order. `Issue.rank` is a base-62 fractional-indexing key ordering cards
- * within a `(project, status)` lane: a card can sit between any two neighbours
+ * within a `(project, status)` lane (a workflow status): a card can sit between any two neighbours
  * without renumbering the lane. The web computes a key on drop and the backend
  * computes one when it appends; both go through these helpers, so the keys
  * stay compatible and `fractional-indexing` is pinned in one place.

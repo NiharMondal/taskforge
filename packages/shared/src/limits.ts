@@ -25,6 +25,12 @@ export const MAX_STORY_POINTS = 100;
 export const MAX_ISSUE_LABELS = 10;
 export const MAX_LABEL_NAME_LENGTH = 30;
 export const MAX_ROLE_NAME_LENGTH = 50;
+export const MAX_STATUS_NAME_LENGTH = 30;
+/** Statuses in one project's workflow. */
+export const MAX_WORKFLOW_STATUSES = 20;
+/** Every move between distinct statuses of a full workflow. */
+export const MAX_WORKFLOW_TRANSITIONS =
+  MAX_WORKFLOW_STATUSES * (MAX_WORKFLOW_STATUSES - 1);
 
 /** For new passwords. bcrypt only reads the first 72 bytes. */
 export const MIN_PASSWORD_LENGTH = 8;

@@ -8,11 +8,99 @@ import {
 } from "@nestjs/common";
 import {
   IssuePriority,
-  IssueStatus,
   IssueType,
+  StatusCategory,
   WorkspaceRole,
 } from "generated/prisma/enums";
 import { IssueService } from "./issue.service";
+
+/**
+ * The workflow every fake project has: the eight statuses projects had before
+ * workflows were configurable, with ids named after the old enum values so the
+ * tests read as they did, and the moves the old fixed workflow allowed.
+ */
+const STATUSES = {
+  BACKLOG: status("BACKLOG", "Backlog", StatusCategory.BACKLOG),
+  TODO: status("TODO", "To Do", StatusCategory.UNSTARTED),
+  IN_PROGRESS: status("IN_PROGRESS", "In Progress", StatusCategory.STARTED),
+  IN_REVIEW: status("IN_REVIEW", "In Review", StatusCategory.STARTED),
+  QA_REQUESTED: status("QA_REQUESTED", "QA Requested", StatusCategory.STARTED),
+  QA_FAILED: status("QA_FAILED", "QA Failed", StatusCategory.STARTED),
+  DEPLOYED: status("DEPLOYED", "Deployed", StatusCategory.STARTED),
+  DONE: status("DONE", "Done", StatusCategory.COMPLETED),
+  // A completed status by another name: the DONE rules follow the category.
+  SHIPPED: status("SHIPPED", "Shipped", StatusCategory.COMPLETED),
+};
+type StatusKey = keyof typeof STATUSES;
+
+function status(id: string, name: string, category: StatusCategory) {
+  return { id, name, color: "#6b7280", category };
+}
+
+const TRANSITIONS: [StatusKey, StatusKey][] = [
+  ["BACKLOG", "TODO"],
+  ["TODO", "IN_PROGRESS"],
+  ["IN_PROGRESS", "IN_REVIEW"],
+  ["IN_REVIEW", "QA_REQUESTED"],
+  ["QA_REQUESTED", "QA_FAILED"],
+  ["QA_REQUESTED", "DEPLOYED"],
+  ["QA_FAILED", "IN_PROGRESS"],
+  ["DEPLOYED", "DONE"],
+  ["DEPLOYED", "SHIPPED"],
+];
+
+/** A stored issue's status columns, as `findOne` returns them. */
+const storedStatus = (key: StatusKey) => ({
+  statusId: key,
+  status: STATUSES[key],
+});
+
+/**
+ * The workflow reads `IssueService` makes: a status by id (only this
+ * project's exist), the default (Backlog), the first of a category, and
+ * whether a move is allowed.
+ */
+function fakeWorkflow() {
+  return {
+    workflowStatus: {
+      findFirst: jest.fn(
+        ({ where }: { where: { id?: string; category?: StatusCategory } }) =>
+          Promise.resolve(
+            where.id
+              ? (STATUSES[where.id as StatusKey] ?? null)
+              : where.category
+                ? Object.values(STATUSES).find(
+                    (s) => s.category === where.category,
+                  )
+                : STATUSES.BACKLOG,
+          ),
+      ),
+    },
+    workflowTransition: {
+      findUnique: jest.fn(
+        ({
+          where: { fromStatusId_toStatusId: move },
+        }: {
+          where: {
+            fromStatusId_toStatusId: {
+              fromStatusId: string;
+              toStatusId: string;
+            };
+          };
+        }) =>
+          Promise.resolve(
+            TRANSITIONS.some(
+              ([from, to]) =>
+                from === move.fromStatusId && to === move.toStatusId,
+            )
+              ? { projectId: "proj-1" }
+              : null,
+          ),
+      ),
+    },
+  };
+}
+type WorkflowFake = ReturnType<typeof fakeWorkflow>;
 
 describe("IssueService.update permission rules", () => {
   const workspaceId = "ws-1";
@@ -22,7 +110,7 @@ describe("IssueService.update permission rules", () => {
 
   /** The issue as stored; nobody involved is `me` unless a test says so. */
   let stored: {
-    status: IssueStatus;
+    status: StatusKey;
     type: IssueType;
     reporterId: string;
     assigneeId: string | null;
@@ -32,12 +120,12 @@ describe("IssueService.update permission rules", () => {
     auditLog: { create: jest.Mock };
     $transaction: jest.Mock;
     $executeRaw: jest.Mock;
-  };
+  } & WorkflowFake;
   let service: IssueService;
 
   beforeEach(() => {
     stored = {
-      status: IssueStatus.TODO,
+      status: "TODO",
       type: IssueType.TASK,
       reporterId: "user-other",
       assigneeId: null,
@@ -45,13 +133,20 @@ describe("IssueService.update permission rules", () => {
     prisma = {
       issue: {
         findFirst: jest.fn(() =>
-          Promise.resolve({ id: issueId, labels: [], sprint: null, ...stored }),
+          Promise.resolve({
+            id: issueId,
+            labels: [],
+            sprint: null,
+            ...stored,
+            ...storedStatus(stored.status),
+          }),
         ),
         update: jest.fn().mockResolvedValue({ id: issueId }),
       },
       auditLog: { create: jest.fn().mockResolvedValue({ id: "audit-1" }) },
       $transaction: jest.fn(),
       $executeRaw: jest.fn().mockResolvedValue(1),
+      ...fakeWorkflow(),
     };
     prisma.$transaction.mockImplementation((cb: (tx: unknown) => unknown) =>
       cb(prisma),
@@ -74,7 +169,7 @@ describe("IssueService.update permission rules", () => {
     it.each([
       ["title", { title: "Hijacked" }],
       ["description", { description: "Hijacked" }],
-      ["status", { status: IssueStatus.DONE }],
+      ["status", { statusId: "DONE" }],
       ["priority", { priority: "HIGH" }],
       ["rank", { rank: "a1" }],
       ["an empty body", {}],
@@ -94,7 +189,7 @@ describe("IssueService.update permission rules", () => {
   describe("MEMBER on someone else's issue", () => {
     it("may change status and board position", async () => {
       await update(as(WorkspaceRole.MEMBER), {
-        status: IssueStatus.IN_PROGRESS,
+        statusId: "IN_PROGRESS",
         rank: "a1",
       });
 
@@ -123,7 +218,7 @@ describe("IssueService.update permission rules", () => {
     });
 
     it("may not mark it DONE", async () => {
-      await refused(as(WorkspaceRole.MEMBER), { status: IssueStatus.DONE });
+      await refused(as(WorkspaceRole.MEMBER), { statusId: "DONE" });
     });
   });
 
@@ -146,17 +241,17 @@ describe("IssueService.update permission rules", () => {
     });
 
     it("still may not mark it DONE", async () => {
-      await refused(as(WorkspaceRole.MEMBER), { status: IssueStatus.DONE });
+      await refused(as(WorkspaceRole.MEMBER), { statusId: "DONE" });
     });
   });
 
   describe.each([WorkspaceRole.ADMIN, WorkspaceRole.OWNER])("%s", (role) => {
     it("may update any field on any issue, including DONE", async () => {
-      stored.status = IssueStatus.DEPLOYED;
+      stored.status = "DEPLOYED";
       await update(as(role), {
         title: "Renamed",
         description: "Rewritten",
-        status: IssueStatus.DONE,
+        statusId: "DONE",
       });
 
       expect(prisma.issue.update).toHaveBeenCalledTimes(1);
@@ -164,29 +259,45 @@ describe("IssueService.update permission rules", () => {
   });
 
   describe("status changes follow the workflow", () => {
-    it.each([
-      [IssueStatus.TODO, IssueStatus.DONE],
-      [IssueStatus.TODO, IssueStatus.IN_REVIEW],
-      [IssueStatus.IN_PROGRESS, IssueStatus.TODO],
-      [IssueStatus.DONE, IssueStatus.DEPLOYED],
+    it.each<[StatusKey, StatusKey]>([
+      ["TODO", "DONE"],
+      ["TODO", "IN_REVIEW"],
+      ["IN_PROGRESS", "TODO"],
+      ["DONE", "DEPLOYED"],
     ])("refuses %s → %s, even for the OWNER", async (from, to) => {
       stored.status = from;
 
       await expect(
-        update(as(WorkspaceRole.OWNER), { status: to }),
+        update(as(WorkspaceRole.OWNER), { statusId: to }),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(prisma.issue.update).not.toHaveBeenCalled();
     });
 
-    it.each([
-      [IssueStatus.QA_REQUESTED, IssueStatus.DEPLOYED],
-      [IssueStatus.QA_REQUESTED, IssueStatus.QA_FAILED],
-      [IssueStatus.QA_FAILED, IssueStatus.IN_PROGRESS],
-      [IssueStatus.IN_REVIEW, IssueStatus.IN_REVIEW],
+    it.each<[StatusKey, StatusKey]>([
+      ["QA_REQUESTED", "DEPLOYED"],
+      ["QA_REQUESTED", "QA_FAILED"],
+      ["QA_FAILED", "IN_PROGRESS"],
+      ["IN_REVIEW", "IN_REVIEW"],
     ])("allows %s → %s", async (from, to) => {
       stored.status = from;
 
-      await update(as(WorkspaceRole.OWNER), { status: to, rank: "a1" });
+      await update(as(WorkspaceRole.OWNER), { statusId: to, rank: "a1" });
+
+      expect(prisma.issue.update).toHaveBeenCalledTimes(1);
+    });
+
+    it("refuses a status that isn't this project's", async () => {
+      await expect(
+        update(as(WorkspaceRole.OWNER), { statusId: "status-of-project-B" }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.issue.update).not.toHaveBeenCalled();
+    });
+
+    it("applies the DONE rules to every completed status, whatever its name", async () => {
+      stored.status = "DEPLOYED";
+
+      await refused(as(WorkspaceRole.MEMBER), { statusId: "SHIPPED" });
+      await update(as(WorkspaceRole.ADMIN), { statusId: "SHIPPED" });
 
       expect(prisma.issue.update).toHaveBeenCalledTimes(1);
     });
@@ -240,7 +351,7 @@ describe("IssueService.create permission rules", () => {
     auditLog: { create: jest.Mock };
     $transaction: jest.Mock;
     $executeRaw: jest.Mock;
-  };
+  } & WorkflowFake;
   let service: IssueService;
 
   beforeEach(() => {
@@ -257,6 +368,7 @@ describe("IssueService.create permission rules", () => {
       sprint: { findFirst: jest.fn().mockResolvedValue(null) },
       $transaction: jest.fn(),
       $executeRaw: jest.fn().mockResolvedValue(1),
+      ...fakeWorkflow(),
     };
     prisma.$transaction.mockImplementation((cb: (tx: unknown) => unknown) =>
       cb(prisma),
@@ -271,7 +383,7 @@ describe("IssueService.create permission rules", () => {
     });
 
   it("lets a MEMBER create an issue", async () => {
-    await create(WorkspaceRole.MEMBER, { status: IssueStatus.TODO });
+    await create(WorkspaceRole.MEMBER, { statusId: "TODO" });
 
     expect(prisma.issue.create).toHaveBeenCalledTimes(1);
   });
@@ -293,13 +405,20 @@ describe("IssueService.create permission rules", () => {
 
   it("refuses a MEMBER creating it straight into DONE", async () => {
     await expect(
-      create(WorkspaceRole.MEMBER, { status: IssueStatus.DONE }),
+      create(WorkspaceRole.MEMBER, { statusId: "DONE" }),
     ).rejects.toBeInstanceOf(ForbiddenException);
     expect(prisma.issue.create).not.toHaveBeenCalled();
   });
 
+  it("refuses a status that isn't this project's", async () => {
+    await expect(
+      create(WorkspaceRole.ADMIN, { statusId: "status-of-project-B" }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.issue.create).not.toHaveBeenCalled();
+  });
+
   it("lets an ADMIN create it straight into DONE", async () => {
-    await create(WorkspaceRole.ADMIN, { status: IssueStatus.DONE });
+    await create(WorkspaceRole.ADMIN, { statusId: "DONE" });
 
     expect(prisma.issue.create).toHaveBeenCalledTimes(1);
   });
@@ -410,7 +529,7 @@ describe("IssueService lane ranks", () => {
     auditLog: { create: jest.Mock };
     $transaction: jest.Mock;
     $executeRaw: jest.Mock;
-  };
+  } & WorkflowFake;
   let service: IssueService;
   /** The highest stored rank in the lane, as the DB would return it. */
   let laneMax: string | null;
@@ -451,7 +570,7 @@ describe("IssueService lane ranks", () => {
                     ? laneMax && { rank: laneMax }
                     : {
                         id: "issue-1",
-                        status: IssueStatus.TODO,
+                        ...storedStatus("TODO"),
                         reporterId: "u",
                         assigneeId: null,
                         labels: [],
@@ -479,6 +598,7 @@ describe("IssueService lane ranks", () => {
         return cb(prisma);
       }),
       $executeRaw: jest.fn(track("lock", () => 1)),
+      ...fakeWorkflow(),
     };
     service = new IssueService(prisma as unknown as PrismaService);
   });
@@ -489,7 +609,7 @@ describe("IssueService lane ranks", () => {
   it("locks the lane before reading its last rank, and appends after it", async () => {
     await service.create(workspaceId, projectId, "u", owner, {
       title: "New",
-      status: IssueStatus.TODO,
+      statusId: "TODO",
     });
 
     expect(calls).toEqual(["begin", "lock", "findFirst", "create", "audit"]);
@@ -498,7 +618,7 @@ describe("IssueService lane ranks", () => {
 
   it("locks the target lane for a status change sent without a rank", async () => {
     await service.update(workspaceId, projectId, "issue-1", owner, {
-      status: IssueStatus.IN_PROGRESS,
+      statusId: "IN_PROGRESS",
     });
 
     expect(calls).toEqual([
@@ -518,7 +638,7 @@ describe("IssueService lane ranks", () => {
 
   it("locks the target lane and stores a free client-computed rank as sent", async () => {
     await service.update(workspaceId, projectId, "issue-1", owner, {
-      status: IssueStatus.IN_PROGRESS,
+      statusId: "IN_PROGRESS",
       rank: "a0V",
     });
 
@@ -572,7 +692,7 @@ describe("IssueService lane ranks", () => {
 
     await service.create(workspaceId, projectId, "u", owner, {
       title: "New",
-      status: IssueStatus.TODO,
+      statusId: "TODO",
     });
 
     // Not "a0", which would collide with the start of the lane.
@@ -725,7 +845,7 @@ describe("IssueService tenant isolation", () => {
   });
 });
 
-describe("IssueService sprint commitment (BACKLOG → TODO)", () => {
+describe("IssueService sprint commitment (backlog → first unstarted status)", () => {
   const owner = accessAs(WorkspaceRole.OWNER, { workspaceId: "ws-1" });
   let prisma: {
     issue: { findFirst: jest.Mock; create: jest.Mock; update: jest.Mock };
@@ -735,7 +855,7 @@ describe("IssueService sprint commitment (BACKLOG → TODO)", () => {
     auditLog: { create: jest.Mock };
     $transaction: jest.Mock;
     $executeRaw: jest.Mock;
-  };
+  } & WorkflowFake;
   let service: IssueService;
 
   beforeEach(() => {
@@ -755,6 +875,7 @@ describe("IssueService sprint commitment (BACKLOG → TODO)", () => {
       membership: { findUnique: jest.fn() },
       $transaction: jest.fn(),
       $executeRaw: jest.fn().mockResolvedValue(1),
+      ...fakeWorkflow(),
     };
     prisma.$transaction.mockImplementation((cb: (tx: unknown) => unknown) =>
       cb(prisma),
@@ -763,11 +884,11 @@ describe("IssueService sprint commitment (BACKLOG → TODO)", () => {
   });
 
   const written = (mock: jest.Mock) =>
-    (mock.mock.calls[0] as [{ data: { status?: IssueStatus } }])[0].data;
-  const stored = (status: IssueStatus) =>
+    (mock.mock.calls[0] as [{ data: { statusId?: string } }])[0].data;
+  const stored = (status: StatusKey) =>
     prisma.issue.findFirst.mockResolvedValueOnce({
       id: "issue-1",
-      status,
+      ...storedStatus(status),
       reporterId: "u",
       assigneeId: null,
       labels: [],
@@ -780,58 +901,80 @@ describe("IssueService sprint commitment (BACKLOG → TODO)", () => {
       sprintId: "sprint-1",
     });
 
-    expect(written(prisma.issue.create).status).toBe(IssueStatus.TODO);
+    expect(written(prisma.issue.create).statusId).toBe("TODO");
   });
 
   it("keeps any other status a sprint issue is created with", async () => {
     await service.create("ws-1", "proj-1", "u", owner, {
       title: "Started",
-      status: IssueStatus.IN_PROGRESS,
+      statusId: "IN_PROGRESS",
       sprintId: "sprint-1",
     });
 
-    expect(written(prisma.issue.create).status).toBe(IssueStatus.IN_PROGRESS);
+    expect(written(prisma.issue.create).statusId).toBe("IN_PROGRESS");
   });
 
   it("keeps Backlog for an issue created outside a sprint", async () => {
     await service.create("ws-1", "proj-1", "u", owner, { title: "Later" });
 
-    expect(written(prisma.issue.create).status).toBe(IssueStatus.BACKLOG);
+    expect(written(prisma.issue.create).statusId).toBe("BACKLOG");
   });
 
   it("moves a Backlog issue to To Do when it is put into a sprint, appending to that lane", async () => {
-    stored(IssueStatus.BACKLOG);
+    stored("BACKLOG");
 
     await service.update("ws-1", "proj-1", "issue-1", owner, {
       sprintId: "sprint-1",
     });
 
-    expect(written(prisma.issue.update).status).toBe(IssueStatus.TODO);
+    expect(written(prisma.issue.update).statusId).toBe("TODO");
     expect(prisma.$executeRaw).toHaveBeenCalledTimes(1); // the TODO lane lock
   });
 
-  it("leaves the status of an in-flight issue alone when its sprint changes", async () => {
-    stored(IssueStatus.IN_PROGRESS);
+  it("commits a backlog issue even when the workflow has no move for it", async () => {
+    stored("BACKLOG");
+    prisma.workflowTransition.findUnique.mockResolvedValue(null);
 
     await service.update("ws-1", "proj-1", "issue-1", owner, {
       sprintId: "sprint-1",
     });
 
-    expect(written(prisma.issue.update).status).toBeUndefined();
+    expect(written(prisma.issue.update).statusId).toBe("TODO");
+  });
+
+  it("still checks the move when the status is sent with the sprint", async () => {
+    stored("BACKLOG");
+
+    await expect(
+      service.update("ws-1", "proj-1", "issue-1", owner, {
+        sprintId: "sprint-1",
+        statusId: "IN_PROGRESS",
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it("leaves the status of an in-flight issue alone when its sprint changes", async () => {
+    stored("IN_PROGRESS");
+
+    await service.update("ws-1", "proj-1", "issue-1", owner, {
+      sprintId: "sprint-1",
+    });
+
+    expect(written(prisma.issue.update).statusId).toBeUndefined();
   });
 
   it("leaves the status alone when an issue goes back to the backlog", async () => {
-    stored(IssueStatus.TODO);
+    stored("TODO");
 
     await service.update("ws-1", "proj-1", "issue-1", owner, {
       sprintId: null as unknown as string,
     });
 
-    expect(written(prisma.issue.update).status).toBeUndefined();
+    expect(written(prisma.issue.update).statusId).toBeUndefined();
   });
 
   it("refuses the implied status change to a role without issue:status", async () => {
-    stored(IssueStatus.BACKLOG);
+    stored("BACKLOG");
     // A custom role that may edit issues but not move them between statuses.
     const editorOnly: WorkspaceAccess = {
       ...owner,
@@ -862,7 +1005,7 @@ describe("IssueService labels", () => {
     auditLog: { create: jest.Mock };
     $transaction: jest.Mock;
     $executeRaw: jest.Mock;
-  };
+  } & WorkflowFake;
   let service: IssueService;
 
   beforeEach(() => {
@@ -870,7 +1013,7 @@ describe("IssueService labels", () => {
       issue: {
         findFirst: jest.fn().mockResolvedValue({
           id: issueId,
-          status: IssueStatus.TODO,
+          ...storedStatus("TODO"),
           type: IssueType.TASK,
           reporterId: "user-other",
           assigneeId: null,
@@ -895,6 +1038,7 @@ describe("IssueService labels", () => {
       auditLog: { create: jest.fn().mockResolvedValue({ id: "audit-1" }) },
       $transaction: jest.fn(),
       $executeRaw: jest.fn().mockResolvedValue(1),
+      ...fakeWorkflow(),
     };
     prisma.$transaction.mockImplementation((cb: (tx: unknown) => unknown) =>
       cb(prisma),
@@ -1011,7 +1155,7 @@ describe("IssueService history", () => {
     auditLog: { create: jest.Mock };
     $transaction: jest.Mock;
     $executeRaw: jest.Mock;
-  };
+  } & WorkflowFake;
   let service: IssueService;
 
   beforeEach(() => {
@@ -1026,7 +1170,7 @@ describe("IssueService history", () => {
                   id: issueId,
                   title: "Login fails",
                   description: null,
-                  status: IssueStatus.TODO,
+                  ...storedStatus("TODO"),
                   priority: "MEDIUM",
                   type: IssueType.TASK,
                   timeEstimate: null,
@@ -1058,6 +1202,7 @@ describe("IssueService history", () => {
       auditLog: { create: jest.fn().mockResolvedValue({ id: "audit-1" }) },
       $transaction: jest.fn(),
       $executeRaw: jest.fn().mockResolvedValue(1),
+      ...fakeWorkflow(),
     };
     prisma.$transaction.mockImplementation((cb: (tx: unknown) => unknown) =>
       cb(prisma),
@@ -1083,7 +1228,7 @@ describe("IssueService history", () => {
 
   it("records one row per save, with every change and the names involved", async () => {
     await service.update(workspaceId, projectId, issueId, owner, {
-      status: IssueStatus.IN_PROGRESS,
+      statusId: "IN_PROGRESS",
       assigneeId: "user-b",
       sprintId: "sprint-1",
     });
@@ -1097,7 +1242,7 @@ describe("IssueService history", () => {
       action: "issue.updated",
       metadata: {
         changes: [
-          { field: "status", from: "TODO", to: "IN_PROGRESS" },
+          { field: "status", from: "To Do", to: "In Progress" },
           { field: "assignee", from: null, to: { id: "user-b", name: "Bob" } },
           {
             field: "sprint",
@@ -1111,7 +1256,7 @@ describe("IssueService history", () => {
 
   it("records nothing for a reorder within the lane", async () => {
     await service.update(workspaceId, projectId, issueId, owner, {
-      status: IssueStatus.TODO,
+      statusId: "TODO",
       rank: "a1",
     });
 
@@ -1131,7 +1276,7 @@ describe("IssueService history", () => {
   it("writes nothing, history included, when the update is refused", async () => {
     await expect(
       service.update(workspaceId, projectId, issueId, owner, {
-        status: IssueStatus.DONE,
+        statusId: "DONE",
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
 

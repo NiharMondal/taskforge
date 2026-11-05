@@ -6,7 +6,7 @@ import { useDroppable } from "@dnd-kit/core";
 import { cn } from "@heroui/react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
-import { statusCategory } from "@/features/issues/constants";
+import { progressBucket } from "@/features/workflow/lib/workflow";
 import type { Issue } from "@/features/issues/types/issue-types";
 
 interface Props {
@@ -44,7 +44,7 @@ export default function BacklogSection({
 		isOver && (active?.data.current as { sectionId?: string })?.sectionId !== id;
 
 	const counts = { todo: 0, inProgress: 0, done: 0 };
-	for (const issue of issues) counts[statusCategory(issue.status)]++;
+	for (const issue of issues) counts[progressBucket(issue.status.category)]++;
 	// Every row counts, sub-issues included, so estimate a parent or its
 	// sub-issues — not both — or the total counts the work twice.
 	const points = issues.reduce((sum, i) => sum + (i.timeEstimate ?? 0), 0);

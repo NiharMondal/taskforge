@@ -3,14 +3,9 @@ import type { ReactNode } from "react";
 import { formatDistanceToNow } from "date-fns";
 
 import Avatar from "@/components/ui/avatar";
-import {
-	ISSUE_TYPE_META,
-	PRIORITY_META,
-	STATUS_META,
-} from "@/features/issues/constants";
+import { ISSUE_TYPE_META, PRIORITY_META } from "@/features/issues/constants";
 import type {
 	IssuePriority,
-	IssueStatus,
 	IssueType,
 } from "@/features/issues/types/issue-types";
 import { LabelChips } from "@/features/labels/components/LabelChip";
@@ -24,8 +19,22 @@ function V({ children }: { children: ReactNode }) {
 	return <span className="font-medium text-foreground">{children}</span>;
 }
 
+/**
+ * Status changes are recorded by the status's name. Rows written before
+ * projects had their own workflows hold the old fixed status's key instead.
+ */
+const LEGACY_STATUS_LABELS: Record<string, string> = {
+	BACKLOG: "Backlog",
+	TODO: "To Do",
+	IN_PROGRESS: "In Progress",
+	IN_REVIEW: "In Review",
+	QA_REQUESTED: "QA Requested",
+	QA_FAILED: "QA Failed",
+	DEPLOYED: "Deployed",
+	DONE: "Done",
+};
+const statusLabel = (v: string) => LEGACY_STATUS_LABELS[v] ?? v;
 // History can outlive an enum value, so fall back to the raw one.
-const statusLabel = (v: string) => STATUS_META[v as IssueStatus]?.label ?? v;
 const priorityLabel = (v: string) =>
 	PRIORITY_META[v as IssuePriority]?.label ?? v;
 const typeLabel = (v: string) => ISSUE_TYPE_META[v as IssueType]?.label ?? v;

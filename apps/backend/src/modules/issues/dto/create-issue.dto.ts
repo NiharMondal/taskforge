@@ -23,7 +23,7 @@ import {
   Min,
   MinLength,
 } from "class-validator";
-import { IssuePriority, IssueStatus, IssueType } from "generated/prisma/enums";
+import { IssuePriority, IssueType } from "generated/prisma/enums";
 
 export const ISSUE_TYPE_MESSAGE =
   "type must be EPIC, STORY, TASK or BUG (a sub-issue is created with parentIssueId)";
@@ -40,9 +40,13 @@ export class CreateIssueDto {
   @MaxLength(MAX_ISSUE_DESCRIPTION_LENGTH)
   description?: string;
 
+  /**
+   * A status of this project's workflow (`GET /projects/:projectId/workflow`).
+   * Left out on create, the project's default.
+   */
   @IsOptionalNonNull()
-  @IsEnum(IssueStatus)
-  status?: IssueStatus;
+  @IsUUID()
+  statusId?: string;
 
   @IsOptionalNonNull()
   @IsEnum(IssuePriority)

@@ -3,7 +3,7 @@ import { getAllPages } from "@/lib/get-all-pages";
 
 import type { ApiResponse } from "@/types/api";
 
-import type { Project } from "../types/project-types";
+import type { CreateProjectDto, Project } from "../types/project-types";
 import { TProjectFormValues } from "../schema/project-schema";
 
 /**
@@ -29,7 +29,7 @@ export async function getProjects(
 /** Create a project in the active workspace (`POST /projects`). */
 export async function createProject(
 	workspaceId: string,
-	dto: TProjectFormValues,
+	dto: CreateProjectDto,
 ): Promise<ApiResponse<Project>> {
 	return api.post<Project>("/projects", dto, inWorkspace(workspaceId));
 }

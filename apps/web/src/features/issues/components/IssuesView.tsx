@@ -18,7 +18,7 @@ import { useWorkspace } from "@/features/workspace/context/workspace-context";
 import { getApiErrorMessage } from "@/lib/api-error";
 
 import { useIssues, useUpdateIssue } from "../hooks/use-issues";
-import type { IssueStatus } from "../types/issue-types";
+import { useWorkflow } from "@/features/workflow/hooks/use-workflow";
 import CreateIssueModal from "./CreateIssueModal";
 import {
 	EMPTY_FILTERS,
@@ -46,6 +46,7 @@ export default function IssuesView({ projectId }: { projectId: string }) {
 	const { data: labels = [] } = useLabels(workspaceId);
 	const { data: sprints = [] } = useSprints(workspaceId, projectId);
 	const permissions = useWorkspacePermissions();
+	const { data: workflow } = useWorkflow(workspaceId, projectId);
 	const {
 		data: issues = [],
 		isLoading,
@@ -71,11 +72,11 @@ export default function IssuesView({ projectId }: { projectId: string }) {
 		[issues, filters, project?.key],
 	);
 
-	const handleStatusChange = (issueId: string, status: IssueStatus) => {
+	const handleStatusChange = (issueId: string, statusId: string) => {
 		// Toast on the outcome, not on the click: the PATCH can still be
 		// rejected (and the optimistic write rolled back).
 		updateIssue(
-			{ issueId, dto: { status } },
+			{ issueId, dto: { statusId } },
 			{
 				onSuccess: ({ message }) =>
 					toast.success(message || "Status updated successfully"),
@@ -136,7 +137,7 @@ export default function IssuesView({ projectId }: { projectId: string }) {
 						onChange={setFilters}
 						members={members}
 						sprints={sprints}
-						showStatus
+						statuses={workflow?.statuses ?? []}
 						labels={labels}
 					/>
 					{visible.length === 0 ? (

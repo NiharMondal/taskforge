@@ -1,4 +1,4 @@
-import type { IssueStatus } from "@/features/issues/types/issue-types";
+import type { StatusCategory } from "@taskforge/shared";
 import { ALL_PERMISSIONS, type Permission } from "@taskforge/shared";
 
 /**
@@ -130,13 +130,17 @@ export function canEditIssue(
 	);
 }
 
-/** Whether these permissions allow moving an issue *to* `status`. */
+/**
+ * Whether these permissions allow moving an issue *to* a status of this
+ * category: completing one takes its own permission, whatever the status is
+ * called.
+ */
 export function canSetIssueStatus(
 	permissions: Permissions,
-	status: IssueStatus,
+	category: StatusCategory,
 ): boolean {
 	if (!permissions.canChangeIssueStatus) return false;
-	return status !== "DONE" || permissions.canMarkIssueDone;
+	return category !== "COMPLETED" || permissions.canMarkIssueDone;
 }
 
 /**

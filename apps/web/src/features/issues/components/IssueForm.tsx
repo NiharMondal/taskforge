@@ -11,15 +11,12 @@ import {
 	FormWrapper,
 } from "@/components/form-element";
 import { issueSchema, TIssueFormValues } from "../schema/issue-schema";
-import {
-	ISSUE_PRIORITIES,
-	ISSUE_STATUSES,
-	typeOptionsFor,
-} from "../constants";
+import { ISSUE_PRIORITIES, typeOptionsFor } from "../constants";
 import FormLabelSelect from "@/features/labels/components/FormLabelSelect";
 import type { Label } from "@/features/labels/types/label-types";
 import { Member } from "@/features/memberships/types/membership-types";
-import { IssueStatus, Sprint } from "../types/issue-types";
+import type { WorkflowStatus } from "@/features/workflow/types/workflow-types";
+import { Sprint } from "../types/issue-types";
 
 type Props = {
 	defaultValues?: TIssueFormValues | undefined;
@@ -33,8 +30,10 @@ type Props = {
 	sprints: Sprint[];
 	/** The workspace's labels to pick from. */
 	labels: Label[];
-	/** Status a new issue starts in. Defaults to BACKLOG. */
-	initialStatus?: IssueStatus;
+	/** The project's workflow statuses, in column order. */
+	statuses: WorkflowStatus[];
+	/** Status a new issue starts in: the project's default unless given. */
+	initialStatusId: string;
 	/** Sprint a new issue starts in. Defaults to none (the backlog). */
 	initialSprintId?: string;
 };
@@ -54,7 +53,8 @@ export default function IssueForm({
 	members,
 	sprints,
 	labels,
-	initialStatus = "BACKLOG",
+	statuses,
+	initialStatusId,
 	initialSprintId,
 }: Props) {
 	const isEditing = !!defaultValues;
@@ -65,7 +65,7 @@ export default function IssueForm({
 			title: "",
 			description: "",
 			assigneeId: null,
-			status: initialStatus,
+			statusId: initialStatusId,
 			priority: "LOW",
 			type: "TASK",
 			timeEstimate: "",
@@ -108,12 +108,12 @@ export default function IssueForm({
 			/>
 			<div className="flex items-center justify-between gap-5 min-w-full">
 				<FormSelect
-					name="status"
+					name="statusId"
 					label="Status"
 					placeholder="Select status"
-					options={ISSUE_STATUSES.map((s) => ({
-						value: s.value,
-						label: s.label,
+					options={statuses.map((s) => ({
+						value: s.id,
+						label: s.name,
 					}))}
 				/>
 				<FormSelect

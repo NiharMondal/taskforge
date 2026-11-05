@@ -16,7 +16,7 @@ import type { WorkspaceRole } from "./enums";
 export const GRANTABLE_PERMISSIONS = [
   /** PATCH /workspaces/:id — rename, edit the description. */
   "workspace:manage",
-  /** Create, edit and delete projects. */
+  /** Create, edit and delete projects, and edit their workflows. */
   "project:manage",
   /** Create, rename, recolor and delete the workspace's labels. */
   "label:manage",
@@ -28,9 +28,9 @@ export const GRANTABLE_PERMISSIONS = [
   "issue:edit:any",
   /** The same fields, on issues the caller reported or is assigned to. */
   "issue:edit:own",
-  /** Status and board position on any issue, except setting DONE. */
+  /** Status and board position on any issue, except moving into a completed status. */
   "issue:status",
-  /** Setting status DONE (on create or update). */
+  /** Moving an issue into a COMPLETED-category status (on create or update). */
   "issue:status:done",
   /** Comment on issues, and edit or delete your own comments. */
   "comment:create",

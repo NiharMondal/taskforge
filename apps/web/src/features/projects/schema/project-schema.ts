@@ -21,6 +21,14 @@ export const projectSchema = z.object({
 		)
 		.nullable()
 		.optional(),
+	/**
+	 * Create only: start from a copy of this project's workflow (Pro), or
+	 * `DEFAULT_WORKFLOW` for the default. Sent as `workflowFromProjectId`.
+	 */
+	workflowFrom: z.string().optional(),
 });
+
+/** The workflow picker's "start with the default workflow" option. */
+export const DEFAULT_WORKFLOW = "__default__";
 
 export type TProjectFormValues = z.infer<typeof projectSchema>;

@@ -41,7 +41,7 @@ export default function BoardIssueCard({
     isDragging,
   } = useSortable({
     id: issue.id,
-    data: { status: issue.status },
+    data: { statusId: issue.statusId },
     disabled: !canDrag,
   });
 

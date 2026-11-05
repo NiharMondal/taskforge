@@ -10,10 +10,11 @@
  */
 
 import type { IssueLabelRef } from "@/features/labels/types/label-types";
+import type { IssueStatusRef } from "@/features/workflow/types/workflow-types";
 
-import type { IssuePriority, IssueStatus, IssueType } from "@taskforge/shared";
+import type { IssuePriority, IssueType } from "@taskforge/shared";
 
-export type { IssuePriority, IssueStatus, IssueType };
+export type { IssuePriority, IssueStatusRef, IssueType };
 
 export interface IssueUser {
   id: string;
@@ -38,7 +39,8 @@ export interface SubIssue {
   id: string;
   number: number;
   title: string;
-  status: IssueStatus;
+  statusId: string;
+  status: IssueStatusRef;
   priority: IssuePriority;
   assigneeId?: string | null;
   assignee?: IssueUser | null;
@@ -47,7 +49,10 @@ export interface Issue {
   id: string;
   title: string;
   description?: string | null;
-  status: IssueStatus;
+  /** A status of the project's own workflow (`useWorkflow`). */
+  statusId: string;
+  /** The status, embedded by every issue route. */
+  status: IssueStatusRef;
   priority: IssuePriority;
   type: IssueType;
   /** Per-project sequence; shown with the project key as `WA-12` (see `IssueKey`). */
@@ -85,7 +90,8 @@ export interface Issue {
 export interface CreateIssueDto {
   title: string;
   description?: string;
-  status?: IssueStatus;
+  /** Left out, the project's default status. */
+  statusId?: string;
   priority?: IssuePriority;
   /**
    * Never SUBTASK — the backend refuses it, and refuses any type sent with

@@ -4,12 +4,14 @@ import { ApiResponse } from "@/types/api";
 
 import type {
   ChangePasswordRequest,
+  ForgotPasswordRequest,
   GoogleAuthRequest,
   GoogleAuthResponse,
   LoginRequest,
   LoginResponse,
   RegisterRequest,
   RegisterResponse,
+  ResetPasswordRequest,
   VerifyEmailRequest,
 } from "../types/auth-types";
 
@@ -73,4 +75,24 @@ export async function changePassword(
   payload: ChangePasswordRequest,
 ): Promise<ApiResponse<null>> {
   return api.patch<null>("/auth/password", payload);
+}
+
+/**
+ * Ask for a password reset link. The answer is the same whether or not the
+ * address has an account. Also how a Google-only account sets a password.
+ */
+export async function forgotPassword(
+  payload: ForgotPasswordRequest,
+): Promise<ApiResponse<null>> {
+  return api.post<null>("/auth/forgot-password", payload);
+}
+
+/**
+ * Set a new password from the emailed link. Ends every session and doesn't
+ * sign in, so the caller sends the user to `/login`.
+ */
+export async function resetPassword(
+  payload: ResetPasswordRequest,
+): Promise<ApiResponse<null>> {
+  return api.post<null>("/auth/reset-password", payload);
 }

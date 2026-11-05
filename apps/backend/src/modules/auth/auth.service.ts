@@ -11,24 +11,30 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { JwtService } from "@nestjs/jwt";
+import { PASSWORD_RESET_TTL_MINUTES } from "@taskforge/shared";
 import type { Prisma } from "generated/prisma/client";
 import { seedSystemRoles } from "../roles/system-roles";
 import { AuthProvider, WorkspaceRole } from "generated/prisma/enums";
 import {
   alreadyRegisteredEmail,
   passwordChangedEmail,
+  passwordResetEmail,
   verificationEmail,
 } from "./auth-emails";
 import {
   ACCESS_TOKEN_TTL_SECONDS,
   EMAIL_VERIFICATION_TTL_HOURS,
+  PASSWORD_RESET_EMAILS_PER_WINDOW,
+  PASSWORD_RESET_EMAIL_WINDOW_MS,
   VERIFICATION_EMAILS_PER_WINDOW,
   VERIFICATION_EMAIL_WINDOW_MS,
 } from "./auth.constants";
 import { ChangePasswordDto } from "./dto/change-password.dto";
+import { ForgotPasswordDto } from "./dto/forgot-password.dto";
 import { GoogleAuthDto } from "./dto/google-auth.dto";
 import { LoginDto } from "./dto/login.dto";
 import { RegisterDto } from "./dto/register.dto";
+import { ResetPasswordDto } from "./dto/reset-password.dto";
 import { GoogleTokenVerifier } from "./google-token-verifier";
 import { RefreshTokenService } from "./refresh-token.service";
 
@@ -49,6 +55,11 @@ type SessionUser = {
 
 const wrongCurrentPassword = () =>
   new BadRequestException("Your current password is incorrect");
+
+const invalidResetLink = () =>
+  new BadRequestException(
+    "This link is invalid or has expired. Ask for a new one from the sign-in page.",
+  );
 
 const invalidVerificationLink = () =>
   new BadRequestException(
@@ -368,7 +379,7 @@ export class AuthService {
     });
     if (!auth?.password) {
       throw new BadRequestException(
-        "This account signs in with Google, so it has no password to change.",
+        "This account signs in with Google. Use Forgot password to set one.",
       );
     }
 
@@ -400,6 +411,113 @@ export class AuthService {
       to: auth.user.email,
       ...passwordChangedEmail({
         name: auth.user.name,
+        url: appUrl(this.config, "/login"),
+      }),
+    });
+  }
+
+  /**
+   * "Forgot password": email the account a link that sets a new password
+   * (`resetPassword`). Returns nothing and never fails for an unknown address
+   * or past the per-account limit, so the route's answer doesn't reveal which
+   * addresses are registered.
+   */
+  async forgotPassword(dto: ForgotPasswordDto) {
+    // Case-insensitive because rows created before emails were normalized may
+    // be mixed-case.
+    const user = await this.prisma.user.findFirst({
+      where: {
+        email: { equals: normalizeEmail(dto.email), mode: "insensitive" },
+      },
+      select: { id: true, name: true, email: true },
+    });
+    if (!user) return;
+
+    const now = Date.now();
+    const recent = await this.prisma.passwordReset.count({
+      where: {
+        userId: user.id,
+        createdAt: { gt: new Date(now - PASSWORD_RESET_EMAIL_WINDOW_MS) },
+      },
+    });
+    // Quietly, like an unknown address; the earlier links still work.
+    if (recent >= PASSWORD_RESET_EMAILS_PER_WINDOW) return;
+
+    const token = generateToken();
+    await this.prisma.passwordReset.deleteMany({
+      where: { userId: user.id, expiresAt: { lte: new Date(now) } },
+    });
+    await this.prisma.passwordReset.create({
+      data: {
+        userId: user.id,
+        tokenHash: hashToken(token),
+        expiresAt: new Date(now + PASSWORD_RESET_TTL_MINUTES * 60_000),
+      },
+    });
+
+    this.mail.sendInBackground({
+      to: user.email,
+      ...passwordResetEmail({
+        name: user.name,
+        url: appUrl(
+          this.config,
+          `/reset-password?token=${encodeURIComponent(token)}`,
+        ),
+      }),
+    });
+  }
+
+  /**
+   * Set a new password from a reset link. Following it proves the address,
+   * so it also works for a Google-only account (creating its EMAIL sign-in
+   * method) and for an unverified one (which it marks verified). Every session
+   * ends and every other reset link stops working. Doesn't sign in.
+   */
+  async resetPassword(dto: ResetPasswordDto) {
+    const reset = await this.prisma.passwordReset.findUnique({
+      where: { tokenHash: hashToken(dto.token) },
+    });
+    if (!reset || reset.expiresAt <= new Date()) throw invalidResetLink();
+
+    const passwordHash = await passwordUtils.hashPassword(dto.password);
+    const user = await this.prisma.$transaction(async (tx) => {
+      // Claim the link: a second click (or a concurrent one) finds it gone.
+      const claimed = await tx.passwordReset.deleteMany({
+        where: { id: reset.id },
+      });
+      if (claimed.count === 0) throw invalidResetLink();
+      await tx.passwordReset.deleteMany({ where: { userId: reset.userId } });
+
+      await tx.auth.upsert({
+        where: {
+          userId_provider: {
+            userId: reset.userId,
+            provider: AuthProvider.EMAIL,
+          },
+        },
+        create: {
+          provider: AuthProvider.EMAIL,
+          password: passwordHash,
+          userId: reset.userId,
+        },
+        update: { password: passwordHash },
+      });
+      await tx.user.updateMany({
+        where: { id: reset.userId, emailVerifiedAt: null },
+        data: { emailVerifiedAt: new Date() },
+      });
+      await this.refreshTokens.revokeAllForUser(reset.userId, tx);
+
+      return tx.user.findUniqueOrThrow({
+        where: { id: reset.userId },
+        select: { name: true, email: true },
+      });
+    });
+
+    this.mail.sendInBackground({
+      to: user.email,
+      ...passwordChangedEmail({
+        name: user.name,
         url: appUrl(this.config, "/login"),
       }),
     });

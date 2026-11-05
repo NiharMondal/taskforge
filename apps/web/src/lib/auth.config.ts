@@ -15,7 +15,11 @@ import { refreshBackendTokens } from "./backend-session";
  *   https://authjs.dev/guides/edge-compatibility
  */
 
-/** Routes that render the auth UI; signed-in users are bounced away from these. */
+/**
+ * Routes that render the auth UI; signed-in users are bounced away from these.
+ * `/forgot-password` and `/reset-password` are left out on purpose: a signed-in
+ * Google-only account sets its first password through them.
+ */
 const AUTH_ROUTES = ["/login", "/register"];
 
 /**
@@ -27,6 +31,8 @@ const PUBLIC_PREFIXES = [
 	"/login",
 	"/register",
 	"/verify-email",
+	"/forgot-password",
+	"/reset-password",
 	"/api/auth",
 	"/pricing",
 	"/terms",

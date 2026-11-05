@@ -122,7 +122,12 @@ export default function ProfileSettings() {
 					)}
 				</CardContent>
 			</Card>
-			{user && <ChangePasswordCard hasPassword={user.hasPassword ?? true} />}
+			{user && (
+				<ChangePasswordCard
+					hasPassword={user.hasPassword ?? true}
+					email={user.email}
+				/>
+			)}
 		</div>
 	);
 }

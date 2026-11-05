@@ -15,6 +15,8 @@ import {
 } from "@nestjs/common";
 import { SkipThrottle, ThrottlerGuard } from "@nestjs/throttler";
 import { ChangePasswordDto } from "./dto/change-password.dto";
+import { ForgotPasswordDto } from "./dto/forgot-password.dto";
+import { ResetPasswordDto } from "./dto/reset-password.dto";
 import { GoogleAuthDto } from "./dto/google-auth.dto";
 import { LoginDto } from "./dto/login.dto";
 import { RefreshTokenDto } from "./dto/refresh-token.dto";
@@ -74,6 +76,36 @@ export class AuthController {
       statusCode: HttpStatus.OK,
       message: "Google login successfully",
       data: result,
+    });
+  }
+
+  /**
+   * Emails a reset link: 202 whether or not the address has an account (see
+   * AuthService.forgotPassword).
+   */
+  @Post("forgot-password")
+  @HttpCode(HttpStatus.ACCEPTED)
+  @Public()
+  async forgotPassword(@Body() dto: ForgotPasswordDto) {
+    await this.authService.forgotPassword(dto);
+    return sendResponse({
+      statusCode: HttpStatus.ACCEPTED,
+      message:
+        "If an account uses this email, we sent it a link to reset the password",
+      data: null,
+    });
+  }
+
+  /** Sets the password from the emailed link. Doesn't sign in. */
+  @Post("reset-password")
+  @HttpCode(HttpStatus.OK)
+  @Public()
+  async resetPassword(@Body() dto: ResetPasswordDto) {
+    await this.authService.resetPassword(dto);
+    return sendResponse({
+      statusCode: HttpStatus.OK,
+      message: "Password reset. Sign in with your new password.",
+      data: null,
     });
   }
 

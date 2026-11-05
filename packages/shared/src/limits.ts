@@ -36,6 +36,9 @@ export const MAX_WORKFLOW_TRANSITIONS =
 export const MIN_PASSWORD_LENGTH = 8;
 export const MAX_PASSWORD_LENGTH = 72;
 
+/** How long the link in a "forgot password" email works (the web says so). */
+export const PASSWORD_RESET_TTL_MINUTES = 60;
+
 /** `?limit=` on paginated lists: the default page and the most one page holds. */
 export const DEFAULT_PAGE_SIZE = 20;
 export const MAX_PAGE_SIZE = 100;

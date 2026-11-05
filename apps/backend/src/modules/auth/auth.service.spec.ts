@@ -39,8 +39,16 @@ let prisma: {
     findUnique: jest.Mock;
     create: jest.Mock;
     update: jest.Mock;
+    updateMany: jest.Mock;
+    findUniqueOrThrow: jest.Mock;
   };
   pendingRegistration: {
+    count: jest.Mock;
+    findUnique: jest.Mock;
+    create: jest.Mock;
+    deleteMany: jest.Mock;
+  };
+  passwordReset: {
     count: jest.Mock;
     findUnique: jest.Mock;
     create: jest.Mock;
@@ -98,6 +106,11 @@ beforeEach(() => {
         avatarUrl: identity.picture,
       }),
       update: jest.fn().mockResolvedValue({}),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      findUniqueOrThrow: jest.fn().mockResolvedValue({
+        name: "Bob",
+        email: "bob@example.com",
+      }),
     },
     workspace: {
       create: jest.fn().mockResolvedValue({ id: "ws-new", name: "Alice's" }),
@@ -115,6 +128,12 @@ beforeEach(() => {
     },
     membership: { create: jest.fn().mockResolvedValue({}) },
     pendingRegistration: {
+      count: jest.fn().mockResolvedValue(0),
+      findUnique: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockResolvedValue({}),
+      deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
+    passwordReset: {
       count: jest.fn().mockResolvedValue(0),
       findUnique: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockResolvedValue({}),
@@ -890,6 +909,184 @@ describe("AuthService.changePassword", () => {
     await expect(service.changePassword(userId, dto)).rejects.toThrow(
       new BadRequestException("Your current password is incorrect"),
     );
+    expect(refreshTokens.revokeAllForUser).not.toHaveBeenCalled();
+    expect(mail.sendInBackground).not.toHaveBeenCalled();
+  });
+});
+
+describe("AuthService.forgotPassword", () => {
+  const bob = { id: "user-bob", name: "Bob", email: "bob@example.com" };
+
+  /** The token in the emailed link. */
+  const linkToken = () =>
+    /reset-password\?token=([0-9a-f]{64})/.exec(sentMail()[0].text)?.[1];
+
+  beforeEach(() => {
+    prisma.user.findFirst.mockResolvedValue(bob);
+  });
+
+  it("finds the account by its normalized email, ignoring case", async () => {
+    await service.forgotPassword({ email: " Bob@Example.com " });
+
+    expect(prisma.user.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { email: { equals: "bob@example.com", mode: "insensitive" } },
+      }),
+    );
+  });
+
+  it("stores the hash of a one-hour token and emails its link", async () => {
+    const before = Date.now();
+    await service.forgotPassword({ email: bob.email });
+
+    const [{ data }] = prisma.passwordReset.create.mock.calls[0] as [
+      { data: { userId: string; tokenHash: string; expiresAt: Date } },
+    ];
+    const token = linkToken();
+    expect(token).toBeDefined();
+    expect(data.userId).toBe(bob.id);
+    expect(data.tokenHash).toBe(hashToken(token!));
+    expect(data.tokenHash).not.toBe(token);
+    expect(data.expiresAt.getTime()).toBeGreaterThanOrEqual(
+      before + 60 * 60_000,
+    );
+    expect(sentMail()).toEqual([
+      expect.objectContaining({
+        to: bob.email,
+        subject: "Reset your TaskForge password",
+      }),
+    ]);
+  });
+
+  it("does nothing for an unknown email, without saying so", async () => {
+    prisma.user.findFirst.mockResolvedValue(null);
+
+    await expect(
+      service.forgotPassword({ email: "nobody@example.com" }),
+    ).resolves.toBeUndefined();
+    expect(prisma.passwordReset.create).not.toHaveBeenCalled();
+    expect(mail.sendInBackground).not.toHaveBeenCalled();
+  });
+
+  it("sends nothing past the per-account limit, without saying so", async () => {
+    prisma.passwordReset.count.mockResolvedValue(3);
+
+    await expect(
+      service.forgotPassword({ email: bob.email }),
+    ).resolves.toBeUndefined();
+    expect(prisma.passwordReset.create).not.toHaveBeenCalled();
+    expect(mail.sendInBackground).not.toHaveBeenCalled();
+  });
+});
+
+describe("AuthService.resetPassword", () => {
+  const token = "cd".repeat(32);
+  const dto = { token, password: "brand-new1" };
+  const reset = {
+    id: "reset-1",
+    userId: "user-bob",
+    tokenHash: hashToken(token),
+    expiresAt: new Date(Date.now() + 60_000),
+  };
+
+  beforeEach(() => {
+    prisma.passwordReset.findUnique.mockResolvedValue(reset);
+  });
+
+  it("looks the link up by the token's hash", async () => {
+    await service.resetPassword(dto);
+
+    expect(prisma.passwordReset.findUnique).toHaveBeenCalledWith({
+      where: { tokenHash: hashToken(token) },
+    });
+  });
+
+  it("uses the link once and drops the account's other links", async () => {
+    await service.resetPassword(dto);
+
+    expect(prisma.passwordReset.deleteMany).toHaveBeenNthCalledWith(1, {
+      where: { id: "reset-1" },
+    });
+    expect(prisma.passwordReset.deleteMany).toHaveBeenNthCalledWith(2, {
+      where: { userId: "user-bob" },
+    });
+  });
+
+  it("sets the EMAIL password (creating it for a Google-only account) as a hash", async () => {
+    await service.resetPassword(dto);
+
+    const [{ where, create, update }] = prisma.auth.upsert.mock.calls[0] as [
+      {
+        where: unknown;
+        create: { provider: AuthProvider; password: string; userId: string };
+        update: { password: string };
+      },
+    ];
+    expect(where).toEqual({
+      userId_provider: { userId: "user-bob", provider: AuthProvider.EMAIL },
+    });
+    expect(create).toMatchObject({
+      provider: AuthProvider.EMAIL,
+      userId: "user-bob",
+    });
+    expect(update.password).toBe(create.password);
+    expect(create.password).not.toBe(dto.password);
+    await expect(
+      passwordUtils.comparePassword(dto.password, create.password),
+    ).resolves.toBe(true);
+  });
+
+  it("marks an unverified email verified: following the link proves it", async () => {
+    await service.resetPassword(dto);
+
+    expect(prisma.user.updateMany).toHaveBeenCalledWith({
+      where: { id: "user-bob", emailVerifiedAt: null },
+      data: { emailVerifiedAt: anyDate },
+    });
+  });
+
+  it("signs out every session in the same transaction, and emails the owner", async () => {
+    await service.resetPassword(dto);
+
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(refreshTokens.revokeAllForUser).toHaveBeenCalledWith(
+      "user-bob",
+      prisma,
+    );
+    expect(sentMail()).toEqual([
+      expect.objectContaining({
+        to: "bob@example.com",
+        subject: "Your TaskForge password was changed",
+      }),
+    ]);
+  });
+
+  it("doesn't sign in: no tokens are issued", async () => {
+    await expect(service.resetPassword(dto)).resolves.toBeUndefined();
+    expect(jwt.sign).not.toHaveBeenCalled();
+    expect(refreshTokens.issue).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["unknown", null],
+    ["expired", { ...reset, expiresAt: new Date(Date.now() - 1) }],
+  ])("refuses an %s link, changing nothing", async (_case, row) => {
+    prisma.passwordReset.findUnique.mockResolvedValue(row);
+
+    await expect(service.resetPassword(dto)).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(prisma.auth.upsert).not.toHaveBeenCalled();
+    expect(refreshTokens.revokeAllForUser).not.toHaveBeenCalled();
+  });
+
+  it("refuses a link another request claimed first", async () => {
+    prisma.passwordReset.deleteMany.mockResolvedValueOnce({ count: 0 });
+
+    await expect(service.resetPassword(dto)).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(prisma.auth.upsert).not.toHaveBeenCalled();
     expect(refreshTokens.revokeAllForUser).not.toHaveBeenCalled();
     expect(mail.sendInBackground).not.toHaveBeenCalled();
   });

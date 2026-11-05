@@ -6,7 +6,7 @@ import {
 } from "@taskforge/shared";
 import { z } from "zod";
 
-/** The rules for a password being set: on sign-up, and when changing it. */
+/** The rules for a password being set: on sign-up, change and reset. */
 const newPassword = z
   .string()
   .min(
@@ -62,6 +62,21 @@ export const changePasswordSchema = z
     path: ["password"],
   });
 
+/** "Forgot password": the address to send a reset link to. */
+export const forgotPasswordSchema = z.object({
+  email: z.email("Enter a valid email address"),
+});
+
+/** The form behind a reset link. `confirmPassword` is form-only. */
+export const resetPasswordSchema = z
+  .object({
+    password: newPassword,
+    confirmPassword: z.string(),
+  })
+  .refine((data) => data.password === data.confirmPassword, passwordsMismatch);
+
 export type LoginInput = z.infer<typeof loginSchema>;
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;

@@ -8,8 +8,8 @@ accounts, and short-lived access tokens renewed with rotating refresh tokens.
 ## API Endpoints
 
 Base path: `/auth`. Every route is `@Public()` except `PATCH /password`, which needs an access
-token. `register`, `login`, `google`, `verify-email` and `password` each have a per-client rate
-limit (`AUTH_THROTTLE`, 10 a minute); `refresh` and `logout` don't, because their tokens can't be
+token. `register`, `login`, `google`, `verify-email`, `forgot-password`, `reset-password` and
+`password` each have a per-client rate limit (`AUTH_THROTTLE`, 10 a minute); `refresh` and `logout` don't, because their tokens can't be
 guessed and the web app sends them from its server for every user.
 
 | Method | Route | Body | Does |
@@ -20,6 +20,8 @@ guessed and the web app sends them from its server for every user.
 | `POST` | `/google` | `{ idToken }` | Google sign-in or sign-up |
 | `POST` | `/refresh` | `{ refreshToken }` | New token pair; the old refresh token stops working |
 | `POST` | `/logout` | `{ refreshToken }` | Ends that session; `200` even for an unknown token |
+| `POST` | `/forgot-password` | `{ email }` | Emails a reset link; `202` whatever the address |
+| `POST` | `/reset-password` | `{ token, password }` | Sets the password from the link, ends every session; doesn't sign in |
 | `PATCH` | `/password` | `{ currentPassword, newPassword }` | Signed in: changes the password, ends every session |
 
 `token` and `refreshToken` are 64 hex characters. As everywhere, a body key a route doesn't declare
@@ -81,13 +83,37 @@ caller is signed in and the web app treats a `401` as a session that has ended.
 | Status | Reason |
 | --- | --- |
 | `400` | Wrong current password (one message, "Your current password is incorrect") |
-| `400` | The account has no password (Google-only) |
+| `400` | The account has no password (Google-only): "Use Forgot password to set one." |
 | `400` | The new password equals the current one, or breaks the length rules |
 | `401` | No or expired access token |
 | `429` | More than 10 attempts a minute from one client |
 
 `GET /users/me` carries `hasPassword` (whether the user has an `EMAIL` sign-in method), so the web
 offers the form only to accounts that have one.
+
+## Forgot and reset password
+
+`POST /auth/forgot-password` answers the same `202` (`data: null`) for any address, so it doesn't
+reveal which are registered. For an account (matched case-insensitively), it stores a
+`PasswordReset` (the SHA-256 of a random token, 60-minute expiry, `PASSWORD_RESET_TTL_MINUTES` in
+`@taskforge/shared`) and emails a link to `<APP_URL>/reset-password?token=…`. An unknown address
+gets nothing, and after 3 links to one account in 15 minutes nothing more is sent (the earlier
+links still work). Mail is sent after the response. Expired links of the account are deleted when
+it asks for a new one.
+
+`POST /auth/reset-password` takes `{ token, password }` (`password`: 8–72 characters). In one
+transaction it claims the link (deleting it, so a second or concurrent use is a `400`), deletes the
+account's other links, sets the `EMAIL` sign-in method's password (creating it for a Google-only
+account: following the link proves the address), marks an unverified email verified, and revokes
+every refresh token. It doesn't sign in: answers `200` with `data: null`, and the owner gets the
+"your password was changed" email.
+
+| Status (`reset-password`) | Reason |
+| --- | --- |
+| `400` | Unknown, expired or already-used link, or a password outside 8–72 characters |
+
+Known gap: an unknown address answers a little faster than a registered one (no rows are written),
+so response timing could hint which addresses are registered.
 
 ## Google
 
@@ -105,8 +131,9 @@ whoever pre-registered the address loses their way in. Without `GOOGLE_CLIENT_ID
 - **Reuse:** a replaced token presented again within 60 seconds is a race (two tabs, or the web
   app's proxy and a server render) and gets a new pair. Later, it can only be a copy: the whole
   family is revoked (`401`), and both holders must sign in again.
-- **Revocation:** `logout` revokes the token's family. Changing the password, and taking over an
-  unverified account (through Google or the verification link), revoke every token of that user.
+- **Revocation:** `logout` revokes the token's family. Changing or resetting the password, and
+  taking over an unverified account (through Google or the verification link), revoke every token
+  of that user.
 - A user's expired tokens are deleted when they next refresh.
 
 | Status (`refresh`) | Reason |

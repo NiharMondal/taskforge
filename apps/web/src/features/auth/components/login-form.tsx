@@ -7,19 +7,47 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { signIn } from "next-auth/react";
 import GoogleSignInButton, { AuthDivider } from "./google-sign-in-button";
 import PasswordVisibilityToggle from "./password-visibility-toggle";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { resolvePostLoginTarget } from "../lib/callback-url";
 import { LoginInput, loginSchema } from "../schemas/auth-schema";
+
+/**
+ * Why the user just landed here signed out, by query parameter: set after a
+ * password change (Settings → Profile) or a reset (`/reset-password`).
+ */
+const NOTICES = {
+	passwordChanged: {
+		title: "Password changed",
+		description:
+			"You were signed out everywhere. Sign in with your new password.",
+	},
+	passwordReset: {
+		title: "Password reset",
+		description:
+			"You were signed out everywhere. Sign in with your new password.",
+	},
+} as const;
 
 export default function LoginForm() {
 	const [showPassword, setShowPassword] = useState(false);
 	const router = useRouter();
 	const searchParams = useSearchParams();
+	const noticeKey = (Object.keys(NOTICES) as (keyof typeof NOTICES)[]).find(
+		(key) => searchParams.has(key),
+	);
+	const notice = noticeKey && NOTICES[noticeKey];
 	const methods = useForm<LoginInput>({
 		resolver: zodResolver(loginSchema),
 	});
+
+	// Carries the address already typed, so it needn't be typed again.
+	const typedEmail = useWatch({ control: methods.control, name: "email" });
+	const forgotPasswordHref = typedEmail
+		? `/forgot-password?${new URLSearchParams({ email: typedEmail })}`
+		: "/forgot-password";
 
 	const onSubmit = async (data: LoginInput) => {
 		try {
@@ -52,15 +80,12 @@ export default function LoginForm() {
 	};
 	return (
 		<>
-			{/* Set by Settings → Profile after a password change signed us out. */}
-			{searchParams.get("passwordChanged") && (
+			{notice && (
 				<Alert status="success" className="mb-5">
 					<Alert.Indicator />
 					<Alert.Content>
-						<Alert.Title>Password changed</Alert.Title>
-						<Alert.Description>
-							You were signed out everywhere. Sign in with your new password.
-						</Alert.Description>
+						<Alert.Title>{notice.title}</Alert.Title>
+						<Alert.Description>{notice.description}</Alert.Description>
 					</Alert.Content>
 				</Alert>
 			)}
@@ -86,6 +111,14 @@ export default function LoginForm() {
 						/>
 					}
 				/>
+				<div className="-mt-1 flex justify-end">
+					<Link
+						href={forgotPasswordHref}
+						className="text-sm text-accent hover:underline"
+					>
+						Forgot password?
+					</Link>
+				</div>
 				<Button
 					type="submit"
 					variant="primary"

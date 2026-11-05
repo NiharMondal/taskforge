@@ -6,6 +6,7 @@ import { useForm } from "react-hook-form";
 
 import { FormTextField, FormWrapper } from "@/components/form-element";
 import { getApiErrorMessage } from "@/lib/api-error";
+import GoogleSignInButton, { AuthDivider } from "./google-sign-in-button";
 import PasswordVisibilityToggle from "./password-visibility-toggle";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -74,78 +75,82 @@ export function RegisterForm() {
 	}
 
 	return (
-		<FormWrapper onSubmit={onSubmit} methods={methods}>
-			<FormTextField
-				name="name"
-				label="Full name"
-				placeholder="Ada Lovelace"
-			/>
+		<>
+			<GoogleSignInButton />
+			<AuthDivider />
+			<FormWrapper onSubmit={onSubmit} methods={methods}>
+				<FormTextField
+					name="name"
+					label="Full name"
+					placeholder="Ada Lovelace"
+				/>
 
-			<FormTextField
-				name="email"
-				label="Email"
-				type="email"
-				placeholder="you@company.com"
-			/>
+				<FormTextField
+					name="email"
+					label="Email"
+					type="email"
+					placeholder="you@company.com"
+				/>
 
-			<FormTextField
-				name="password"
-				label="Password"
-				type={showPassword ? "text" : "password"}
-				placeholder="At least 8 characters"
-				ornament={
-					<PasswordVisibilityToggle
-						isVisible={showPassword}
-						onToggle={() => setShowPassword((prev) => !prev)}
-					/>
-				}
-			/>
+				<FormTextField
+					name="password"
+					label="Password"
+					type={showPassword ? "text" : "password"}
+					placeholder="At least 8 characters"
+					ornament={
+						<PasswordVisibilityToggle
+							isVisible={showPassword}
+							onToggle={() => setShowPassword((prev) => !prev)}
+						/>
+					}
+				/>
 
-			<FormTextField
-				name="confirmPassword"
-				label="Confirm password"
-				type={showPassword ? "text" : "password"}
-				placeholder="Re-enter your password"
-				ornament={
-					<PasswordVisibilityToggle
-						isVisible={showPassword}
-						onToggle={() => setShowPassword((prev) => !prev)}
-					/>
-				}
-			/>
+				<FormTextField
+					name="confirmPassword"
+					label="Confirm password"
+					type={showPassword ? "text" : "password"}
+					placeholder="Re-enter your password"
+					ornament={
+						<PasswordVisibilityToggle
+							isVisible={showPassword}
+							onToggle={() => setShowPassword((prev) => !prev)}
+						/>
+					}
+				/>
 
-			<Button
-				type="submit"
-				variant="primary"
-				fullWidth
-				className="mt-2"
-				isDisabled={methods.formState.isSubmitting}
-			>
-				{methods.formState.isSubmitting
-					? "Creating account…"
-					: "Create Account"}
-			</Button>
-
-			{/* Opens in a new tab so the half-filled form isn't lost. */}
-			<p className="text-center text-xs text-muted">
-				By creating an account, you agree to the{" "}
-				<Link
-					href="/terms"
-					target="_blank"
-					className="text-accent hover:underline"
+				<Button
+					type="submit"
+					variant="primary"
+					fullWidth
+					className="mt-2"
+					isDisabled={methods.formState.isSubmitting}
 				>
-					Terms of Service
-				</Link>{" "}
-				and{" "}
-				<Link
-					href="/privacy"
-					target="_blank"
-					className="text-accent hover:underline"
-				>
-					Privacy Policy
-				</Link>
-				.
-			</p>
-		</FormWrapper>
+					{methods.formState.isSubmitting
+						? "Creating account…"
+						: "Create account"}
+				</Button>
+
+				{/* Opens in a new tab so the half-filled form isn't lost. */}
+				<p className="text-center text-xs text-muted">
+					By creating an account, you agree to the{" "}
+					<Link
+						href="/terms"
+						target="_blank"
+						className="text-accent hover:underline"
+					>
+						Terms of Service
+					</Link>{" "}
+					and{" "}
+					<Link
+						href="/privacy"
+						target="_blank"
+						className="text-accent hover:underline"
+					>
+						Privacy Policy
+					</Link>
+					.
+				</p>
+			</FormWrapper>
+		</>
 	);
 }

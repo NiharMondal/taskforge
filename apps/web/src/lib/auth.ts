@@ -94,6 +94,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       clientId: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
 
+      // Always show Google's account chooser. Without it, Google reuses the
+      // account last picked in this browser (even from an abandoned attempt)
+      // and skips the chooser, so the user can't switch accounts.
+      authorization: { params: { prompt: "select_account" } },
+
       // Auth.js passes the token set as the second argument.
       async profile(_profile, tokens) {
         return googleProfile(tokens.id_token);

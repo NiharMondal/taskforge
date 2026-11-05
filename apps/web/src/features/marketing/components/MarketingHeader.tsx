@@ -11,11 +11,12 @@ import { GHOST_LINK, PRIMARY_LINK } from "../constants";
  */
 export default function MarketingHeader() {
 	return (
-		<header className="border-b border-border">
+		<header className="sticky top-0 z-40 border-b border-border bg-background/75 backdrop-blur-md">
 			<div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-4">
 				<div className="flex items-center gap-6">
 					<BrandLink href="/" />
-					<nav className="text-sm">
+					{/* Pricing is in the hero and footer too; phones need the room. */}
+					<nav className="hidden text-sm sm:block">
 						<Link href="/pricing" className="text-muted hover:text-foreground">
 							Pricing
 						</Link>

@@ -4,10 +4,10 @@ import { buttonVariants } from "@heroui/react";
 export const PRIMARY_LINK = buttonVariants({ variant: "primary" });
 
 /** A `Link` styled as a secondary action. */
-export const SECONDARY_LINK = buttonVariants({ variant: "secondary" });
+export const SECONDARY_LINK = buttonVariants({ variant: "secondary", className:"bg-accent/10" });
 
 /** A `Link` styled as a quiet action, for the header. */
-export const GHOST_LINK = buttonVariants({ variant: "ghost" });
+export const GHOST_LINK = buttonVariants({ variant: "ghost" , className:"bg-accent/10" });
 
 /** The public site's footer links. */
 export const FOOTER_LINKS = [

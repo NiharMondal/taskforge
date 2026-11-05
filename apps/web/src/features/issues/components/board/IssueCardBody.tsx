@@ -1,8 +1,9 @@
-import { CircleUserRound, MessageSquare } from "lucide-react";
+import { MessageSquare } from "lucide-react";
 
 import { LabelChips } from "@/features/labels/components/LabelChip";
 
 import type { Issue } from "../../types/issue-types";
+import AssigneeAvatar from "../AssigneeAvatar";
 import IssueKey from "../IssueKey";
 import ParentTag from "../ParentTag";
 import PriorityChip from "../PriorityChip";
@@ -39,12 +40,11 @@ export default function IssueCardBody({
             {commentCount}
           </span>
         )}
-        <span className="flex items-center gap-1 text-xs text-muted">
-          <CircleUserRound className="h-3.5 w-3.5" />
-          <span className="max-w-24 truncate">
-            {assigneeName ?? "Unassigned"}
-          </span>
-        </span>
+        <AssigneeAvatar
+          name={assigneeName}
+          avatarUrl={issue.assignee?.avatarUrl}
+          isAssigned={!!issue.assigneeId}
+        />
       </div>
     </div>
   );

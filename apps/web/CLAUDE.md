@@ -47,7 +47,7 @@ Auth tokens identify the *user*; the workspace header identifies the *tenant*. A
 ```
 app/
   (marketing)/      — public site: landing (`/`), pricing, terms, privacy (own header/footer)
-  (auth)/           — login, register, verify-email (no shell)
+  (auth)/           — login, register, verify-email: split screen, form + brand panel, header back to `/`
   (dashboard)/      — server layout gates auth, wraps AppLayout
     dashboard/
     projects/
@@ -62,7 +62,7 @@ app/
   invitations/accept/
 ```
 
-Issues are project-scoped: pages live under `/projects/[projectId]/` (`active-sprint`, `backlog`, `list`, `list/[slug]`, `workflow`); the backend route is still `/projects/:projectId/issues`. `/` is the public landing page; it sends a signed-in visitor to `/dashboard` (it reads `auth()` itself, since the proxy lets everyone through to public routes). `/pricing` renders the same `PlanCard`s as Settings → Billing (`features/billing/components/PlanCard.tsx`, from `PLAN_META`) with links to `/register`. The Terms and Privacy pages are placeholders (marked "Draft" on the page) until the real text is written; the register form links to both.
+Issues are project-scoped: pages live under `/projects/[projectId]/` (`active-sprint`, `backlog`, `list`, `list/[slug]`, `workflow`); the backend route is still `/projects/:projectId/issues`. `/` is the public landing page; it sends a signed-in visitor to `/dashboard` (it reads `auth()` itself, since the proxy lets everyone through to public routes). `/pricing` renders the same `PlanCard`s as Settings → Billing (`features/billing/components/PlanCard.tsx`, from `PLAN_META`) with links to `/register`. The Terms and Privacy pages are placeholders (marked "Draft" on the page) until the real text is written; the register form links to both. "Sign out" in the workspace menu lands on `/`; a session that expires lands on `/login`. The public pages and the auth layout share `BoardPreview` (`features/marketing/components/`, a static decorative board) and the `.hero-glow`, `.grid-pattern` and `.brand-panel` backgrounds in `globals.css`.
 
 ### Feature structure
 

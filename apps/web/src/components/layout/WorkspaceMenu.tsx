@@ -68,7 +68,9 @@ export default function WorkspaceMenu() {
 
 	const onAction = (key: React.Key) => {
 		if (key === NEW_WORKSPACE) openCreate();
-		else if (key === SIGN_OUT) void signOut({ callbackUrl: "/login" });
+		// To the public site; a session that expires instead goes to /login
+		// (auth-provider), since that user wants to sign back in.
+		else if (key === SIGN_OUT) void signOut({ callbackUrl: "/" });
 		else setActiveWorkspaceId(String(key));
 	};
 

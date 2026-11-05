@@ -6,7 +6,7 @@ A public site in front of the app: something to land on, a pricing page, and the
 
 ## Routes
 
-All in the `(marketing)` route group, sharing a header (brand, Pricing, theme switch, Sign in, Get started) and a footer (Pricing, Terms, Privacy).
+All in the `(marketing)` route group, sharing a sticky header (brand, Pricing from `sm` up, theme switch, Sign in, Get started) and a footer (Pricing, Terms, Privacy). The landing page has a hero over the `BoardPreview` picture of a sprint board (static and decorative, `aria-hidden`), the feature cards, three "how it works" steps and a closing call to action.
 
 | Path | Page | Rendering |
 | --- | --- | --- |
@@ -34,3 +34,7 @@ The Pro price isn't shown as an amount: it is set on the Stripe price and appear
 ## Terms and Privacy
 
 Placeholders until the real text is written: section headings with bracketed notes, and a "Draft" alert on the page. The privacy page already lists the service providers the app uses (Stripe, Cloudinary, Google sign-in). The register form links to both pages, opening in a new tab so the form isn't lost.
+
+## Auth pages and sign-out
+
+The `(auth)` layout (login, register, verify-email) is a split screen: the form column has a header with the brand (to `/`), "Back to home" and the theme switch, and a footer with the public links; from `lg` up a brand panel on the right shows `BoardPreview`. Both forms offer "Continue with Google" above the email form (a first Google sign-in creates the account). "Sign out" in the workspace menu lands on `/`; a session that expires goes to `/login` instead.

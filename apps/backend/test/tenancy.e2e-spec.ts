@@ -1295,9 +1295,21 @@ describe("Tenancy (e2e)", () => {
     it("402s an invitation past the Free plan's 5 seats", async () => {
       const { usage } = await billing();
       const free = 5 - usage.members - usage.pendingInvitations;
-      for (let i = 0; i < free; i++) {
+      expect(free).toBeGreaterThan(0);
+      // Fill all but the last seat.
+      for (let i = 0; i < free - 1; i++) {
         await invite(`seat-${i}-${run}@e2e.test`).expect(201);
       }
+
+      // Two invitations race for the last seat: exactly one gets it.
+      const racing = await Promise.all([
+        invite(`race-a-${run}@e2e.test`),
+        invite(`race-b-${run}@e2e.test`),
+      ]);
+      expect(racing.map((res) => res.status).sort()).toEqual([201, 402]);
+      // The loser wrote nothing: the seats are exactly full.
+      const after = await billing();
+      expect(after.usage.members + after.usage.pendingInvitations).toBe(5);
 
       const res = await invite(`one-too-many-${run}@e2e.test`).expect(402);
       expect(res.body).toMatchObject({

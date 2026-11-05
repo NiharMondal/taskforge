@@ -65,8 +65,19 @@ export async function countSeatsTaken(db: Db, workspaceId: string) {
   return { members, pendingInvitations };
 }
 
-/** Before an invitation: one more seat must fit the plan. */
-export async function assertCanAddMember(db: Db, workspaceId: string) {
+/**
+ * Before an invitation: one more seat must fit the plan. Call it inside the
+ * transaction that writes the invitation: it locks the workspace's seats
+ * until that transaction ends, so two invitations sent at the same moment
+ * can't both count the same free seat.
+ */
+export async function assertCanAddMember(
+  db: Db & Pick<Prisma.TransactionClient, "$executeRaw">,
+  workspaceId: string,
+) {
+  const lock = `workspace-seats:${workspaceId}`;
+  await db.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lock}::text, 0))`;
+
   const limit = PLAN_LIMITS[await getWorkspacePlan(db, workspaceId)].members;
   if (limit === null) return;
 
@@ -108,13 +119,26 @@ export async function assertCanCustomizeWorkflow(db: Db, workspaceId: string) {
 }
 
 /**
- * Before creating a workspace: the caller may own at most
- * FREE_OWNED_WORKSPACES Free ones (the new one would be Free too). Paid
- * workspaces they own don't count.
+ * Before someone comes to own another Free workspace: the creator of a new
+ * one (it starts Free), or the member a Free workspace is being transferred
+ * to. Nobody owns more than FREE_OWNED_WORKSPACES Free ones; paid workspaces
+ * they own don't count. For a transfer, pass `transferredWorkspaceId`: it is
+ * left out of the count, so the check holds whether or not the new owner's
+ * membership has been promoted yet.
  */
-export async function assertCanOwnAnotherFreeWorkspace(db: Db, userId: string) {
+export async function assertCanOwnAnotherFreeWorkspace(
+  db: Db,
+  userId: string,
+  transferredWorkspaceId?: string,
+) {
   const owned = await db.membership.findMany({
-    where: { userId, role: WorkspaceRole.OWNER },
+    where: {
+      userId,
+      role: WorkspaceRole.OWNER,
+      ...(transferredWorkspaceId && {
+        workspaceId: { not: transferredWorkspaceId },
+      }),
+    },
     select: {
       workspace: {
         select: { subscription: { select: { plan: true, status: true } } },
@@ -128,7 +152,9 @@ export async function assertCanOwnAnotherFreeWorkspace(db: Db, userId: string) {
   if (free >= FREE_OWNED_WORKSPACES) {
     throw new PlanLimitException(
       "ownedWorkspaces",
-      `You already own ${FREE_OWNED_WORKSPACES} workspaces on the Free plan. Upgrade one of them to Pro to create another.`,
+      transferredWorkspaceId
+        ? `This member already owns ${FREE_OWNED_WORKSPACES} workspaces on the Free plan, so they can't take over another Free one. Upgrade this workspace to Pro first, or ask them to upgrade one of theirs.`
+        : `You already own ${FREE_OWNED_WORKSPACES} workspaces on the Free plan. Upgrade one of them to Pro to create another.`,
     );
   }
 }

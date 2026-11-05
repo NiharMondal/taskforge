@@ -106,30 +106,34 @@ export class InvitationService {
       );
     }
 
-    // The invitation reserves a seat, so the plan is checked here and not on
-    // accept. A re-sent expired or revoked one holds no seat until now.
-    await assertCanAddMember(this.prisma, workspaceId);
-
     const token = generateToken();
     const expiresAt = futureDate(); // By Default 7 Days
     const roleId = invitedRole.id;
 
-    const invitation = await this.prisma.invitation.upsert({
-      // Key on the stored spelling so a legacy mixed-case row is updated, not
-      // duplicated next to a new lowercase one.
-      where: {
-        email_workspaceId: { email: existing?.email ?? email, workspaceId },
-      },
-      create: { email, token, workspaceId, role, roleId, expiresAt },
-      update: {
-        email,
-        token,
-        role,
-        roleId,
-        expiresAt,
-        status: InvitationStatus.PENDING,
-      },
-      select: PUBLIC_INVITATION_SELECT,
+    const invitation = await this.prisma.$transaction(async (tx) => {
+      // The invitation reserves a seat, so the plan is checked here and not
+      // on accept. A re-sent expired or revoked one holds no seat until now.
+      // The check locks the workspace's seats until this commits, so of two
+      // invitations racing for the last seat, the second sees the first.
+      await assertCanAddMember(tx, workspaceId);
+
+      return tx.invitation.upsert({
+        // Key on the stored spelling so a legacy mixed-case row is updated,
+        // not duplicated next to a new lowercase one.
+        where: {
+          email_workspaceId: { email: existing?.email ?? email, workspaceId },
+        },
+        create: { email, token, workspaceId, role, roleId, expiresAt },
+        update: {
+          email,
+          token,
+          role,
+          roleId,
+          expiresAt,
+          status: InvitationStatus.PENDING,
+        },
+        select: PUBLIC_INVITATION_SELECT,
+      });
     });
 
     const workspace = await this.prisma.workspace.findUnique({

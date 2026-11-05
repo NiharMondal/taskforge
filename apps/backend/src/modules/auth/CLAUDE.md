@@ -15,7 +15,7 @@ Reads secretOrKey from `ConfigService.getOrThrow<string>("JWT_ACCESS_SECRET")` �
 ## Guard usage
 Only JwtAuthGuard is global (APP_GUARD in app.module.ts). Everything else is applied per controller or route.
 
-- `@Public()`                                → skips JwtAuthGuard (every /auth/* route, GET /invitations/validate)
+- `@Public()`                                → skips JwtAuthGuard (every /auth/* route, GET /invitations/validate, POST /billing/webhook, GET /health)
 - `@UseGuards(JwtAuthGuard, WorkspaceGuard)` → JWT + workspace membership check (used in workspace-scoped controllers)
 - `@RequirePermission("project:manage")`     → applies PermissionsGuard; 403 unless the caller's role holds every listed permission
 

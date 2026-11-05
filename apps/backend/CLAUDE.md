@@ -62,7 +62,7 @@ Three layers, applied in order. `src/modules/auth/CLAUDE.md` has module-level de
    every route, so you do not need `@UseGuards(JwtAuthGuard)` (existing controllers still list it
    redundantly; harmless). Opt out with `@Public()` (used on every `/auth/*` route —
    `register`, `verify-email`, `login`, `google`, `refresh`, `logout` — plus
-   `GET /invitations/validate`, `POST /billing/webhook` and `GET /`).
+   `GET /invitations/validate`, `POST /billing/webhook`, `GET /health` and `GET /`).
    It throws `UnauthorizedException("Token not provided!")` (401) when the `authorization` header is missing.
    `JwtStrategy.validate()` returns the payload unchanged, so `req.user` is `{ sub, email }`.
 2. **`WorkspaceGuard` — opt-in per controller/route.** Resolves the tenant from the
@@ -262,6 +262,13 @@ Send with `MailService.sendInBackground({ to, ...email })` — it doesn't await 
 failure — and build links with `appUrl(this.config, path)` from `src/helper`. Specs mock
 `sendInBackground`.
 
+## Health check
+
+`GET /health` (`src/modules/health/`, `spec/health-spec.md`) is `@Public()` and unthrottled, for
+hosting platforms and uptime monitors: it runs `SELECT 1` and answers 200 with
+`{ status: "ok", db: "ok", uptime }`, or 503 when the database fails or takes longer than
+`HEALTH_DB_TIMEOUT_MS` (3 s). The error is logged, never sent. `GET /` still says hello.
+
 ## Workflows
 
 `src/modules/workflows/` serves `/projects/:projectId/workflow` (`spec/workflow-spec.md`). A
@@ -405,7 +412,7 @@ membership is created or deleted (never throws); `WorkspaceService.delete` calls
 they need no database. Current coverage: `WorkspaceGuard`, `JwtAuthGuard`, `PermissionsGuard`, `IssueService`
 permission rules and tenant isolation, `MembershipService` role changes/removal, `UserController`/`UserService`,
 `InvitationService`/controller, register/verify/login/Google sign-in/refresh (`AuthService`,
-`RefreshTokenService`, `GoogleTokenVerifier`, throttling), `WorkspaceService`, `BillingService` (with `StripeService` mocked) and the plan limits, `SprintService.endSprint`, `CommentService`, `LabelService`, `ActivityService`, `RoleService` and the role DTOs, `WorkflowService`, `issueChanges`, the history rows `IssueService` writes, and the issue, comment and label DTOs.
+`RefreshTokenService`, `GoogleTokenVerifier`, throttling), `WorkspaceService`, `BillingService` (with `StripeService` mocked) and the plan limits, `SprintService.endSprint`, `CommentService`, `LabelService`, `ActivityService`, `RoleService` and the role DTOs, `WorkflowService`, `issueChanges`, the history rows `IssueService` writes, the health check, and the issue, comment and label DTOs.
 `jest` maps `@/` and `generated/` in `package.json` and transforms the ESM-only `fractional-indexing` (a dependency of `@taskforge/shared`, which Jest loads as TypeScript source).
 
 `pnpm run test:e2e` (`test/*.e2e-spec.ts`) boots the real `AppModule` through `configureApp()` and

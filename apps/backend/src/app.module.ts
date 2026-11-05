@@ -11,6 +11,7 @@ import { CloudinaryModule } from "@/cloudinary/cloudinary.module";
 import { ActivityModule } from "./modules/activity/activity.module";
 import { BillingModule } from "./modules/billing/billing.module";
 import { CommentModule } from "./modules/comments/comment.module";
+import { HealthModule } from "./modules/health/health.module";
 import { InvitationModule } from "./modules/invitations/invitation.module";
 import { IssueModule } from "./modules/issues/issue.module";
 import { LabelModule } from "./modules/labels/label.module";
@@ -40,6 +41,7 @@ import { WorkspaceModule } from "./modules/workspace/workspace.module";
     SprintModule,
     BillingModule,
     WorkflowModule,
+    HealthModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: JwtAuthGuard }],

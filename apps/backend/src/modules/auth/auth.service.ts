@@ -14,13 +14,18 @@ import { JwtService } from "@nestjs/jwt";
 import type { Prisma } from "generated/prisma/client";
 import { seedSystemRoles } from "../roles/system-roles";
 import { AuthProvider, WorkspaceRole } from "generated/prisma/enums";
-import { alreadyRegisteredEmail, verificationEmail } from "./auth-emails";
+import {
+  alreadyRegisteredEmail,
+  passwordChangedEmail,
+  verificationEmail,
+} from "./auth-emails";
 import {
   ACCESS_TOKEN_TTL_SECONDS,
   EMAIL_VERIFICATION_TTL_HOURS,
   VERIFICATION_EMAILS_PER_WINDOW,
   VERIFICATION_EMAIL_WINDOW_MS,
 } from "./auth.constants";
+import { ChangePasswordDto } from "./dto/change-password.dto";
 import { GoogleAuthDto } from "./dto/google-auth.dto";
 import { LoginDto } from "./dto/login.dto";
 import { RegisterDto } from "./dto/register.dto";
@@ -41,6 +46,9 @@ type SessionUser = {
   email: string;
   avatarUrl: string | null;
 };
+
+const wrongCurrentPassword = () =>
+  new BadRequestException("Your current password is incorrect");
 
 const invalidVerificationLink = () =>
   new BadRequestException(
@@ -346,6 +354,55 @@ export class AuthService {
       throw new UnauthorizedException("Your session has ended. Sign in again.");
     }
     return this.issueTokens(user, familyId);
+  }
+
+  /**
+   * A signed-in user changes their password. It ends every session, this one
+   * included, and emails the owner. Failures are 400s, never 401: the caller is
+   * signed in, and the web app treats a 401 as a session that has ended.
+   */
+  async changePassword(userId: string, dto: ChangePasswordDto) {
+    const auth = await this.prisma.auth.findUnique({
+      where: { userId_provider: { userId, provider: AuthProvider.EMAIL } },
+      include: { user: { select: { name: true, email: true } } },
+    });
+    if (!auth?.password) {
+      throw new BadRequestException(
+        "This account signs in with Google, so it has no password to change.",
+      );
+    }
+
+    const currentHash = auth.password;
+    const isCurrentValid = await passwordUtils.comparePassword(
+      dto.currentPassword,
+      currentHash,
+    );
+    if (!isCurrentValid) throw wrongCurrentPassword();
+    if (dto.newPassword === dto.currentPassword) {
+      throw new BadRequestException(
+        "Choose a new password that is different from your current one",
+      );
+    }
+
+    const passwordHash = await passwordUtils.hashPassword(dto.newPassword);
+    await this.prisma.$transaction(async (tx) => {
+      // Only replaces the hash that was checked: of two concurrent changes, the
+      // second finds it gone, as if its current password were wrong.
+      const replaced = await tx.auth.updateMany({
+        where: { id: auth.id, password: currentHash },
+        data: { password: passwordHash },
+      });
+      if (replaced.count === 0) throw wrongCurrentPassword();
+      await this.refreshTokens.revokeAllForUser(userId, tx);
+    });
+
+    this.mail.sendInBackground({
+      to: auth.user.email,
+      ...passwordChangedEmail({
+        name: auth.user.name,
+        url: appUrl(this.config, "/login"),
+      }),
+    });
   }
 
   /** Sign out: the refresh token and every token rotated from it stop working. */

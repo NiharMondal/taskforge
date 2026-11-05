@@ -161,6 +161,7 @@ Issue descriptions and comments are stored as HTML and the backend does not sani
 - Access tokens last 15 minutes. The `jwt` callback (`auth.config.ts`) renews through the refresh token when under 5 minutes are left or when `update({ refreshAccessToken: true })` forces it, using `lib/backend-session.ts` (plain `fetch`: the proxy is Edge). `SessionProvider` refetches every 4 minutes. The refresh token never reaches the client session; a refused one sets `session.error`, which signs the user out.
 - `src/lib/auth.config.ts` — Edge-safe subset (no axios, no providers); used by `proxy.ts` and the server layout. Its `authorized` callback owns the public/auth-route lists: `PUBLIC_PREFIXES` (`/login`, `/register`, `/verify-email`, `/api/auth`, `/pricing`, `/terms`, `/privacy`) match whole path segments, and `/` is matched exactly — never add `"/"` to the list, which would make every route public.
 - The proxy at `src/proxy.ts` is an optimistic UX guard only; the `(dashboard)` server layout re-checks the session, and the backend is the real security boundary.
+- Settings → Profile also has `ChangePasswordCard` (`PATCH /auth/password`, only when `GET /users/me` says `hasPassword`). Success ends every backend session, so it signs out to `/login?passwordChanged=1`, where the login form shows a notice.
 - Profile edits call `useSession().update()`, which the `jwt` callback mirrors into `token.name`/`token.picture` so the header updates without re-login.
 
 ### Providers

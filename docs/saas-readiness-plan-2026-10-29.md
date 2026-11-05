@@ -10,7 +10,7 @@ The steps go from easiest to hardest. Each one is one PR from `develop` and leav
 | 2 | ✅ Health check endpoint — done | S | — |
 | 3 | ✅ Close the billing known gaps — done | S | — |
 | 4 | ✅ Public pages: landing, pricing, terms, privacy — done | S–M | — |
-| 5 | Change password | M | 1 |
+| 5 | ✅ Change password — done | M | 1 |
 | 6 | Forgot / reset password | M | 1 |
 | 7 | Scheduled cleanup jobs | M | (6, for its table) |
 | 8 | Email on issue assignment | M | 1 |
@@ -94,7 +94,15 @@ The steps go from easiest to hardest. Each one is one PR from `develop` and leav
 
 **Note.** The legal text is yours to write, or to take from a template service. Leave placeholders until then.
 
-## Step 5 — Change password (signed in)
+## Step 5 — Change password (signed in) ✅
+
+**Status: done (2026-10-30, branch `implement-change-password-functionality`).** `PATCH /auth/password` (`AuthService.changePassword`) and the web's `ChangePasswordCard` under Settings → Profile. Beyond the plan:
+- `GET /users/me` now returns `hasPassword` (`UserService.findProfile`), so a Google-only account sees a note, not a form it can't use.
+- The new hash is written only if the checked one is still stored, so of two concurrent changes the second is a 400.
+- A new password equal to the current one is a 400 (and refused by the form).
+- The Google-only message is "This account signs in with Google, so it has no password to change." Point it at Forgot password once step 6 exists. The "password changed" email's footer says to reply to the email; step 6 should link to the reset flow instead.
+
+Unit tests, typecheck and lint pass. An e2e test is added (`changing the password ends every session…`) but hasn't been run yet.
 
 **Depends on:** 1.
 

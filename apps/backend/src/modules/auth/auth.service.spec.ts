@@ -32,6 +32,7 @@ let prisma: {
     create: jest.Mock;
     deleteMany: jest.Mock;
     upsert: jest.Mock;
+    updateMany: jest.Mock;
   };
   user: {
     findFirst: jest.Mock;
@@ -85,6 +86,7 @@ beforeEach(() => {
       create: jest.fn().mockResolvedValue({}),
       deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
       upsert: jest.fn().mockResolvedValue({}),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     user: {
       findFirst: jest.fn().mockResolvedValue(null),
@@ -785,5 +787,110 @@ describe("AuthService.logout", () => {
     await service.logout("the-token");
 
     expect(refreshTokens.revoke).toHaveBeenCalledWith("the-token");
+  });
+});
+
+describe("AuthService.changePassword", () => {
+  const userId = "user-bob";
+  const dto = { currentPassword: "old-secret1", newPassword: "new-secret2" };
+  let currentHash: string;
+
+  beforeAll(async () => {
+    currentHash = await passwordUtils.hashPassword(dto.currentPassword);
+  });
+
+  beforeEach(() => {
+    prisma.auth.findUnique.mockResolvedValue({
+      id: "auth-bob",
+      provider: AuthProvider.EMAIL,
+      password: currentHash,
+      userId,
+      user: { name: "Bob", email: "bob@example.com" },
+    });
+  });
+
+  it("looks up the caller's EMAIL sign-in method", async () => {
+    await service.changePassword(userId, dto);
+
+    expect(prisma.auth.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          userId_provider: { userId, provider: AuthProvider.EMAIL },
+        },
+      }),
+    );
+  });
+
+  it("stores a hash of the new password, replacing only the one it checked", async () => {
+    await service.changePassword(userId, dto);
+
+    const [{ where, data }] = prisma.auth.updateMany.mock.calls[0] as [
+      { where: { id: string; password: string }; data: { password: string } },
+    ];
+    expect(where).toEqual({ id: "auth-bob", password: currentHash });
+    expect(data.password).not.toBe(dto.newPassword);
+    await expect(
+      passwordUtils.comparePassword(dto.newPassword, data.password),
+    ).resolves.toBe(true);
+  });
+
+  it("signs out every session in the same transaction", async () => {
+    await service.changePassword(userId, dto);
+
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(refreshTokens.revokeAllForUser).toHaveBeenCalledWith(userId, prisma);
+  });
+
+  it("emails the owner that their password changed", async () => {
+    await service.changePassword(userId, dto);
+
+    expect(sentMail()).toEqual([
+      expect.objectContaining({
+        to: "bob@example.com",
+        subject: "Your TaskForge password was changed",
+      }),
+    ]);
+  });
+
+  it("refuses a wrong current password with a 400, changing nothing", async () => {
+    await expect(
+      service.changePassword(userId, { ...dto, currentPassword: "wrong-1" }),
+    ).rejects.toThrow(
+      new BadRequestException("Your current password is incorrect"),
+    );
+
+    expect(prisma.auth.updateMany).not.toHaveBeenCalled();
+    expect(refreshTokens.revokeAllForUser).not.toHaveBeenCalled();
+    expect(mail.sendInBackground).not.toHaveBeenCalled();
+  });
+
+  it("refuses a Google-only account, which has no password", async () => {
+    prisma.auth.findUnique.mockResolvedValue(null);
+
+    await expect(service.changePassword(userId, dto)).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(prisma.auth.updateMany).not.toHaveBeenCalled();
+    expect(refreshTokens.revokeAllForUser).not.toHaveBeenCalled();
+  });
+
+  it("refuses a new password equal to the current one", async () => {
+    await expect(
+      service.changePassword(userId, {
+        currentPassword: dto.currentPassword,
+        newPassword: dto.currentPassword,
+      }),
+    ).rejects.toThrow(BadRequestException);
+    expect(prisma.auth.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("loses a race to a concurrent change: no sessions revoked, no email", async () => {
+    prisma.auth.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(service.changePassword(userId, dto)).rejects.toThrow(
+      new BadRequestException("Your current password is incorrect"),
+    );
+    expect(refreshTokens.revokeAllForUser).not.toHaveBeenCalled();
+    expect(mail.sendInBackground).not.toHaveBeenCalled();
   });
 });

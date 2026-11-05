@@ -58,6 +58,15 @@ export interface RegisterResponse {
   email: string;
 }
 
+/**
+ * `PATCH /auth/password` request body. Answers 200 with `data: null` and ends
+ * every session, this one included; a wrong current password is a 400.
+ */
+export interface ChangePasswordRequest {
+  currentPassword: string;
+  newPassword: string;
+}
+
 /** `POST /auth/verify-email` request body: the token from the emailed link. */
 export interface VerifyEmailRequest {
   token: string;

@@ -62,7 +62,7 @@ export class UserController {
   }
 
   private async fetch(id: string) {
-    const user = await this.userService.findOne(id);
+    const user = await this.userService.findProfile(id);
     return sendResponse({
       statusCode: HttpStatus.OK,
       message: "User fetched successfully",

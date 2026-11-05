@@ -1,6 +1,7 @@
 import { VALIDATION_PIPE_OPTIONS } from "@/app.setup";
 import { HttpExceptionFilter } from "@/lib/http-exception.filter";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
+import { NextFunction, Request, Response } from "express";
 import { Test } from "@nestjs/testing";
 import { ThrottlerModule } from "@nestjs/throttler";
 import request from "supertest";
@@ -19,6 +20,7 @@ describe("AuthController (HTTP)", () => {
     verifyEmail: jest.Mock;
     refresh: jest.Mock;
     logout: jest.Mock;
+    changePassword: jest.Mock;
   };
   const token = "ab".repeat(32);
 
@@ -32,6 +34,7 @@ describe("AuthController (HTTP)", () => {
       verifyEmail: jest.fn().mockResolvedValue({ accessToken: "jwt" }),
       refresh: jest.fn().mockResolvedValue({ accessToken: "jwt" }),
       logout: jest.fn().mockResolvedValue(undefined),
+      changePassword: jest.fn().mockResolvedValue(undefined),
     };
 
     const moduleRef = await Test.createTestingModule({
@@ -41,6 +44,14 @@ describe("AuthController (HTTP)", () => {
     }).compile();
 
     app = moduleRef.createNestApplication();
+    // Stand-in for the global JwtAuthGuard on the one route that needs it.
+    app.use((req: Request, _res: Response, next: NextFunction) => {
+      (req as Request & { user: unknown }).user = {
+        sub: "user-1",
+        email: "me@example.com",
+      };
+      next();
+    });
     app.useGlobalFilters(new HttpExceptionFilter());
     app.useGlobalPipes(new ValidationPipe(VALIDATION_PIPE_OPTIONS));
     await app.init();
@@ -106,6 +117,44 @@ describe("AuthController (HTTP)", () => {
         .expect(400);
 
       expect(authService.register).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("PATCH /auth/password", () => {
+    const body = { currentPassword: "old-secret1", newPassword: "new-secret2" };
+
+    it("changes the caller's password, taken from the token", async () => {
+      const res = await request(server())
+        .patch("/auth/password")
+        .send(body)
+        .expect(200);
+
+      expect(authService.changePassword).toHaveBeenCalledWith("user-1", body);
+      expect((res.body as { data: unknown }).data).toBeNull();
+    });
+
+    it("rejects a short new password, a missing current one and form-only fields", async () => {
+      await request(server())
+        .patch("/auth/password")
+        .send({ ...body, newPassword: "short" })
+        .expect(400);
+      await request(server())
+        .patch("/auth/password")
+        .send({ newPassword: body.newPassword })
+        .expect(400);
+      await request(server())
+        .patch("/auth/password")
+        .send({ ...body, confirmPassword: body.newPassword })
+        .expect(400);
+
+      expect(authService.changePassword).not.toHaveBeenCalled();
+    });
+
+    it("is throttled like the other password routes", async () => {
+      for (let i = 0; i < AUTH_THROTTLE[0].limit; i++) {
+        await request(server()).patch("/auth/password").send(body).expect(200);
+      }
+      await request(server()).patch("/auth/password").send(body).expect(429);
     });
   });
 

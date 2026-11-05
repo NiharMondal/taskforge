@@ -26,6 +26,33 @@ export function verificationEmail(params: {
 }
 
 /**
+ * Sent after a signed-in password change, so the owner hears about a change
+ * they didn't make. Every session was signed out by the change.
+ */
+export function passwordChangedEmail(params: {
+  name: string;
+  url: string;
+}): Email {
+  const footer =
+    "If you didn't change your password, someone else may know it. Reply to this email right away so we can help you secure your account.";
+  return {
+    subject: "Your TaskForge password was changed",
+    text:
+      `Hi ${params.name},\n\n` +
+      `The password for your TaskForge account was just changed, and every device was signed out. ` +
+      `Sign in again with your new password: ${params.url}\n\n` +
+      footer,
+    html: emailLayout({
+      heading: "Your password was changed",
+      body: `Hi ${escapeHtml(params.name)}, the password for your TaskForge account was just changed, and every device was signed out. Sign in again with your new password.`,
+      buttonLabel: "Sign in",
+      url: params.url,
+      footer,
+    }),
+  };
+}
+
+/**
  * Sent instead when someone registers an address that already has an
  * account, so the response can't tell a caller which addresses are taken.
  */

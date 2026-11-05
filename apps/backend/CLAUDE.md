@@ -166,7 +166,8 @@ only password accounts registered between that and email verification are null).
 an account whose `emailVerifiedAt` is null deletes its `EMAIL` auth, sets the timestamp and revokes
 its refresh tokens in one transaction — otherwise whoever pre-registered the address would keep
 access to the owner's account. The auth routes are rate-limited by `@nestjs/throttler` (`AUTH_THROTTLE`:
-10/min per client) — behind a reverse proxy, set Express `trust proxy` or every client shares one bucket.
+10/min per client). The client is `req.ip`, which needs Express `trust proxy` behind a reverse proxy, or
+every client shares one bucket: `configureApp()` sets it to `TRUST_PROXY` hops (default 1, right for Render).
 `refresh` and `logout` are `@SkipThrottle()`: the web app calls them from its server for every
 user. (So does `login`, through the Auth.js Credentials provider, which means today the whole web
 app shares one login bucket.)
@@ -538,7 +539,8 @@ See `.env.example`. What the code actually does with each:
   `getOrThrow` in constructors — which is why `test/setup-e2e.ts` gives them placeholders).
 - **Optional, with defaults:** `PORT` (5001), `CORS_ORIGINS` (`localhost:3000`/`:3001`), `APP_URL`
   (`http://localhost:3000`, used in invitation, email-verification and password-reset links), `MAIL_FROM` (falls back to `SMTP_USER`),
-  `SMTP_SECURE` (`"true"`, or implied by port 465).
+  `SMTP_SECURE` (`"true"`, or implied by port 465), `TRUST_PROXY` (1: proxy hops trusted for the
+  client IP the auth throttle keys on).
 - `NODE_ENV` only switches `PrismaService` query logging on (`development`).
 - `STRIPE_SECRET_KEY`, `STRIPE_PRO_PRICE_ID` and `STRIPE_WEBHOOK_SECRET` are read lazily by
   `StripeService`: the backend boots without them, the Free limits still apply, and checkout,

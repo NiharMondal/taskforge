@@ -4,6 +4,7 @@ import {
   ValidationPipe,
   ValidationPipeOptions,
 } from "@nestjs/common";
+import type { Application } from "express";
 import helmet from "helmet";
 
 const DEFAULT_CORS_ORIGINS = ["http://localhost:3000", "http://localhost:3001"];
@@ -35,6 +36,11 @@ export const VALIDATION_PIPE_OPTIONS: ValidationPipeOptions = {
  * e2e tests so the tests exercise the real prefix, validation and error shape.
  */
 export function configureApp<T extends INestApplication>(app: T): T {
+  // Hosts like Render put a proxy in front of the app. Without `trust proxy`,
+  // `req.ip` is the proxy's address, so the per-IP auth throttle becomes one
+  // bucket shared by every visitor. The value is how many proxy hops to trust.
+  const server = app.getHttpAdapter().getInstance() as Application;
+  server.set("trust proxy", Number(process.env.TRUST_PROXY ?? 1));
   app.use(helmet());
   app.enableCors({ origin: corsOrigins(), credentials: true });
   app.useGlobalFilters(new HttpExceptionFilter());

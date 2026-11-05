@@ -34,8 +34,9 @@ import SprintSummaryCard from "@/features/sprint/components/SprintSummaryCard";
 import { useSprints } from "@/features/sprint/hooks/use-sprints";
 import type { Sprint } from "@/features/sprint/types/sprint-types";
 import { useWorkspace } from "@/features/workspace/context/workspace-context";
+import { isAllowedTransition } from "@taskforge/shared";
 
-import { BOARD_STATUSES, STATUS_TRANSITIONS } from "../../constants";
+import { BOARD_STATUSES } from "../../constants";
 import { useIssues, useUpdateIssue } from "../../hooks/use-issues";
 import {
 	EMPTY_FILTERS,
@@ -56,13 +57,13 @@ type Columns = Record<IssueStatus, Issue[]>;
 
 /**
  * Whether a drag that started in `from` may end in `to`: back in its own lane,
- * or one of its legal next statuses ({@link STATUS_TRANSITIONS}) — the same
- * rule as the status Selects on the list and detail views (and the API).
+ * or one of its legal next statuses (`isAllowedTransition`, shared with the
+ * API) — the same rule as the status Selects on the list and detail views.
  * Measured against the lane the drag *started* in, not the card's live mid-drag
  * lane, so it can't be walked through several steps in a single drag.
  */
 const canDropInto = (from: IssueStatus, to: IssueStatus): boolean =>
-	from === to || STATUS_TRANSITIONS[from].includes(to);
+	isAllowedTransition(from, to);
 
 // Stable empty reference for the loading/disabled window. A fresh `[]` literal
 // each render would make the render-time resync below fire every render (it
@@ -367,8 +368,11 @@ export default function BoardView({ projectId }: { projectId: string }) {
 		setSelectedIssueId(null);
 		closeModal();
 	};
+	// Fills the dashboard's <main> so the board below can take the remaining
+	// height and scroll itself, keeping its horizontal scrollbar pinned to the
+	// bottom of the screen (as Jira does) instead of below the longest lane.
 	return (
-		<div className="flex flex-col gap-6">
+		<div className="flex h-full flex-col gap-6">
 			<ProjectHeader
 				projectId={projectId}
 				project={project}
@@ -446,18 +450,29 @@ export default function BoardView({ projectId }: { projectId: string }) {
 					onDragOver={handleDragOver}
 					onDragEnd={handleDragEnd}
 				>
-					<div className="flex gap-4 overflow-x-auto pb-4">
-						{BOARD_STATUSES.map(({ value, label }) => (
-							<BoardColumn
-								key={value}
-								status={value}
-								label={label}
-								issues={columns[value]}
-								assigneeNames={assigneeNames}
-								onOpenIssue={(issue) => setSelectedIssueId(issue.id)}
-								canDrag={permissions.canChangeIssueStatus}
-							/>
-						))}
+					{/* The board scrolls both ways inside the space left under the
+					    filters (min-h-80 so a short window still shows a usable
+					    board; <main> scrolls then). -mb-6 cancels <main>'s p-6
+					    bottom padding, so the board and its scrollbar reach the
+					    bottom edge of the screen. The inner row is at least as
+					    tall as the viewport so every lane stretches to the
+					    tallest one rather than being clipped at its edge. */}
+					<div className="-mb-6 min-h-80 flex-1 overflow-auto">
+						<div className="flex min-h-full w-max gap-4 pb-2">
+							{BOARD_STATUSES.map(({ value, label }) => (
+								<BoardColumn
+									key={value}
+									status={value}
+									label={label}
+									issues={columns[value]}
+									assigneeNames={assigneeNames}
+									onOpenIssue={(issue) =>
+										setSelectedIssueId(issue.id)
+									}
+									canDrag={permissions.canChangeIssueStatus}
+								/>
+							))}
+						</div>
 					</div>
 
 					<DragOverlay>

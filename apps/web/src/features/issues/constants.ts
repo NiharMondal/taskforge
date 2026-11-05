@@ -13,6 +13,8 @@ import {
 } from "lucide-react";
 import type { ComponentProps } from "react";
 
+import { SELECTABLE_ISSUE_TYPES, STATUS_TRANSITIONS } from "@taskforge/shared";
+
 import type { IssuePriority, IssueStatus, IssueType } from "./types/issue-types";
 
 /**
@@ -41,7 +43,8 @@ interface PriorityMeta {
  * Every issue status, ordered left-to-right as work flows (backlog → done).
  * This is the full set — the issue list groups by it so *all* data is visible,
  * and it drives the create form. Status *changes* go through
- * {@link STATUS_TRANSITIONS} instead, which only allows the next step.
+ * `STATUS_TRANSITIONS` (`@taskforge/shared`) instead, which only allows the
+ * next step.
  */
 export const ISSUE_STATUSES: StatusMeta[] = [
 	{ value: "BACKLOG", label: "Backlog", color: "default" },
@@ -81,35 +84,10 @@ export const PRIORITY_META: Record<IssuePriority, PriorityMeta> =
 	>;
 
 /**
- * Legal forward transitions out of each status. The workflow is a single line —
- * backlog → todo → in progress → in review → qa requested → deployed → done —
- * so each status offers exactly one next step, with two deliberate exceptions:
- *
- * - `QA_REQUESTED` is the only fork: QA either passes it (`DEPLOYED`) or fails
- *   it (`QA_FAILED`).
- * - `QA_FAILED` goes *back* to `IN_PROGRESS`. A failed issue belongs to its
- *   assignee again, so picking the work back up is the only move available.
- *
- * `DONE` is terminal. Status Selects read this instead of {@link ISSUE_STATUSES}
- * so an issue can't skip stages; the full list is still what the issue list
- * groups by, since every status has to be *displayable* even when unreachable
- * from the issue in hand.
- */
-export const STATUS_TRANSITIONS: Record<IssueStatus, IssueStatus[]> = {
-	BACKLOG: ["TODO"],
-	TODO: ["IN_PROGRESS"],
-	IN_PROGRESS: ["IN_REVIEW"],
-	IN_REVIEW: ["QA_REQUESTED"],
-	QA_REQUESTED: ["QA_FAILED", "DEPLOYED"],
-	QA_FAILED: ["IN_PROGRESS"],
-	DEPLOYED: ["DONE"],
-	DONE: [],
-};
-
-/**
  * Options for a status Select on an issue currently in `status`: that status
  * first — a Select can only render a value that is one of its options — then
- * each legal next status. A single-entry result means the issue is terminal and
+ * each legal next status (`STATUS_TRANSITIONS`, shared with the API, so an
+ * issue can't skip stages). A single-entry result means the issue is terminal and
  * the caller should disable the control.
  */
 export const statusOptionsFor = (status: IssueStatus): StatusMeta[] => [
@@ -132,17 +110,6 @@ export const ISSUE_TYPE_META: Record<IssueType, IconMeta> = {
 	BUG: { label: "Bug", icon: Bug, className: "text-danger" },
 	SUBTASK: { label: "Subtask", icon: CornerDownRight, className: "text-muted" },
 };
-
-/**
- * The types a user can pick. SUBTASK isn't one: creating a sub-issue sets it,
- * and a sub-issue's type can't be changed.
- */
-export const SELECTABLE_ISSUE_TYPES: IssueType[] = [
-	"EPIC",
-	"STORY",
-	"TASK",
-	"BUG",
-];
 
 /** Options for an issue's type Select: just SUBTASK for a sub-issue. */
 export const typeOptionsFor = (type: IssueType) =>

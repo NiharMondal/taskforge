@@ -3,7 +3,7 @@ import {
   GrantablePermission,
   isGrantablePermission,
   SYSTEM_ROLE_NAMES,
-} from "@/common/permissions/permissions";
+} from "@taskforge/shared";
 import {
   BadRequestException,
   ForbiddenException,

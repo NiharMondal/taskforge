@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { GRANTABLE_PERMISSIONS, MAX_ROLE_NAME_LENGTH } from "../constants";
+import { GRANTABLE_PERMISSIONS, MAX_ROLE_NAME_LENGTH } from "@taskforge/shared";
 
 export const roleSchema = z.object({
 	name: z

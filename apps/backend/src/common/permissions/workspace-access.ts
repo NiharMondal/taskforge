@@ -7,7 +7,7 @@ import {
   DEFAULT_ROLE_PERMISSIONS,
   isGrantablePermission,
   Permission,
-} from "./permissions";
+} from "@taskforge/shared";
 
 /** Who the caller is inside the workspace named by the request. */
 export interface WorkspaceAccess {

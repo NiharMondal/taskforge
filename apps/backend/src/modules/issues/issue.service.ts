@@ -20,13 +20,16 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { generateKeyBetween } from "fractional-indexing";
 import type { Prisma } from "generated/prisma/client";
 import { IssueStatus, IssueType } from "generated/prisma/enums";
 import { CreateIssueDto } from "./dto/create-issue.dto";
 import { QueryIssuesDto } from "./dto/query-issues.dto";
 import { UpdateIssueDto } from "./dto/update-issue.dto";
-import { isAllowedTransition } from "./status-transitions";
+import {
+  isAllowedTransition,
+  isValidRank,
+  rankBetween,
+} from "@taskforge/shared";
 
 /** The Prisma client, or a transaction client from `$transaction`. */
 type Db = Pick<Prisma.TransactionClient, "issue" | "project" | "auditLog">;
@@ -73,16 +76,6 @@ function snapshotOf(issue: {
     sprint: issue.sprint,
     labels: issue.labels.map((l) => l.label),
   };
-}
-
-/** True when the fractional-indexing library can build a key after `rank`. */
-function isValidRank(rank: string): boolean {
-  try {
-    generateKeyBetween(rank, null);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 /**
@@ -441,22 +434,22 @@ export class IssueService {
       select: { rank: true },
     });
 
-    try {
-      return generateKeyBetween(last?.rank ?? null, null);
-    } catch {
-      // The highest stored key isn't a valid fractional index (hand-edited
-      // row, botched backfill). Append after the highest key that *is* valid
-      // rather than restarting at "a0", which would likely collide.
-      const ranks = await db.issue.findMany({ where, select: { rank: true } });
-      const highestValid = ranks
-        .map((r) => r.rank as string)
-        .filter(isValidRank)
-        .reduce<string | null>(
-          (max, r) => (max === null || r > max ? r : max),
-          null,
-        );
-      return generateKeyBetween(highestValid, null);
-    }
+    const appended = rankBetween(last?.rank, null);
+    if (appended) return appended;
+
+    // The highest stored key isn't a valid fractional index (hand-edited
+    // row, botched backfill). Append after the highest key that *is* valid
+    // rather than restarting at "a0", which would likely collide.
+    const ranks = await db.issue.findMany({ where, select: { rank: true } });
+    const highestValid = ranks
+      .map((r) => r.rank as string)
+      .filter(isValidRank)
+      .reduce<string | null>(
+        (max, r) => (max === null || r > max ? r : max),
+        null,
+      );
+    // A valid key or none at all, so this always builds.
+    return rankBetween(highestValid, null)!;
   }
 
   /**
@@ -485,12 +478,11 @@ export class IssueService {
       orderBy: { rank: "asc" },
       select: { rank: true },
     });
-    try {
-      return generateKeyBetween(rank, next?.rank ?? null);
-    } catch {
-      // The next stored key isn't a valid fractional index: append instead.
-      return this.appendRank(db, workspaceId, projectId, status);
-    }
+    // An invalid next key can't be built on: append instead.
+    return (
+      rankBetween(rank, next?.rank) ??
+      this.appendRank(db, workspaceId, projectId, status)
+    );
   }
 
   /**

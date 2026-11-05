@@ -1,6 +1,6 @@
 import z from "zod";
 
-import { MAX_LABEL_NAME_LENGTH } from "../constants";
+import { MAX_LABEL_NAME_LENGTH } from "@taskforge/shared";
 
 // Limits mirror the backend's CreateLabelDto (name trimmed, 1–30; hex color).
 export const labelSchema = z.object({

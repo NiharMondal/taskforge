@@ -50,7 +50,9 @@ export default function BoardColumn({
 
 	return (
 		<div className="flex w-77.5 shrink-0 flex-col gap-3">
-			<div className="flex items-center gap-2 px-1">
+			{/* Sticky inside the board's scroll area, so lane names stay in
+			    view while scrolling a long sprint. */}
+			<div className="sticky top-0 z-10 flex items-center gap-2 bg-background px-1 py-1">
 				<h2 className="text-sm font-semibold text-muted">{label}</h2>
 				<Chip size="sm" variant="soft">
 					{issues.length}

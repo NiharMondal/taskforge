@@ -13,7 +13,9 @@ import { Controller, useForm } from "react-hook-form";
 import { FormTextField, FormWrapper } from "@/components/form-element";
 import type { Permissions } from "@/features/memberships/lib/permissions";
 
-import { type GrantablePermission, PERMISSION_GROUPS } from "../constants";
+import type { GrantablePermission } from "@taskforge/shared";
+
+import { PERMISSION_GROUPS } from "../constants";
 import { roleSchema, type TRoleFormValues } from "../schema/role-schema";
 
 type Props = {

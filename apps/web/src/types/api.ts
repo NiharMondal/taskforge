@@ -8,24 +8,7 @@
  *
  * Note that error messages can be a single string or an array (validation).
  */
-export interface ApiResponse<T> {
-  success: true;
-  statusCode: number;
-  message: string;
-  /** Present on paginated list endpoints (backend `IPaginationMeta`). */
-  metaData?: PaginationMeta;
-  data: T;
-}
-
-/** Paging info the backend's `PrismaQueryBuilder` attaches to list responses. */
-export interface PaginationMeta {
-  currentPage: number;
-  totalPages: number;
-  totalData: number;
-  pageSize: number;
-  hasNextPage: boolean;
-  hasPreviousPage: boolean;
-}
+export type { ApiResponse, PaginationMeta } from "@taskforge/shared";
 
 export interface ApiErrorResponse {
   success?: false;

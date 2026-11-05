@@ -37,6 +37,9 @@ importers:
       '@prisma/client':
         specifier: ^7.8.0
         version: 7.8.0(prisma@7.8.0(@types/react-dom@19.2.3(@types/react@19.2.15))(@types/react@19.2.15)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3))(typescript@5.9.3)
+      '@taskforge/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       bcryptjs:
         specifier: ^3.0.3
         version: 3.0.3
@@ -52,9 +55,6 @@ importers:
       dotenv:
         specifier: ^17.4.2
         version: 17.4.2
-      fractional-indexing:
-        specifier: 3.2.0
-        version: 3.2.0
       google-auth-library:
         specifier: ^11.2.0
         version: 11.2.0
@@ -161,6 +161,9 @@ importers:
       typescript-eslint:
         specifier: ^8.20.0
         version: 8.59.3(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3)
+      webpack-node-externals:
+        specifier: 3.0.0
+        version: 3.0.0
 
   apps/web:
     dependencies:
@@ -191,6 +194,9 @@ importers:
       '@tanstack/react-query-devtools':
         specifier: ^5.100.14
         version: 5.100.14(@tanstack/react-query@5.100.14(react@19.2.4))(react@19.2.4)
+      '@taskforge/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       '@tiptap/pm':
         specifier: ^3.26.0
         version: 3.26.0
@@ -212,9 +218,6 @@ importers:
       dompurify:
         specifier: ^3.4.16
         version: 3.4.16
-      fractional-indexing:
-        specifier: 3.2.0
-        version: 3.2.0
       lucide-react:
         specifier: ^1.17.0
         version: 1.17.0(react@19.2.4)
@@ -263,6 +266,16 @@ importers:
         version: 4.3.0
       typescript:
         specifier: ^5
+        version: 5.9.3
+
+  packages/shared:
+    dependencies:
+      fractional-indexing:
+        specifier: 3.2.0
+        version: 3.2.0
+    devDependencies:
+      typescript:
+        specifier: ^5.7.3
         version: 5.9.3
 
 packages:
@@ -8795,7 +8808,7 @@ snapshots:
       eslint: 9.39.4(jiti@2.7.0)
       eslint-import-resolver-node: 0.3.10
       eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0(eslint@9.39.4(jiti@2.7.0)))(eslint@9.39.4(jiti@2.7.0))
-      eslint-plugin-import: 2.32.0(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(eslint@9.39.4(jiti@2.7.0)))(eslint@9.39.4(jiti@2.7.0)))(eslint@9.39.4(jiti@2.7.0))
+      eslint-plugin-import: 2.32.0(eslint-import-resolver-typescript@3.10.1)(eslint@9.39.4(jiti@2.7.0))
       eslint-plugin-jsx-a11y: 6.10.2(eslint@9.39.4(jiti@2.7.0))
       eslint-plugin-react: 7.37.5(eslint@9.39.4(jiti@2.7.0))
       eslint-plugin-react-hooks: 7.1.1(eslint@9.39.4(jiti@2.7.0))
@@ -8832,7 +8845,7 @@ snapshots:
       tinyglobby: 0.2.17
       unrs-resolver: 1.12.2
     optionalDependencies:
-      eslint-plugin-import: 2.32.0(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(eslint@9.39.4(jiti@2.7.0)))(eslint@9.39.4(jiti@2.7.0)))(eslint@9.39.4(jiti@2.7.0))
+      eslint-plugin-import: 2.32.0(eslint-import-resolver-typescript@3.10.1)(eslint@9.39.4(jiti@2.7.0))
     transitivePeerDependencies:
       - supports-color
 
@@ -8846,7 +8859,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  eslint-plugin-import@2.32.0(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(eslint@9.39.4(jiti@2.7.0)))(eslint@9.39.4(jiti@2.7.0)))(eslint@9.39.4(jiti@2.7.0)):
+  eslint-plugin-import@2.32.0(eslint-import-resolver-typescript@3.10.1)(eslint@9.39.4(jiti@2.7.0)):
     dependencies:
       '@rtsao/scc': 1.1.0
       array-includes: 3.2.0

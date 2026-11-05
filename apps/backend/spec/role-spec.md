@@ -3,7 +3,7 @@
 ## Goal
 
 Let a workspace define who may do what beyond the four built-in roles. A role is a name and a set
-of permission keys from the catalog (`src/common/permissions/permissions.ts`); a member holds
+of permission keys from the catalog (`GRANTABLE_PERMISSIONS` in `@taskforge/shared`); a member holds
 exactly one role, and their permissions are that role's.
 
 ## Rules that hold across every route

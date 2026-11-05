@@ -1,13 +1,5 @@
-import { IPaginationMeta } from "@/lib/PrismQueryBuilder";
 import { HttpStatus } from "@nestjs/common";
-
-type TApiResponse<T> = {
-  success: boolean;
-  statusCode: number;
-  message: string;
-  metaData?: IPaginationMeta;
-  data: T;
-};
+import type { ApiResponse, PaginationMeta } from "@taskforge/shared";
 
 export const sendResponse = <T>({
   statusCode,
@@ -18,8 +10,8 @@ export const sendResponse = <T>({
   statusCode: HttpStatus;
   message: string;
   data: T;
-  metaData?: IPaginationMeta;
-}): TApiResponse<T> => {
+  metaData?: PaginationMeta;
+}): ApiResponse<T> => {
   return {
     success: true,
     statusCode,

@@ -11,19 +11,9 @@
 
 import type { IssueLabelRef } from "@/features/labels/types/label-types";
 
-export type IssueStatus =
-  | "BACKLOG"
-  | "TODO"
-  | "IN_PROGRESS"
-  | "IN_REVIEW"
-  | "QA_REQUESTED"
-  | "QA_FAILED"
-  | "DEPLOYED"
-  | "DONE";
+import type { IssuePriority, IssueStatus, IssueType } from "@taskforge/shared";
 
-export type IssuePriority = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
-
-export type IssueType = "EPIC" | "STORY" | "TASK" | "BUG" | "SUBTASK";
+export type { IssuePriority, IssueStatus, IssueType };
 
 export interface IssueUser {
   id: string;

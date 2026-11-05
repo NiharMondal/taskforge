@@ -2,7 +2,8 @@ import { IsOptionalNonNull } from "@/common/decorators/is-optional-non-null.deco
 import {
   GRANTABLE_PERMISSIONS,
   type GrantablePermission,
-} from "@/common/permissions/permissions";
+  MAX_ROLE_NAME_LENGTH,
+} from "@taskforge/shared";
 import { trim } from "@/modules/labels/dto/create-label.dto";
 import { Transform } from "class-transformer";
 import {
@@ -13,7 +14,6 @@ import {
   IsString,
   MaxLength,
 } from "class-validator";
-import { MAX_ROLE_NAME_LENGTH } from "./create-role.dto";
 
 /** Rename a custom role, or replace its permissions (the list is the new set). */
 export class UpdateRoleDto {

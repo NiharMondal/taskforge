@@ -1,7 +1,8 @@
 import {
   GRANTABLE_PERMISSIONS,
   type GrantablePermission,
-} from "@/common/permissions/permissions";
+  MAX_ROLE_NAME_LENGTH,
+} from "@taskforge/shared";
 import { trim } from "@/modules/labels/dto/create-label.dto";
 import { Transform } from "class-transformer";
 import {
@@ -12,8 +13,6 @@ import {
   IsString,
   MaxLength,
 } from "class-validator";
-
-export const MAX_ROLE_NAME_LENGTH = 50;
 
 export class CreateRoleDto {
   /** Unique within the workspace, ignoring case (built-in names included). */

@@ -1,7 +1,5 @@
+import { MAX_COMMENT_LENGTH } from "@taskforge/shared";
 import z from "zod";
-
-/** Mirrors the backend's `MAX_COMMENT_LENGTH`; it counts the editor's HTML. */
-export const MAX_COMMENT_LENGTH = 2000;
 
 /**
  * True when the editor's HTML has some text once tags and whitespace are

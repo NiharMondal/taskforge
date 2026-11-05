@@ -1,7 +1,5 @@
+import { MAX_COMMENT_LENGTH } from "@taskforge/shared";
 import { IsString, MaxLength, ValidateBy } from "class-validator";
-
-/** Same budget as an issue description; it counts the editor's HTML. */
-export const MAX_COMMENT_LENGTH = 2000;
 
 /**
  * The web editor sends HTML, so an "empty" comment can still be a non-empty

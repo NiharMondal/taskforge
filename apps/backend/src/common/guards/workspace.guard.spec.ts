@@ -1,4 +1,4 @@
-import { ALL_PERMISSIONS } from "@/common/permissions/permissions";
+import { ALL_PERMISSIONS } from "@taskforge/shared";
 import { WorkspaceAccess } from "@/common/permissions/workspace-access";
 import { PrismaService } from "@/prisma/prisma.service";
 import { ExecutionContext, ForbiddenException } from "@nestjs/common";

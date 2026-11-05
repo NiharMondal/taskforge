@@ -1,0 +1,16 @@
+{
+  // Standalone check only. The package ships TypeScript source and each app
+  // compiles it with its own settings (Next: bundler/strict; Nest: nodenext),
+  // so keep it valid under both: strict, isolated modules, no path aliases.
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "strict": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": false,
+    "noEmit": true,
+    "skipLibCheck": true
+  },
+  "include": ["src"]
+}

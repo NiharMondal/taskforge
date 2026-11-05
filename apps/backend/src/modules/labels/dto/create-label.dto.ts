@@ -1,7 +1,6 @@
+import { MAX_LABEL_NAME_LENGTH } from "@taskforge/shared";
 import { Transform } from "class-transformer";
 import { IsNotEmpty, IsString, Matches, MaxLength } from "class-validator";
-
-export const MAX_LABEL_NAME_LENGTH = 30;
 
 /** Trim before validating, so "  " is empty and " Bug" is "Bug". */
 export const trim = ({ value }: { value: unknown }) =>

@@ -1,4 +1,4 @@
-import { GRANTABLE_PERMISSIONS } from "@/common/permissions/permissions";
+import { GRANTABLE_PERMISSIONS } from "@taskforge/shared";
 import { accessAs } from "@/common/permissions/test-access";
 import { WorkspaceAccess } from "@/common/permissions/workspace-access";
 import { PrismaService } from "@/prisma/prisma.service";

@@ -1,3 +1,4 @@
+import type { InvitationStatus } from "@taskforge/shared";
 import type { RoleSummary } from "@/features/roles/types/role-types";
 import type { WorkspaceRole } from "@/features/workspace/types/workspace-types";
 
@@ -9,8 +10,8 @@ import type { WorkspaceRole } from "@/features/workspace/types/workspace-types";
  * (it grants membership) and the accept flow receives it via the email link.
  */
 
-/** Mirrors the Prisma `InvitationStatus` enum. */
-export type InvitationStatus = "PENDING" | "ACCEPTED" | "EXPIRED" | "REVOKED";
+/** The Prisma `InvitationStatus` enum (via `@taskforge/shared`). */
+export type { InvitationStatus };
 
 export interface Invitation {
   id: string;

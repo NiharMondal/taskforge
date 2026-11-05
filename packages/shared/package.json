@@ -1,0 +1,20 @@
+{
+  "name": "@taskforge/shared",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Code both apps need to agree on: enums, permissions, status transitions, board ranks, field limits and the API envelope.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "fractional-indexing": "3.2.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
+}

@@ -1,6 +1,6 @@
 import { ForbiddenException } from "@nestjs/common";
 import { IssueStatus } from "generated/prisma/enums";
-import { Permission } from "./permissions";
+import { Permission } from "@taskforge/shared";
 import { WorkspaceAccess } from "./workspace-access";
 
 /**

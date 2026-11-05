@@ -3,7 +3,7 @@ import {
   PermissionsGuard,
   REQUIRED_PERMISSIONS_KEY,
 } from "../guards/permissions.guard";
-import { Permission } from "../permissions/permissions";
+import { Permission } from "@taskforge/shared";
 
 /**
  * The caller's workspace role must hold every listed permission, else 403.

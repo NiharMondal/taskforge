@@ -1,7 +1,8 @@
+import { MAX_LABEL_NAME_LENGTH } from "@taskforge/shared";
 import { IsOptionalNonNull } from "@/common/decorators/is-optional-non-null.decorator";
 import { Transform } from "class-transformer";
 import { IsNotEmpty, IsString, Matches, MaxLength } from "class-validator";
-import { MAX_LABEL_NAME_LENGTH, trim } from "./create-label.dto";
+import { trim } from "./create-label.dto";
 
 export class UpdateLabelDto {
   @IsOptionalNonNull()

@@ -2,17 +2,8 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
-/* eslint-disable no-unused-vars */
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
-interface IPaginationMeta {
-  currentPage: number;
-  totalPages: number;
-  totalData: number;
-  pageSize: number;
-  hasNextPage: boolean;
-  hasPreviousPage: boolean;
-}
+import type { PaginationMeta } from "@taskforge/shared";
 
 interface IPaginationConfig {
   page?: number;
@@ -343,7 +334,7 @@ class PrismaQueryBuilder<TWhereInput = any, TModel = any> {
    */
   async getMeta(prismaModel: {
     count: (args: any) => Promise<number>;
-  }): Promise<IPaginationMeta> {
+  }): Promise<PaginationMeta> {
     this.applyDefaultFilter();
 
     const totalData = await prismaModel.count({
@@ -370,7 +361,7 @@ class PrismaQueryBuilder<TWhereInput = any, TModel = any> {
   async execute(prismaModel: {
     findMany: (args: any) => Promise<TModel[]>;
     count: (args: any) => Promise<number>;
-  }): Promise<{ data: TModel[]; metaData: IPaginationMeta }> {
+  }): Promise<{ data: TModel[]; metaData: PaginationMeta }> {
     const [data, metaData] = await Promise.all([
       prismaModel.findMany(this.build()),
       this.getMeta(prismaModel),
@@ -477,9 +468,4 @@ class PrismaQueryBuilder<TWhereInput = any, TModel = any> {
 }
 
 export default PrismaQueryBuilder;
-export type {
-  IPaginationConfig,
-  IPaginationMeta,
-  IQueryBuilderResult,
-  ISortConfig,
-};
+export type { IPaginationConfig, IQueryBuilderResult, ISortConfig };

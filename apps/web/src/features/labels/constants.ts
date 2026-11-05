@@ -16,7 +16,3 @@ export const LABEL_COLORS = [
 ] as const;
 
 export const DEFAULT_LABEL_COLOR = LABEL_COLORS[5].value;
-
-/** Mirrors the backend's `MAX_LABEL_NAME_LENGTH` and `MAX_ISSUE_LABELS`. */
-export const MAX_LABEL_NAME_LENGTH = 30;
-export const MAX_ISSUE_LABELS = 10;

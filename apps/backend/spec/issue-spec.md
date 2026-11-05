@@ -61,7 +61,7 @@ enum IssueStatus {
   DONE
 }
 // A PATCH may only move status along the workflow in
-// src/modules/issues/status-transitions.ts (e.g. QA_REQUESTED → QA_FAILED or
+// STATUS_TRANSITIONS in @taskforge/shared (e.g. QA_REQUESTED → QA_FAILED or
 // DEPLOYED); anything else is a 400. DONE is terminal.
 
 enum IssuePriority {

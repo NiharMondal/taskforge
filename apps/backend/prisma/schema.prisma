@@ -73,6 +73,14 @@ enum AuthProvider {
   FACEBOOK
 }
 
+// Platform (super) admin access, across every workspace (spec/admin-spec.md).
+// ADMIN may act; SUPPORT only reads. Granted only by `pnpm run
+// set-platform-role`, never through the API.
+enum PlatformRole {
+  ADMIN
+  SUPPORT
+}
+
 //// AUTH
 // One row per way a user can sign in. EMAIL rows carry the password hash;
 // provider rows (GOOGLE, ...) carry the provider's stable account id. The email
@@ -158,6 +166,9 @@ model User {
   // in with a password until they register again, and a first Google sign-in
   // drops that password (see AuthService.googleSignIn).
   emailVerifiedAt DateTime?
+  // Null for everyone but the people who run the product. Read from the
+  // database on every admin request (PlatformRoleGuard), never put in the JWT.
+  platformRole    PlatformRole?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -171,6 +182,8 @@ model User {
   auditLogs      AuditLog[]
   refreshTokens  RefreshToken[]
   passwordResets PasswordReset[]
+
+  platformAuditLogs PlatformAuditLog[]
 }
 
 //// WORKSPACE (TENANT ROOT)
@@ -550,4 +563,30 @@ model AuditLog {
   // newest first.
   @@index([workspaceId, createdAt])
   @@index([entityType])
+}
+
+// What platform staff did, across workspaces (spec/admin-spec.md). Apart from
+// AuditLog, which belongs to one workspace. `actorId` is null for the
+// `set-platform-role` script (run from a shell, by nobody the app knows) and
+// once the actor's account is deleted; `targetType`/`targetId` name what was
+// acted on ("USER", "WORKSPACE") and stay after it is deleted.
+model PlatformAuditLog {
+  id String @id @default(uuid())
+
+  actorId String?
+
+  action     String
+  targetType String
+  targetId   String?
+
+  metadata Json?
+
+  createdAt DateTime @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  // The log newest first, and one target's history.
+  @@index([createdAt])
+  @@index([targetType, targetId, createdAt])
+  @@index([actorId])
 }

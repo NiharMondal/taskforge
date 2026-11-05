@@ -9,7 +9,8 @@ import { StripeService } from "./stripe.service";
 @Module({
   controllers: [BillingController, BillingWebhookController],
   providers: [BillingService, StripeService],
-  // Seat sync on join/leave, and cancel-before-delete for workspaces.
-  exports: [BillingService],
+  // Seat sync on join/leave, and cancel-before-delete for workspaces;
+  // StripeService for the admin console's Stripe mode.
+  exports: [BillingService, StripeService],
 })
 export class BillingModule {}

@@ -23,6 +23,7 @@ pnpm run test # Jest unit tests (rootDir=src, matches *.spec.ts)
 pnpm run test:e2e # Supertest e2e against a real Postgres (test/jest-e2e.json) — see Tests
 pnpm run test:cov # coverage
 pnpm run studio # Prisma Studio
+pnpm run set-platform-role <email> <ADMIN|SUPPORT|none> # grant/remove platform admin (spec/admin-spec.md)
 
 Single test file / single test:
 
@@ -185,6 +186,9 @@ Correlated writes must re-verify ownership rather than trusting ids from the cli
 `remove` call `findOne(workspaceId, projectId, issueId)` first so the `prisma.*.update({ where: { id } })`
 that follows is already proven to be in-tenant.
 
+The **one deliberate exception** is the platform admin module (`src/modules/admin/`, below): it reads
+across tenants on purpose, behind `@RequirePlatformRole`. Cross-tenant reads go there and nowhere else.
+
 `User` and `Workspace` are the only models without a `workspaceId`. `UserController`
 (`/api/v1/users`) therefore has no tenant scope to lean on, so it is strictly self-only: `GET`/`PATCH`
 `/users/me` and `/users/:id` where `:id` must equal the JWT `sub` (anything else is 403), plus
@@ -207,6 +211,23 @@ sent, and `syncSeats` runs for each workspace left. `GET /users/me/export` retur
 sign-in methods, memberships, and the issues and comments in workspaces they still belong to. Both
 routes are throttled per user by `UserThrottlerGuard` (the auth module's global `ThrottlerModule`,
 tracked by `req.user.sub` instead of the client address).
+
+## Platform admin
+
+`src/modules/admin/` (`spec/admin-spec.md`) serves `GET /admin/stats`, `/admin/workspaces`,
+`/admin/workspaces/:id`, `/admin/users` and `/admin/users/:id`: read-only, across every workspace,
+with no `x-workspace-id` and no `WorkspaceGuard`. `User.platformRole` (`ADMIN` | `SUPPORT` | null) is
+the boundary. `@RequirePlatformRole(role)` applies `PlatformRoleGuard`
+(`src/common/guards/platform-role.guard.ts`), which reads the role **from the database on every
+request** (never from the JWT) and 403s without at least that role (ADMIN passes SUPPORT routes).
+No route writes `platformRole`: only `pnpm run set-platform-role <email> <ADMIN|SUPPORT|none>`
+(`scripts/set-platform-role.ts` → `setPlatformRole`), which records each change in
+`PlatformAuditLog` (`recordPlatformEvent`, `platform-audit.ts`) in the same transaction, with
+`actorId: null`. `PlatformAuditLog` is apart from `AuditLog`, which needs a `workspaceId`. Admin
+queries list their columns with `select`, so no hash or token can leak. The `?plan=` filter is
+`effectivePlanWhere`, which must stay equal to `effectivePlan` (its spec checks every plan ×
+status). The workspace detail's `stripeMode` comes from `StripeService.mode()` (the key's
+`sk_test_`/`sk_live_` prefix), which is why `BillingModule` exports `StripeService`.
 
 ## API response shape
 
@@ -469,12 +490,12 @@ membership is created or deleted (never throws); `WorkspaceService.delete` calls
 they need no database. Current coverage: `WorkspaceGuard`, `JwtAuthGuard`, `PermissionsGuard`, `IssueService`
 permission rules and tenant isolation, `MembershipService` role changes/removal, `UserController`/`UserService`,
 `InvitationService`/controller, account deletion and data export (`AccountService` and its routes, throttling included), register/verify/login/Google sign-in/refresh/change, forgot and reset password (`AuthService`,
-`RefreshTokenService`, `GoogleTokenVerifier`, throttling), `WorkspaceService`, `BillingService` (with `StripeService` mocked) and the plan limits, `SprintService.endSprint`, `CommentService`, `LabelService`, `ActivityService`, `RoleService` and the role DTOs, `WorkflowService`, `issueChanges`, the history rows `IssueService` writes, the workspace audit rows (each action, inside its transaction) and `GET /audit-log`, the health check, the cleanup (`CleanupService` and its route), and the issue, comment and label DTOs.
+`RefreshTokenService`, `GoogleTokenVerifier`, throttling), `WorkspaceService`, `BillingService` (with `StripeService` mocked) and the plan limits, `SprintService.endSprint`, `CommentService`, `LabelService`, `ActivityService`, `RoleService` and the role DTOs, `WorkflowService`, `issueChanges`, the history rows `IssueService` writes, the workspace audit rows (each action, inside its transaction) and `GET /audit-log`, the health check, the cleanup (`CleanupService` and its route), the platform admin (`PlatformRoleGuard`, `AdminController`/`AdminService`, `setPlatformRole`), and the issue, comment and label DTOs.
 `jest` maps `@/` and `generated/` in `package.json` and transforms the ESM-only `fractional-indexing` (a dependency of `@taskforge/shared`, which Jest loads as TypeScript source).
 
 `pnpm run test:e2e` (`test/*.e2e-spec.ts`) boots the real `AppModule` through `configureApp()` and
 drives it with supertest against Postgres: sign-up through the emailed link (read from the
-mocked `MailService`), refresh-token rotation and sign-out, changing and resetting the password, exporting data and deleting an account (409 while owning a shared workspace, shared issues and comments kept), unknown body keys, cross-workspace isolation, the header/path-param
+mocked `MailService`), refresh-token rotation and sign-out, changing and resetting the password, exporting data and deleting an account (409 while owning a shared workspace, shared issues and comments kept), the platform admin console (403 without a role, the script granting and clearing one, no credentials in responses), unknown body keys, cross-workspace isolation, the header/path-param
 check, invite → accept, MEMBER limits, comments (isolation, authorship, cascade on issue delete), labels (isolation, MEMBER limits, cascade on label delete), custom roles (create, assign by
 `roleId`, enforcement, built-ins locked, delete refused while in use), workflows (the default, Free's 402s, moves along custom transitions, copying, deleting a status with issues), an issue's history, and
 billing without Stripe (the three plan limits as 402s, Pro lifting them, checkout's 503, and a

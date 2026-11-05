@@ -16,7 +16,7 @@ The steps go from easiest to hardest. Each one is one PR from `develop` and leav
 | 8 | Email on issue assignment | M | 1 |
 | 9 | ✅ Workspace audit log — done | M | — |
 | 10 | ✅ Account deletion and data export — done | M–L | 1 |
-| 11 | Platform admin: foundation + read-only console | L | — |
+| 11 | ✅ Platform admin: foundation + read-only console — done | L | — |
 | 12 | Platform admin: actions (suspend, revoke, delete) | L | 10, 11 |
 | 13 | Production and later | — | external choices |
 
@@ -304,7 +304,20 @@ Unit tests, typecheck and lint pass in both apps. An e2e case (Alice sees the in
 - Seats are synced afterwards.
 - e2e for the full flow.
 
-## Step 11 — Platform admin: foundation and read-only console
+## Step 11 — Platform admin: foundation and read-only console ✅
+
+**Status: done (2026-11-02, branch `platform-admin-console`, on top of step 10).** Migration `20261102120000_platform_admin`, `set-platform-role`, `PlatformRoleGuard`/`@RequirePlatformRole`, the five read routes in `src/modules/admin/`, and the `(admin)` console with the sidebar's "Admin" link. Specs: `apps/backend/spec/admin-spec.md`, `apps/web/spec/admin.md`. Beyond the plan:
+- The script records each change in `PlatformAuditLog` (`platform_role.changed`, `actorId: null`), in the same transaction, so even granting a role leaves a trace.
+- `@RequirePlatformRole` names the *least* role a route needs: ADMIN passes every SUPPORT route.
+- `?plan=` filters on the plan **in force** (`effectivePlanWhere`); a unit test checks it against `effectivePlan` for every plan × status.
+- Searches also match a whole id; workspaces also match the owner's email.
+- The workspace detail returns `stripeMode` (`StripeService.mode()`, from the key's prefix), so the Stripe links go to the test or live dashboard correctly. `BillingModule` now exports `StripeService`.
+- The user detail shows `activeSessions` (live refresh tokens), useful for step 12's revoke.
+- Detail pages cap members/projects/memberships at `ADMIN_DETAIL_LIST_LIMIT` (100, `@taskforge/shared`), with totals in `counts`.
+- `PLATFORM_ROLE_VALUES` and `AUTH_PROVIDER_VALUES` joined `@taskforge/shared`'s enums (and the drift spec).
+- Web list state (search, plan, page) lives in the URL, so "back" from a detail page keeps it.
+
+Unit tests (699), e2e (76, against a migrated `taskforge_e2e`), typecheck, lint and `next build` pass. The console hasn't been checked in a browser: the dev database is still missing the step 9, 10 and 11 migrations.
 
 **Why.** Today you can only manage the product through the Stripe dashboard and Prisma Studio. Prisma Studio is risky and records nothing.
 

@@ -26,7 +26,7 @@ The backend lives alongside this app at `../backend/` (see the root `CLAUDE.md`)
 - `.claude/AI_GUIDE.md` — project-level architectural rules (workspace scoping, optimistic updates, no monolithic components).
 - `.claude/FORM_GUIDE.md` — the canonical form pattern with a worked example.
 - `.claude/migrations/` — historical schema-change notes from the two-repo era (all applied).
-- `spec/` — feature specs written before implementation (`auth.md`, `layout.md`, `projects.md`, `cloudinary.md`, `sprint-on-create-issue.md`, `audit-log.md`, `account.md`). These document backend contracts and intended UX; consult the relevant one before changing a feature.
+- `spec/` — feature specs written before implementation (`auth.md`, `layout.md`, `projects.md`, `cloudinary.md`, `sprint-on-create-issue.md`, `audit-log.md`, `account.md`, `admin.md`). These document backend contracts and intended UX; consult the relevant one before changing a feature.
 
 Never invent an API shape. If a contract is unclear, ask rather than guess.
 
@@ -59,6 +59,8 @@ app/
         workflow/   — the project's statuses and allowed moves (editable on Pro)
     settings/       — members, roles, general, labels, billing, audit-log (`audit:read` only), profile
     issues/         — redirect → /projects (no workspace-wide issues endpoint)
+  (admin)/admin/    — platform admin console (platform staff only; own server layout, no workspace)
+    workspaces/[workspaceId]/, users/[userId]/
   invitations/accept/
 ```
 
@@ -66,7 +68,7 @@ Issues are project-scoped: pages live under `/projects/[projectId]/` (`active-sp
 
 ### Feature structure
 
-Each domain lives in `src/features/<name>/` (`activity`, `audit`, `auth`, `billing`, `comments`, `dashboard`, `invitations`, `issues`, `labels`, `marketing`, `memberships`, `profile`, `projects`, `roles`, `settings`, `sprint`, `workflow`, `workspace`):
+Each domain lives in `src/features/<name>/` (`activity`, `admin`, `audit`, `auth`, `billing`, `comments`, `dashboard`, `invitations`, `issues`, `labels`, `marketing`, `memberships`, `profile`, `projects`, `roles`, `settings`, `sprint`, `workflow`, `workspace`):
 
 ```
 api/          — async functions calling `api.*` from lib/axios
@@ -140,6 +142,19 @@ deep link or a 403. Row types come from `@taskforge/shared`'s `audit.ts` (`Audit
 action); `lib/describe-audit-event.ts` turns a row into a sentence ("changed Bob's role from Member
 to Admin") and `auditActorName` names who did it ("System" for Stripe's webhook). A new action
 needs a case there. Nothing invalidates the log: it refetches on mount (`staleTime: 0`).
+
+### Platform admin console
+
+`features/admin/` (`spec/admin.md`; backend: `apps/backend/spec/admin-spec.md`). `/admin` is for
+platform staff (`User.platformRole`, from `GET /users/me`), granted only by the backend's
+`set-platform-role` script. `app/(admin)/admin/layout.tsx` is a server layout **outside**
+`(dashboard)` (no `WorkspaceProvider`): it calls `auth()`, reads `/users/me` with the session's
+access token (`fetchPlatformRole`, plain `fetch`) and calls `notFound()` without a role. The sidebar's
+`AdminNavLink` shows "Admin" only to staff. Both are UX: the backend checks the role on every
+request. `adminKeys` carry **no workspace id** (the data is platform-wide), and the admin API
+functions don't use `inWorkspace`. List state (`?search=&plan=&page=`) lives in the URL: the server
+page parses it (`parseAdminListParams`) and the client list navigates (`useAdminListNavigation`), so
+"back" keeps it. Lists fetch one page at a time, like the audit log.
 
 ### Billing and plan limits
 

@@ -134,6 +134,19 @@ describe("UserController (HTTP)", () => {
 
       expect(userService.update).not.toHaveBeenCalled();
     });
+
+    it("never sets a platform role: only the set-platform-role script does", async () => {
+      await request(server())
+        .patch("/users/me")
+        .send({ platformRole: "ADMIN" })
+        .expect(400);
+      await request(server())
+        .patch(`/users/${me}`)
+        .send({ name: "Me", platformRole: "SUPPORT" })
+        .expect(400);
+
+      expect(userService.update).not.toHaveBeenCalled();
+    });
   });
 
   describe("DELETE /users/me", () => {

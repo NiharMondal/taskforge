@@ -1,5 +1,8 @@
+import type { Metadata } from "next";
 import AdminWorkspaceList from "@/features/admin/components/AdminWorkspaceList";
 import { parseAdminListParams } from "@/features/admin/lib/list-params";
+
+export const metadata: Metadata = { title: "Workspaces" };
 
 /**
  * `/admin/workspaces?search=&plan=&page=` — every workspace. The list's state

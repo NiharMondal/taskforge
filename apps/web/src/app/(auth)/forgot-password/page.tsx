@@ -5,8 +5,10 @@ import AuthPageHeader from "@/features/auth/components/auth-page-header";
 import AuthSwitchLink from "@/features/auth/components/auth-switch-link";
 import { ForgotPasswordForm } from "@/features/auth/components/forgot-password-form";
 
+// Not indexed (the root layout's default): a utility page, reached from a link.
 export const metadata: Metadata = {
-	title: "Forgot password · TaskForge",
+	title: "Forgot password",
+	description: "Get a link to reset your TaskForge password.",
 };
 
 /**

@@ -4,10 +4,14 @@ import { Suspense } from "react";
 import AuthPageHeader from "@/features/auth/components/auth-page-header";
 import AuthSwitchLink from "@/features/auth/components/auth-switch-link";
 import LoginForm from "@/features/auth/components/login-form";
+import { publicPageMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = {
-	title: "Sign in · TaskForge",
-};
+export const metadata: Metadata = publicPageMetadata({
+	title: "Sign in",
+	description:
+		"Sign in to TaskForge to pick up where your team left off: your sprints, boards and issues.",
+	path: "/login",
+});
 
 export default function LoginPage() {
 	return (

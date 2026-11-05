@@ -15,7 +15,7 @@ pnpm add <pkg>  # install packages (always use pnpm, not npm/yarn)
 
 No test runner is configured — there are no tests to run. Type-check with `pnpm typecheck` (`next typegen` then `tsc --noEmit`; plain `tsc` misses the generated route types).
 
-Requires `.env.local` (copy `.env.example`): `NEXT_PUBLIC_API_URL` (backend base, defaults to `http://localhost:5001/api/v1`), `AUTH_SECRET`, `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` (Google sign-in; without them the OAuth redirect carries `client_id=undefined`), plus `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME` / `NEXT_PUBLIC_CLOUDINARY_PRESET_NAME` for avatar upload. The API base URL default lives once, in `src/lib/api-url.ts`.
+Requires `.env.local` (copy `.env.example`): `NEXT_PUBLIC_API_URL` (backend base, defaults to `http://localhost:5001/api/v1`), `AUTH_SECRET`, `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` (Google sign-in; without them the OAuth redirect carries `client_id=undefined`), plus `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME` / `NEXT_PUBLIC_CLOUDINARY_PRESET_NAME` for avatar upload. The API base URL default lives once, in `src/lib/api-url.ts`. Optional `SITE_URL` (server-only) is the public origin for SEO; unset, it falls back to Vercel's production domain, then `http://localhost:3000`.
 
 Path alias: `@/*` → `./src/*`.
 
@@ -64,7 +64,7 @@ app/
   invitations/accept/
 ```
 
-Issues are project-scoped: pages live under `/projects/[projectId]/` (`active-sprint`, `backlog`, `list`, `list/[slug]`, `workflow`); the backend route is still `/projects/:projectId/issues`. `/` is the public landing page; it sends a signed-in visitor to `/dashboard` (it reads `auth()` itself, since the proxy lets everyone through to public routes). `/pricing` renders the same `PlanCard`s as Settings → Billing (`features/billing/components/PlanCard.tsx`, from `PLAN_META`) with links to `/register`. The Terms and Privacy pages are placeholders (marked "Draft" on the page) until the real text is written; the register form links to both. "Sign out" in the workspace menu lands on `/`; a session that expires lands on `/login`. The public pages and the auth layout share `BoardPreview` (`features/marketing/components/`, a static decorative board) and the `.hero-glow`, `.grid-pattern` and `.brand-panel` backgrounds in `globals.css`.
+Issues are project-scoped: pages live under `/projects/[projectId]/` (`active-sprint`, `backlog`, `list`, `list/[slug]`, `workflow`); the backend route is still `/projects/:projectId/issues`. `/` is the public landing page; it sends a signed-in visitor to `/dashboard` (it reads `auth()` itself, since the proxy lets everyone through to public routes). `/pricing` renders the same `PlanCard`s as Settings → Billing (`features/billing/components/PlanCard.tsx`, from `PLAN_META`) with links to `/register`. The Terms and Privacy pages are written from what the app actually does (the data it stores, its cookies and local storage, its providers, retention periods, billing rules); who operates TaskForge, the contact email and the governing law come from `LEGAL` in `features/marketing/legal.ts`. Adding a provider, a cookie or a stored field, or changing billing or retention, means updating the relevant page and `LEGAL.lastUpdated`. The register form links to both. "Sign out" in the workspace menu lands on `/`; a session that expires lands on `/login`. The public pages and the auth layout share `BoardPreview` (`features/marketing/components/`, a static decorative board) and the `.hero-glow`, `.grid-pattern` and `.brand-panel` backgrounds in `globals.css`.
 
 ### Feature structure
 
@@ -209,6 +209,10 @@ Issue descriptions and comments are stored as HTML and the backend does not sani
 ### Providers
 
 `src/provider/index.tsx` composes them once for the root layout: theme (`next-themes`) → auth (`SessionProvider`) → React Query. Toasts come from HeroUI — `Toast.Provider` is mounted in `src/app/layout.tsx`; call `toast.success(...)` / `toast.danger(...)`.
+
+### SEO and page titles
+
+Every route is `noindex` unless it opts in (the root layout's default). The indexable pages — `/`, `/pricing`, `/terms`, `/privacy`, `/login`, `/register` — export `publicPageMetadata({ title, description, path })` from `src/lib/seo.ts`, which gives each its own title and description plus the shared canonical, Open Graph and Twitter fields (Next merges metadata shallowly, so a page's `openGraph` replaces the layout's — build it there, don't set a partial one). A new public page needs that call and an entry in `app/sitemap.ts`. The share image is `app/opengraph-image.tsx`; `app/robots.ts` disallows the app's routes. `robots.txt`, `sitemap.xml` and `opengraph-image` are excluded from the `proxy.ts` matcher, or crawlers would be sent to /login. App pages only set a short `title` ("Members"), shown through the root template as "Members · TaskForge" (the admin layout's own template adds "· Admin"); a page that is a client component can't export metadata, so the project tabs are thin server pages around their client views.
 
 ### Forms
 

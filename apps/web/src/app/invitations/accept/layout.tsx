@@ -1,7 +1,10 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 import { WorkspaceProvider } from "@/features/workspace/context/workspace-context";
 import { auth } from "@/lib/auth";
+
+export const metadata: Metadata = { title: "Accept invitation" };
 
 /**
  * Server layout for the invitation-accept page. Lives outside the

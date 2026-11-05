@@ -16,10 +16,14 @@ import { redirect } from "next/navigation";
 import BoardPreview from "@/features/marketing/components/BoardPreview";
 import { PRIMARY_LINK, SECONDARY_LINK } from "@/features/marketing/constants";
 import { auth } from "@/lib/auth";
+import { publicPageMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = publicPageMetadata({
 	title: "TaskForge · Plan, track and ship work as a team",
-};
+	absoluteTitle: true,
+	description: `Plan sprints, move work across a board and give every project its own workflow. TaskForge is free for teams of up to ${PLAN_LIMITS.FREE.members}.`,
+	path: "/",
+});
 
 const FEATURES = [
 	{

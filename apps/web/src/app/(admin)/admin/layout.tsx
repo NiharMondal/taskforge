@@ -1,8 +1,14 @@
+import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 
 import AdminShell from "@/features/admin/components/AdminShell";
 import { fetchPlatformViewer } from "@/features/admin/lib/fetch-platform-viewer";
 import { auth } from "@/lib/auth";
+
+/** "Users · Admin · TaskForge"; the overview is "Admin · TaskForge". */
+export const metadata: Metadata = {
+	title: { default: "Admin", template: "%s · Admin · TaskForge" },
+};
 
 /**
  * Server layout for the platform admin console (`spec/admin.md`). Outside

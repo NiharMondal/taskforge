@@ -1,18 +1,17 @@
-"use client";
-
-import { use } from "react";
+import type { Metadata } from "next";
 
 import IssuesView from "@/features/issues/components/IssuesView";
 
+export const metadata: Metadata = { title: "Issues" };
+
 /**
- * Project-scoped issues route: `/projects/[projectId]/issues`.
- *
- * `params` is a Promise in Next 16; this is a client component (the view owns
- * modal/query state), so we unwrap it with React's `use()` rather than `await`.
+ * Every issue in the project as a filterable table: `/projects/[projectId]/list`.
+ * The view is a client component (it owns modal and query state).
+ * A server page so it can set the tab title.
  */
-export default function ProjectIssuesPage({
-  params,
+export default async function ProjectIssuesPage({
+	params,
 }: PageProps<"/projects/[projectId]/list">) {
-  const { projectId } = use(params);
-  return <IssuesView projectId={projectId} />;
+	const { projectId } = await params;
+	return <IssuesView projectId={projectId} />;
 }

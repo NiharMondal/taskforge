@@ -1,4 +1,7 @@
+import type { Metadata } from "next";
 import Link from "next/link";
+
+export const metadata: Metadata = { title: "Page not found" };
 
 /** 404 for unmatched URLs and `notFound()` calls. */
 export default function NotFound() {

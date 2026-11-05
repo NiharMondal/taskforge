@@ -5,10 +5,14 @@ import { Suspense } from "react";
 import AuthPageHeader from "@/features/auth/components/auth-page-header";
 import AuthSwitchLink from "@/features/auth/components/auth-switch-link";
 import { RegisterForm } from "@/features/auth/components/register-form";
+import { publicPageMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = {
-	title: "Create account · TaskForge",
-};
+export const metadata: Metadata = publicPageMetadata({
+	title: "Create account",
+	description:
+		`Create a free TaskForge account. Free for teams of up to ${PLAN_LIMITS.FREE.members}, no credit card needed.`,
+	path: "/register",
+});
 
 export default function RegisterPage() {
 	return (

@@ -1,5 +1,8 @@
+import type { Metadata } from "next";
 import BackButton from "@/components/ui/back-button";
 import IssueDetailComponent from "@/features/issues/components/IssueDetailComponent";
+
+export const metadata: Metadata = { title: "Issue" };
 
 type TSlug = {
 	projectId: string;

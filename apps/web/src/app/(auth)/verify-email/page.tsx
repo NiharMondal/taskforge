@@ -4,8 +4,10 @@ import { Suspense } from "react";
 import AuthPageHeader from "@/features/auth/components/auth-page-header";
 import { VerifyEmailView } from "@/features/auth/components/verify-email-view";
 
+// Not indexed (the root layout's default): a utility page, reached from a link.
 export const metadata: Metadata = {
-	title: "Confirm your email · TaskForge",
+	title: "Confirm your email",
+	description: "Confirm your email address to finish creating your TaskForge account.",
 };
 
 /** Where the link in a verification email lands (`?token=…`). Public. */

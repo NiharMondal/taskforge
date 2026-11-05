@@ -1,5 +1,8 @@
+import type { Metadata } from "next";
 import DashboardOverview from "@/features/dashboard/components/DashboardOverview";
 import { auth } from "@/lib/auth";
+
+export const metadata: Metadata = { title: "Dashboard" };
 
 /**
  * Dashboard landing content. The `(dashboard)` layout provides the shell

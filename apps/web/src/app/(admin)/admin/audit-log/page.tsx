@@ -1,6 +1,9 @@
+import type { Metadata } from "next";
 import { PLATFORM_AUDIT_TARGET_TYPES } from "@taskforge/shared";
 
 import AdminAuditLog from "@/features/admin/components/AdminAuditLog";
+
+export const metadata: Metadata = { title: "Audit log" };
 
 type RawSearchParams = Record<string, string | string[] | undefined>;
 

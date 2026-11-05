@@ -904,6 +904,136 @@ describe("Tenancy (e2e)", () => {
     ).resolves.toBe(1);
   });
 
+  describe("custom roles", () => {
+    type Role = {
+      id: string;
+      name: string;
+      systemKey: string | null;
+      memberCount: number;
+    };
+    const roles = async () =>
+      data<Role[]>(
+        await api().get("/api/v1/roles").set(as(bobToken, aliceWs)).expect(200),
+      );
+    const bobsPermissions = async () =>
+      data<{ permissions: string[] }>(
+        await api()
+          .get("/api/v1/memberships/me")
+          .set(as(bobToken, aliceWs))
+          .expect(200),
+      ).permissions.sort();
+    const setBobsRole = (roleId: string) =>
+      api()
+        .patch(`/api/v1/memberships/${bobUserId}`)
+        .set(as(aliceToken, aliceWs))
+        .send({ roleId });
+    let bobUserId: string;
+    let triageId: string;
+
+    beforeAll(async () => {
+      bobUserId = (
+        await prisma.user.findUniqueOrThrow({ where: { email: bob.email } })
+      ).id;
+    });
+
+    it("lets any member list the roles, built-ins first", async () => {
+      const list = await roles();
+      expect(list.map((r) => r.systemKey)).toEqual([
+        "OWNER",
+        "ADMIN",
+        "MEMBER",
+        "VIEWER",
+      ]);
+    });
+
+    it("lets only role:manage create one", async () => {
+      await api()
+        .post("/api/v1/roles")
+        .set(as(bobToken, aliceWs))
+        .send({ name: "Triage", permissions: ["issue:status"] })
+        .expect(403);
+
+      const created = await api()
+        .post("/api/v1/roles")
+        .set(as(aliceToken, aliceWs))
+        .send({
+          name: "Triage",
+          permissions: ["issue:status", "comment:create"],
+        })
+        .expect(201);
+      triageId = data<{ id: string }>(created).id;
+
+      await api()
+        .post("/api/v1/roles")
+        .set(as(aliceToken, aliceWs))
+        .send({ name: "triage", permissions: [] })
+        .expect(409);
+    });
+
+    it("keeps one workspace's roles out of another", async () => {
+      // Bob's own workspace has only its built-ins.
+      const own = data<Role[]>(
+        await api().get("/api/v1/roles").set(as(bobToken, bobWs)).expect(200),
+      );
+      expect(own.map((r) => r.name)).not.toContain("Triage");
+
+      await api()
+        .patch(`/api/v1/roles/${triageId}`)
+        .set(as(bobToken, bobWs))
+        .send({ name: "Mine now" })
+        .expect(404);
+    });
+
+    it("gives a member exactly the custom role's permissions", async () => {
+      await setBobsRole(triageId).expect(200);
+
+      expect(await bobsPermissions()).toEqual([
+        "comment:create",
+        "issue:status",
+      ]);
+      // Triage can't create issues, which Member could.
+      await api()
+        .post(`/api/v1/projects/${projectId}/issues`)
+        .set(as(bobToken, aliceWs))
+        .send({ title: "Not allowed" })
+        .expect(403);
+
+      // Editing the role changes what its holders may do at once.
+      await api()
+        .patch(`/api/v1/roles/${triageId}`)
+        .set(as(aliceToken, aliceWs))
+        .send({
+          permissions: ["issue:status", "comment:create", "issue:create"],
+        })
+        .expect(200);
+      expect(await bobsPermissions()).toContain("issue:create");
+    });
+
+    it("leaves the built-in roles alone", async () => {
+      const viewer = (await roles()).find((r) => r.systemKey === "VIEWER")!;
+      await api()
+        .patch(`/api/v1/roles/${viewer.id}`)
+        .set(as(aliceToken, aliceWs))
+        .send({ permissions: ["issue:create"] })
+        .expect(403);
+    });
+
+    it("refuses to delete a role while someone has it", async () => {
+      await api()
+        .delete(`/api/v1/roles/${triageId}`)
+        .set(as(aliceToken, aliceWs))
+        .expect(409);
+
+      const member = (await roles()).find((r) => r.systemKey === "MEMBER")!;
+      await setBobsRole(member.id).expect(200);
+      await api()
+        .delete(`/api/v1/roles/${triageId}`)
+        .set(as(aliceToken, aliceWs))
+        .expect(200);
+      expect((await roles()).map((r) => r.name)).not.toContain("Triage");
+    });
+  });
+
   describe("ownership transfer and leaving", () => {
     const transfer = "/api/v1/memberships/transfer-ownership";
     const me = "/api/v1/memberships/me";

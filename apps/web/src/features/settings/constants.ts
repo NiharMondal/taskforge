@@ -1,4 +1,5 @@
 import {
+	ShieldCheck,
 	SlidersHorizontal,
 	Tag,
 	User,
@@ -20,6 +21,7 @@ export interface SettingsTab {
  */
 export const SETTINGS_TABS: SettingsTab[] = [
 	{ href: "/settings/members", label: "Members", icon: Users },
+	{ href: "/settings/roles", label: "Roles", icon: ShieldCheck },
 	{ href: "/settings/general", label: "General", icon: SlidersHorizontal },
 	{ href: "/settings/labels", label: "Labels", icon: Tag },
 	{ href: "/settings/profile", label: "Profile", icon: User },

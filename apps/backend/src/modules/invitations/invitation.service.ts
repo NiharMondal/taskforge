@@ -20,7 +20,8 @@ import {
 import { ConfigService } from "@nestjs/config";
 import { InvitationStatus, WorkspaceRole } from "generated/prisma/enums";
 import { MailService } from "../mail/mail.service";
-import { findSystemRole } from "../roles/system-roles";
+import { SYSTEM_ROLE_NAMES } from "@/common/permissions/permissions";
+import { findSystemRole, resolveAssignableRole } from "../roles/system-roles";
 import { SendInvitationDto } from "./dto/send-invitation.dto";
 
 /**
@@ -32,6 +33,9 @@ const PUBLIC_INVITATION_SELECT = {
   email: true,
   workspaceId: true,
   role: true,
+  roleId: true,
+  // The role it grants, by name: `role` reads MEMBER for a custom one.
+  assignedRole: { select: { id: true, name: true, systemKey: true } },
   status: true,
   expiresAt: true,
   createdAt: true,
@@ -54,8 +58,14 @@ export class InvitationService {
     actor: WorkspaceAccess,
     dto: SendInvitationDto,
   ) {
-    const role = dto.role ?? WorkspaceRole.MEMBER;
-    const invitedRole = await findSystemRole(this.prisma, workspaceId, role);
+    const invitedRole = await resolveAssignableRole(
+      this.prisma,
+      workspaceId,
+      dto.roleId === undefined && dto.role === undefined
+        ? { role: WorkspaceRole.MEMBER }
+        : { roleId: dto.roleId, role: dto.role },
+    );
+    const role = invitedRole.enumRole;
     assertActorHolds(
       actor,
       invitedRole.permissions,
@@ -159,7 +169,10 @@ export class InvitationService {
   async validateToken(token: string) {
     const invitation = await this.prisma.invitation.findUnique({
       where: { token },
-      include: { workspace: { select: { name: true } } },
+      include: {
+        workspace: { select: { name: true } },
+        assignedRole: { select: { name: true } },
+      },
     });
 
     if (!invitation) {
@@ -185,6 +198,8 @@ export class InvitationService {
       workspaceId: invitation.workspaceId,
       workspaceName: invitation.workspace.name,
       role: invitation.role,
+      roleName:
+        invitation.assignedRole?.name ?? SYSTEM_ROLE_NAMES[invitation.role],
       expiresAt: invitation.expiresAt,
     };
   }

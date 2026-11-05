@@ -102,18 +102,18 @@ describe("MembershipService role changes and removal", () => {
 
   describe("updateRole", () => {
     it("changes a member's role, keyed to this workspace", async () => {
-      await service.updateRole(
-        workspaceId,
-        "user-member",
-        adminAccess,
-        WorkspaceRole.ADMIN,
-      );
+      await service.updateRole(workspaceId, "user-member", adminAccess, {
+        role: WorkspaceRole.ADMIN,
+      });
 
       expect(prisma.membership.update).toHaveBeenCalledWith({
         where: {
           userId_workspaceId: { userId: "user-member", workspaceId },
         },
         data: { role: WorkspaceRole.ADMIN, roleId: null },
+        include: {
+          assignedRole: { select: { id: true, name: true, systemKey: true } },
+        },
       });
     });
 
@@ -123,12 +123,9 @@ describe("MembershipService role changes and removal", () => {
         permissions: [],
       });
 
-      await service.updateRole(
-        workspaceId,
-        "user-member",
-        adminAccess,
-        WorkspaceRole.VIEWER,
-      );
+      await service.updateRole(workspaceId, "user-member", adminAccess, {
+        role: WorkspaceRole.VIEWER,
+      });
 
       expect(prisma.role.findFirst).toHaveBeenCalledWith({
         where: { workspaceId, systemKey: WorkspaceRole.VIEWER },
@@ -141,14 +138,88 @@ describe("MembershipService role changes and removal", () => {
       );
     });
 
+    describe("by roleId", () => {
+      it("gives a member a custom role of this workspace", async () => {
+        prisma.role.findFirst.mockResolvedValue({
+          id: "role-triage",
+          systemKey: null,
+          permissions: ["issue:status"],
+        });
+
+        await service.updateRole(workspaceId, "user-member", adminAccess, {
+          roleId: "role-triage",
+        });
+
+        expect(prisma.role.findFirst).toHaveBeenCalledWith({
+          where: { id: "role-triage", workspaceId },
+          select: { id: true, systemKey: true, permissions: true },
+        });
+        // The enum column reads MEMBER; permissions come from the Role row.
+        expect(prisma.membership.update).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: { role: WorkspaceRole.MEMBER, roleId: "role-triage" },
+          }),
+        );
+      });
+
+      it("404s a role of another workspace", async () => {
+        // The lookup is scoped to this workspace, so it finds nothing.
+        await expect(
+          service.updateRole(workspaceId, "user-member", adminAccess, {
+            roleId: "role-of-B",
+          }),
+        ).rejects.toBeInstanceOf(NotFoundException);
+        expect(prisma.membership.update).not.toHaveBeenCalled();
+      });
+
+      it("refuses the owner's role", async () => {
+        prisma.role.findFirst.mockResolvedValue({
+          id: "role-owner",
+          systemKey: WorkspaceRole.OWNER,
+          permissions: [],
+        });
+
+        await expect(
+          service.updateRole(workspaceId, "user-member", adminAccess, {
+            roleId: "role-owner",
+          }),
+        ).rejects.toBeInstanceOf(ForbiddenException);
+      });
+
+      it("refuses a custom role with permissions the actor lacks", async () => {
+        roster["user-viewer"] = WorkspaceRole.VIEWER;
+        prisma.role.findFirst.mockResolvedValue({
+          id: "role-labeller",
+          systemKey: null,
+          permissions: ["label:manage"],
+        });
+
+        await expect(
+          service.updateRole(workspaceId, "user-viewer", memberManager, {
+            roleId: "role-labeller",
+          }),
+        ).rejects.toBeInstanceOf(ForbiddenException);
+        expect(prisma.membership.update).not.toHaveBeenCalled();
+      });
+
+      it("400s both or neither of roleId and role", async () => {
+        await expect(
+          service.updateRole(workspaceId, "user-member", adminAccess, {
+            roleId: "role-x",
+            role: WorkspaceRole.VIEWER,
+          }),
+        ).rejects.toBeInstanceOf(BadRequestException);
+        await expect(
+          service.updateRole(workspaceId, "user-member", adminAccess, {}),
+        ).rejects.toBeInstanceOf(BadRequestException);
+      });
+    });
+
     it("404s a user who is a member of another workspace only", async () => {
       await expect(
-        service.updateRole(
-          workspaceId,
-          "user-from-B",
-          adminAccess,
-          WorkspaceRole.ADMIN,
-        ),
+        service.updateRole(workspaceId, "user-from-B", adminAccess, {
+          role: WorkspaceRole.ADMIN,
+        }),
       ).rejects.toBeInstanceOf(NotFoundException);
       expect(prisma.membership.update).not.toHaveBeenCalled();
     });
@@ -156,24 +227,18 @@ describe("MembershipService role changes and removal", () => {
     describe("an actor may not hand out more access than their own", () => {
       it("refuses to assign a role with permissions the actor lacks", async () => {
         await expect(
-          service.updateRole(
-            workspaceId,
-            "user-member",
-            memberManager,
-            WorkspaceRole.ADMIN,
-          ),
+          service.updateRole(workspaceId, "user-member", memberManager, {
+            role: WorkspaceRole.ADMIN,
+          }),
         ).rejects.toBeInstanceOf(ForbiddenException);
         expect(prisma.membership.update).not.toHaveBeenCalled();
       });
 
       it("refuses to change a member who holds permissions the actor lacks", async () => {
         await expect(
-          service.updateRole(
-            workspaceId,
-            "user-member",
-            memberManager,
-            WorkspaceRole.VIEWER,
-          ),
+          service.updateRole(workspaceId, "user-member", memberManager, {
+            role: WorkspaceRole.VIEWER,
+          }),
         ).rejects.toBeInstanceOf(ForbiddenException);
         expect(prisma.membership.update).not.toHaveBeenCalled();
       });
@@ -181,12 +246,9 @@ describe("MembershipService role changes and removal", () => {
       it("allows a change entirely within the actor's own access", async () => {
         roster["user-viewer"] = WorkspaceRole.VIEWER;
 
-        await service.updateRole(
-          workspaceId,
-          "user-viewer",
-          memberManager,
-          WorkspaceRole.VIEWER,
-        );
+        await service.updateRole(workspaceId, "user-viewer", memberManager, {
+          role: WorkspaceRole.VIEWER,
+        });
 
         expect(prisma.membership.update).toHaveBeenCalled();
       });
@@ -198,7 +260,7 @@ describe("MembershipService role changes and removal", () => {
       ["anyone to OWNER", "user-member", WorkspaceRole.OWNER],
     ])("refuses to change %s", async (_label, target, role) => {
       await expect(
-        service.updateRole(workspaceId, target, adminAccess, role),
+        service.updateRole(workspaceId, target, adminAccess, { role }),
       ).rejects.toBeInstanceOf(ForbiddenException);
       expect(prisma.membership.update).not.toHaveBeenCalled();
     });

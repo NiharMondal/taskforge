@@ -1,10 +1,13 @@
 "use client";
 
-import { Button, toast } from "@heroui/react";
+import { Button, Spinner, toast } from "@heroui/react";
 import { useBoolean } from "ahooks";
 import { UserPlus } from "lucide-react";
 
 import MyModal from "@/components/ui/my-modal";
+import { useWorkspacePermissions } from "@/features/memberships/hooks/use-workspace-permissions";
+import { holdsAll } from "@/features/memberships/lib/permissions";
+import { useRoles } from "@/features/roles/hooks/use-roles";
 import { getApiErrorMessage } from "@/lib/api-error";
 
 import { useCreateInvitation } from "../hooks/use-invitations";
@@ -15,7 +18,8 @@ import InviteForm from "./InviteForm";
  * "Invite member" entry point for the settings page. Opens a modal with the
  * email and role form; the backend resolves the workspace from the
  * `x-workspace-id` header and refuses a role with more access than the
- * inviter's. Rendering is gated to OWNER/ADMIN by the parent (backend enforces
+ * inviter's — so only roles within the inviter's own access are offered.
+ * Rendering is gated to `invitation:manage` by the parent (backend enforces
  * for real).
  */
 export default function InviteMemberButton({
@@ -27,6 +31,12 @@ export default function InviteMemberButton({
 
 	const { mutateAsync: createInvitation, isPending: isSending } =
 		useCreateInvitation(workspaceId);
+	const permissions = useWorkspacePermissions();
+	const { data: roles, isLoading: isRolesLoading } = useRoles(workspaceId);
+	const invitableRoles = (roles ?? []).filter(
+		(role) =>
+			role.systemKey !== "OWNER" && holdsAll(permissions, role.permissions),
+	);
 
 	const handleInvite = async (values: TInviteFormValues) => {
 		try {
@@ -56,12 +66,20 @@ export default function InviteMemberButton({
 				size="lg"
 				title="Invite Member"
 			>
-				<InviteForm
-					onSubmit={handleInvite}
-					isSubmitting={isSending}
-					onCancel={closeModal}
-					onSuccess={closeModal}
-				/>
+				{isRolesLoading ? (
+					<div className="flex justify-center py-8">
+						<Spinner />
+					</div>
+				) : (
+					// Mounted once the roles are in, so the default role is set.
+					<InviteForm
+						roles={invitableRoles}
+						onSubmit={handleInvite}
+						isSubmitting={isSending}
+						onCancel={closeModal}
+						onSuccess={closeModal}
+					/>
+				)}
 			</MyModal>
 		</>
 	);

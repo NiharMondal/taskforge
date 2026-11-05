@@ -2,7 +2,10 @@
 
 import MyModal from "@/components/ui/my-modal";
 import IssueActivityPanel from "@/features/activity/components/IssueActivityPanel";
-import type { Permissions } from "@/features/memberships/lib/permissions";
+import {
+	canEditIssue,
+	type Permissions,
+} from "@/features/memberships/lib/permissions";
 import type { Member } from "@/features/memberships/types/membership-types";
 import { useLabels } from "@/features/labels/hooks/use-labels";
 import { useSprints } from "@/features/sprint/hooks/use-sprints";
@@ -68,7 +71,7 @@ export default function IssueDetailModal({
 							}}
 							onSubmit={handleSaveContent}
 							isSubmitting={isSavingContent}
-							canEdit={permissions.canEditIssueFields}
+							canEdit={canEditIssue(permissions, issue)}
 						/>
 						<IssueActivityPanel
 							workspaceId={workspaceId}
@@ -94,6 +97,7 @@ export default function IssueDetailModal({
 							labels={labels}
 							reporter={issue.reporter}
 							permissions={permissions}
+							canEditFields={canEditIssue(permissions, issue)}
 						/>
 						{/* Once deleted the issue leaves the list, which closes this modal. */}
 						{permissions.canDeleteIssue && (

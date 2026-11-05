@@ -42,6 +42,8 @@ export const GRANTABLE_PERMISSIONS = [
   "invitation:manage",
   /** Create, edit and delete roles. */
   "role:manage",
+  /** Read the workspace audit log (`GET /audit-log`). */
+  "audit:read",
 ] as const;
 
 /**
@@ -75,7 +77,7 @@ export function isGrantablePermission(key: string): key is GrantablePermission {
  * What each built-in role is seeded with — in new workspaces by
  * `seedSystemRoles`, and in existing ones by the backend's `add_workspace_roles`
  * migration plus the migrations that granted later keys
- * (`comment_permissions`, `label_permissions`); keep them in step. OWNER's
+ * (`comment_permissions`, `label_permissions`, `audit_log`); keep them in step. OWNER's
  * list is stored empty because the owner is granted ALL_PERMISSIONS in code
  * (see `resolveWorkspaceAccess`).
  */

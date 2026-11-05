@@ -16,6 +16,7 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { InvitationStatus, WorkspaceRole } from "generated/prisma/enums";
+import { recordWorkspaceEvent } from "../activity/workspace-activity";
 import { BillingService } from "../billing/billing.service";
 import { MailService } from "../mail/mail.service";
 import { SYSTEM_ROLE_NAMES } from "@taskforge/shared";
@@ -118,7 +119,7 @@ export class InvitationService {
       // invitations racing for the last seat, the second sees the first.
       await assertCanAddMember(tx, workspaceId);
 
-      return tx.invitation.upsert({
+      const saved = await tx.invitation.upsert({
         // Key on the stored spelling so a legacy mixed-case row is updated,
         // not duplicated next to a new lowercase one.
         where: {
@@ -135,6 +136,17 @@ export class InvitationService {
         },
         select: PUBLIC_INVITATION_SELECT,
       });
+      await recordWorkspaceEvent(tx, {
+        workspaceId,
+        userId: actor.userId,
+        action: "invitation.sent",
+        entityId: saved.id,
+        metadata: {
+          email,
+          role: { id: invitedRole.id, name: invitedRole.name },
+        },
+      });
+      return saved;
     });
 
     const workspace = await this.prisma.workspace.findUnique({
@@ -288,9 +300,14 @@ export class InvitationService {
       }
 
       // Invitations sent before roles existed have no roleId; map their enum.
-      const roleId =
-        invitation.roleId ??
-        (await findSystemRole(tx, invitation.workspaceId, invitation.role)).id;
+      const role =
+        (invitation.roleId &&
+          (await tx.role.findUnique({
+            where: { id: invitation.roleId },
+            select: { id: true, name: true },
+          }))) ||
+        (await findSystemRole(tx, invitation.workspaceId, invitation.role));
+      const roleId = invitation.roleId ?? role.id;
 
       // A membership created since the check above makes this a P2002, which
       // rolls back the claim and answers 409.
@@ -303,6 +320,17 @@ export class InvitationService {
         },
       });
 
+      await recordWorkspaceEvent(tx, {
+        workspaceId: invitation.workspaceId,
+        userId,
+        action: "invitation.accepted",
+        entityId: invitation.id,
+        metadata: {
+          email: invitation.email,
+          role: { id: role.id, name: role.name },
+        },
+      });
+
       return { workspaceId: invitation.workspaceId, membership };
     });
 
@@ -312,7 +340,11 @@ export class InvitationService {
   }
 
   /** `invitation:manage` is checked on the route. */
-  async revokeInvitation(workspaceId: string, invitationId: string) {
+  async revokeInvitation(
+    workspaceId: string,
+    invitationId: string,
+    actorId: string,
+  ) {
     const invitation = await this.prisma.invitation.findFirst({
       where: { id: invitationId, workspaceId },
     });
@@ -325,9 +357,19 @@ export class InvitationService {
       throw new BadRequestException("Only pending invitations can be revoked");
     }
 
-    return this.prisma.invitation.update({
-      where: { id: invitationId },
-      data: { status: InvitationStatus.REVOKED },
+    return this.prisma.$transaction(async (tx) => {
+      const revoked = await tx.invitation.update({
+        where: { id: invitationId },
+        data: { status: InvitationStatus.REVOKED },
+      });
+      await recordWorkspaceEvent(tx, {
+        workspaceId,
+        userId: actorId,
+        action: "invitation.revoked",
+        entityId: invitationId,
+        metadata: { email: invitation.email },
+      });
+      return revoked;
     });
   }
 }

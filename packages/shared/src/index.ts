@@ -1,4 +1,5 @@
 export * from "./api";
+export * from "./audit";
 export * from "./enums";
 export * from "./limits";
 export * from "./permissions";

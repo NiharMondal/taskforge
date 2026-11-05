@@ -2,7 +2,6 @@ import {
   accessFromMembership,
   assertActorHolds,
   assertActorOutranks,
-  ASSIGNED_ROLE_INCLUDE,
   WorkspaceAccess,
 } from "@/common/permissions/workspace-access";
 import { PaginationQueryDto } from "@/common/dto/pagination-query.dto";
@@ -20,6 +19,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { WorkspaceRole } from "generated/prisma/enums";
+import { recordWorkspaceEvent, roleRef } from "../activity/workspace-activity";
 import { BillingService } from "../billing/billing.service";
 import {
   findSystemRole,
@@ -30,6 +30,17 @@ import {
 /** The role a roster row or `/memberships/me` shows next to the enum. */
 const ASSIGNED_ROLE_SUMMARY = {
   assignedRole: { select: { id: true, name: true, systemKey: true } },
+} as const;
+
+/**
+ * A member's role with what access checks need (`ASSIGNED_ROLE_INCLUDE`) and
+ * the names the audit log copies.
+ */
+const MEMBER_WITH_NAMES = {
+  assignedRole: {
+    select: { id: true, name: true, systemKey: true, permissions: true },
+  },
+  user: { select: { id: true, name: true } },
 } as const;
 
 @Injectable()
@@ -135,15 +146,29 @@ export class MembershipService {
       "assign a role with more access",
     );
 
-    return this.prisma.membership.update({
-      where: {
-        userId_workspaceId: {
-          userId: target.userId,
-          workspaceId,
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.membership.update({
+        where: {
+          userId_workspaceId: {
+            userId: target.userId,
+            workspaceId,
+          },
         },
-      },
-      data: { role: newRole.enumRole, roleId: newRole.id },
-      include: ASSIGNED_ROLE_SUMMARY,
+        data: { role: newRole.enumRole, roleId: newRole.id },
+        include: ASSIGNED_ROLE_SUMMARY,
+      });
+      await recordWorkspaceEvent(tx, {
+        workspaceId,
+        userId: actor.userId,
+        action: "member.role_changed",
+        entityId: target.userId,
+        metadata: {
+          member: target.user,
+          from: roleRef(target.assignedRole, target.role),
+          to: { id: newRole.id, name: newRole.name },
+        },
+      });
+      return updated;
     });
   }
 
@@ -152,15 +177,28 @@ export class MembershipService {
     targetUserId: string,
     actor: WorkspaceAccess,
   ) {
-    await this.getTarget(workspaceId, targetUserId, actor);
+    const target = await this.getTarget(workspaceId, targetUserId, actor);
 
-    const removed = await this.prisma.membership.delete({
-      where: {
-        userId_workspaceId: {
-          userId: targetUserId,
-          workspaceId,
+    const removed = await this.prisma.$transaction(async (tx) => {
+      const deleted = await tx.membership.delete({
+        where: {
+          userId_workspaceId: {
+            userId: targetUserId,
+            workspaceId,
+          },
         },
-      },
+      });
+      await recordWorkspaceEvent(tx, {
+        workspaceId,
+        userId: actor.userId,
+        action: "member.removed",
+        entityId: targetUserId,
+        metadata: {
+          member: target.user,
+          role: roleRef(target.assignedRole, target.role),
+        },
+      });
+      return deleted;
     });
     await this.billing.syncSeats(workspaceId);
     return removed;
@@ -219,6 +257,23 @@ export class MembershipService {
         await assertCanOwnAnotherFreeWorkspace(tx, newOwnerId, workspaceId);
       }
 
+      const users = await tx.user.findMany({
+        where: { id: { in: [actor.userId, newOwnerId] } },
+        select: { id: true, name: true },
+      });
+      const nameOf = (id: string) =>
+        users.find((u) => u.id === id)?.name ?? "A former member";
+      await recordWorkspaceEvent(tx, {
+        workspaceId,
+        userId: actor.userId,
+        action: "ownership.transferred",
+        entityId: workspaceId,
+        metadata: {
+          from: { id: actor.userId, name: nameOf(actor.userId) },
+          to: { id: newOwnerId, name: nameOf(newOwnerId) },
+        },
+      });
+
       return tx.membership.findUnique({
         where: { userId_workspaceId: { userId: newOwnerId, workspaceId } },
         include: ASSIGNED_ROLE_SUMMARY,
@@ -245,13 +300,28 @@ export class MembershipService {
       throw new BadRequestException("You can't leave your only workspace");
     }
 
-    const left = await this.prisma.membership.delete({
-      where: {
-        userId_workspaceId: {
-          userId: actor.userId,
-          workspaceId: actor.workspaceId,
+    const left = await this.prisma.$transaction(async (tx) => {
+      // Deleting returns the row as it was, with the names the log copies.
+      const { user, assignedRole, ...membership } = await tx.membership.delete({
+        where: {
+          userId_workspaceId: {
+            userId: actor.userId,
+            workspaceId: actor.workspaceId,
+          },
         },
-      },
+        include: MEMBER_WITH_NAMES,
+      });
+      await recordWorkspaceEvent(tx, {
+        workspaceId: actor.workspaceId,
+        userId: actor.userId,
+        action: "member.left",
+        entityId: actor.userId,
+        metadata: {
+          member: user,
+          role: roleRef(assignedRole, membership.role),
+        },
+      });
+      return membership;
     });
     await this.billing.syncSeats(actor.workspaceId);
     return left;
@@ -273,7 +343,7 @@ export class MembershipService {
           workspaceId,
         },
       },
-      include: ASSIGNED_ROLE_INCLUDE,
+      include: MEMBER_WITH_NAMES,
     });
 
     if (!target) {

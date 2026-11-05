@@ -15,6 +15,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { InvitationStatus, WorkspaceRole } from "generated/prisma/enums";
+import { recordWorkspaceEvent } from "../activity/workspace-activity";
 import { CreateRoleDto } from "./dto/create-role.dto";
 import { UpdateRoleDto } from "./dto/update-role.dto";
 
@@ -86,12 +87,25 @@ export class RoleService {
     await assertCanCreateCustomRole(this.prisma, workspaceId);
     await this.assertNameFree(workspaceId, dto.name);
 
-    return this.prisma.role.create({
-      data: {
+    return this.prisma.$transaction(async (tx) => {
+      const role = await tx.role.create({
+        data: {
+          workspaceId,
+          name: dto.name,
+          permissions: inCatalogOrder(dto.permissions),
+        },
+      });
+      await recordWorkspaceEvent(tx, {
         workspaceId,
-        name: dto.name,
-        permissions: inCatalogOrder(dto.permissions),
-      },
+        userId: actor.userId,
+        action: "role.created",
+        entityId: role.id,
+        metadata: {
+          role: { id: role.id, name: role.name },
+          permissions: role.permissions,
+        },
+      });
+      return role;
     });
   }
 
@@ -109,12 +123,39 @@ export class RoleService {
       await this.assertNameFree(workspaceId, dto.name, role.id);
     }
 
-    return this.prisma.role.update({
-      where: { id: role.id },
-      data: {
-        name: dto.name,
-        permissions: dto.permissions && inCatalogOrder(dto.permissions),
-      },
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.role.update({
+        where: { id: role.id },
+        data: {
+          name: dto.name,
+          permissions: dto.permissions && inCatalogOrder(dto.permissions),
+        },
+      });
+
+      // Only what actually changed; a save that changed nothing isn't logged.
+      const renamed = updated.name !== role.name;
+      const added = updated.permissions.filter(
+        (p) => !role.permissions.includes(p),
+      );
+      const removed = role.permissions.filter(
+        (p) => !updated.permissions.includes(p),
+      );
+      if (renamed || added.length || removed.length) {
+        await recordWorkspaceEvent(tx, {
+          workspaceId,
+          userId: actor.userId,
+          action: "role.updated",
+          entityId: role.id,
+          metadata: {
+            role: { id: role.id, name: updated.name },
+            ...(renamed && { name: { from: role.name, to: updated.name } }),
+            ...((added.length || removed.length) && {
+              permissions: { added, removed },
+            }),
+          },
+        });
+      }
+      return updated;
     });
   }
 
@@ -151,7 +192,15 @@ export class RoleService {
         where: { roleId },
         data: { roleId: null },
       });
-      return tx.role.delete({ where: { id: role.id } });
+      const deleted = await tx.role.delete({ where: { id: role.id } });
+      await recordWorkspaceEvent(tx, {
+        workspaceId,
+        userId: actor.userId,
+        action: "role.deleted",
+        entityId: role.id,
+        metadata: { role: { id: role.id, name: role.name } },
+      });
+      return deleted;
     });
   }
 

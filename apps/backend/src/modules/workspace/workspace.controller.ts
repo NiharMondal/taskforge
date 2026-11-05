@@ -81,9 +81,10 @@ export class WorkspaceController {
   @UseGuards(WorkspaceGuard)
   async update(
     @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: JwtPayload,
     @Body() dto: UpdateWorkspaceDto,
   ) {
-    const res = await this.workspaceService.update(workspaceId, dto);
+    const res = await this.workspaceService.update(workspaceId, user.sub, dto);
     return sendResponse({
       statusCode: HttpStatus.OK,
       message: "Workspace updated successfully",

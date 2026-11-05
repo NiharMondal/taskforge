@@ -55,6 +55,7 @@ let prisma: {
   workspace: { findUnique: jest.Mock };
   user: { findUnique: jest.Mock };
   stripeEvent: { findUnique: jest.Mock; create: jest.Mock };
+  auditLog: { create: jest.Mock };
   $transaction: jest.Mock;
 };
 let stripe: {
@@ -73,7 +74,7 @@ beforeEach(() => {
   prisma = {
     subscription: {
       findUnique: jest.fn().mockResolvedValue(null),
-      upsert: jest.fn().mockResolvedValue({}),
+      upsert: jest.fn().mockResolvedValue({ id: "subrow-1" }),
       update: jest.fn().mockResolvedValue({}),
     },
     membership: { count: jest.fn().mockResolvedValue(3) },
@@ -90,6 +91,7 @@ beforeEach(() => {
       findUnique: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockResolvedValue({}),
     },
+    auditLog: { create: jest.fn().mockResolvedValue({}) },
     $transaction: jest.fn(),
   };
   prisma.$transaction.mockImplementation((cb: (tx: unknown) => unknown) =>
@@ -301,6 +303,52 @@ describe("BillingService.handleWebhook", () => {
     expect(prisma.stripeEvent.create).toHaveBeenCalledWith({
       data: { id: "evt_1", type: "customer.subscription.updated" },
     });
+  });
+
+  it("records billing.subscription_changed once, as the system", async () => {
+    stripe.constructEvent.mockReturnValue(
+      event("customer.subscription.updated", { id: "sub_1" }),
+    );
+    stripe.retrieveSubscription.mockResolvedValue(
+      stripeSubscription({ status: "trialing" }),
+    );
+
+    await service.handleWebhook(raw, "sig");
+
+    expect(prisma.auditLog.create).toHaveBeenCalledTimes(1);
+    expect(prisma.auditLog.create).toHaveBeenCalledWith({
+      data: {
+        workspaceId,
+        userId: null,
+        action: "billing.subscription_changed",
+        entityType: "SUBSCRIPTION",
+        entityId: "subrow-1",
+        metadata: {
+          from: null,
+          to: { plan: "PRO", status: "TRIALING", cancelAtPeriodEnd: false },
+        },
+      },
+    });
+  });
+
+  it("records nothing when the plan, status and cancellation are unchanged", async () => {
+    stripe.constructEvent.mockReturnValue(
+      event("customer.subscription.updated", { id: "sub_1" }),
+    );
+    prisma.workspace.findUnique.mockResolvedValue({
+      id: workspaceId,
+      subscription: {
+        stripeSubscriptionId: "sub_1",
+        plan: "PRO",
+        status: "ACTIVE",
+        cancelAtPeriodEnd: false,
+      },
+    });
+
+    await service.handleWebhook(raw, "sig");
+
+    expect(prisma.subscription.upsert).toHaveBeenCalled();
+    expect(prisma.auditLog.create).not.toHaveBeenCalled();
   });
 
   it("applies an event delivered twice only once", async () => {

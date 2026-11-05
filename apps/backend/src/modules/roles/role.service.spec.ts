@@ -40,17 +40,35 @@ let prisma: {
   membership: { count: jest.Mock };
   invitation: { count: jest.Mock; updateMany: jest.Mock };
   subscription: { findUnique: jest.Mock };
+  auditLog: { create: jest.Mock };
   $transaction: jest.Mock;
 };
 let service: RoleService;
+
+/** The audit rows written, as the `data` each `auditLog.create` got. */
+const auditRows = () =>
+  (
+    prisma.auditLog.create.mock.calls as [{ data: Record<string, unknown> }][]
+  ).map(([arg]) => arg.data);
 
 beforeEach(() => {
   prisma = {
     role: {
       findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn().mockResolvedValue(null),
-      create: jest.fn().mockResolvedValue({ id: "role-new" }),
-      update: jest.fn().mockResolvedValue({}),
+      create: jest.fn(({ data }: { data: object }) =>
+        Promise.resolve({ id: "role-new", ...data }),
+      ),
+      // The stored role after the update: the custom role with what was sent.
+      update: jest.fn(
+        ({ data }: { data: { name?: string; permissions?: string[] } }) =>
+          Promise.resolve(
+            customRole({
+              ...(data.name !== undefined && { name: data.name }),
+              ...(data.permissions && { permissions: data.permissions }),
+            }),
+          ),
+      ),
       delete: jest.fn().mockResolvedValue({}),
     },
     membership: { count: jest.fn().mockResolvedValue(0) },
@@ -64,6 +82,7 @@ beforeEach(() => {
         .fn()
         .mockResolvedValue({ plan: "PRO", status: "ACTIVE" }),
     },
+    auditLog: { create: jest.fn().mockResolvedValue({}) },
     $transaction: jest.fn(),
   };
   prisma.$transaction.mockImplementation((cb: (tx: unknown) => unknown) =>
@@ -316,5 +335,91 @@ describe("RoleService.remove", () => {
       service.remove(workspaceId, "role-viewer", admin),
     ).rejects.toBeInstanceOf(ForbiddenException);
     expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+});
+
+describe("RoleService audit log", () => {
+  it("records role.created once, with the permissions it grants", async () => {
+    await service.create(workspaceId, admin, {
+      name: "Support",
+      permissions: ["comment:create", "issue:create"],
+    });
+
+    expect(auditRows()).toEqual([
+      {
+        workspaceId,
+        userId: admin.userId,
+        action: "role.created",
+        entityType: "ROLE",
+        entityId: "role-new",
+        metadata: {
+          role: { id: "role-new", name: "Support" },
+          permissions: ["issue:create", "comment:create"],
+        },
+      },
+    ]);
+  });
+
+  it("records role.updated once, with only what changed", async () => {
+    prisma.role.findFirst
+      .mockResolvedValueOnce(customRole()) // the role
+      .mockResolvedValueOnce(null); // the name is free
+
+    await service.update(workspaceId, "role-triage", admin, {
+      name: "Triagers",
+      permissions: ["comment:create"],
+    });
+
+    expect(auditRows()).toEqual([
+      {
+        workspaceId,
+        userId: admin.userId,
+        action: "role.updated",
+        entityType: "ROLE",
+        entityId: "role-triage",
+        metadata: {
+          role: { id: "role-triage", name: "Triagers" },
+          name: { from: "Triage", to: "Triagers" },
+          permissions: { added: ["comment:create"], removed: ["issue:status"] },
+        },
+      },
+    ]);
+  });
+
+  it("records nothing for a save that changed nothing", async () => {
+    prisma.role.findFirst.mockResolvedValueOnce(customRole());
+
+    await service.update(workspaceId, "role-triage", admin, {
+      permissions: ["issue:status"],
+    });
+
+    expect(prisma.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it("records role.deleted once, in the delete's transaction", async () => {
+    prisma.role.findFirst.mockResolvedValueOnce(customRole());
+
+    await service.remove(workspaceId, "role-triage", admin);
+
+    expect(auditRows()).toEqual([
+      {
+        workspaceId,
+        userId: admin.userId,
+        action: "role.deleted",
+        entityType: "ROLE",
+        entityId: "role-triage",
+        metadata: { role: { id: "role-triage", name: "Triage" } },
+      },
+    ]);
+  });
+
+  it("records nothing when a delete is refused", async () => {
+    prisma.role.findFirst.mockResolvedValueOnce(customRole());
+    prisma.membership.count.mockResolvedValue(2);
+
+    await expect(
+      service.remove(workspaceId, "role-triage", admin),
+    ).rejects.toThrow();
+    expect(prisma.auditLog.create).not.toHaveBeenCalled();
   });
 });

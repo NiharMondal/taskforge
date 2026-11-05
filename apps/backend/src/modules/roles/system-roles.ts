@@ -48,18 +48,27 @@ export async function findSystemRole(
   db: Db,
   workspaceId: string,
   systemKey: WorkspaceRole,
-): Promise<{ id: string | null; permissions: readonly GrantablePermission[] }> {
+): Promise<{
+  id: string | null;
+  name: string;
+  permissions: readonly GrantablePermission[];
+}> {
   const role = await db.role.findFirst({
     where: { workspaceId, systemKey },
-    select: { id: true, permissions: true },
+    select: { id: true, name: true, permissions: true },
   });
 
   return role
     ? {
         id: role.id,
+        name: role.name,
         permissions: role.permissions.filter(isGrantablePermission),
       }
-    : { id: null, permissions: DEFAULT_ROLE_PERMISSIONS[systemKey] };
+    : {
+        id: null,
+        name: SYSTEM_ROLE_NAMES[systemKey],
+        permissions: DEFAULT_ROLE_PERMISSIONS[systemKey],
+      };
 }
 
 /** How a write names the role to hand out: a Role row, or a built-in by key. */
@@ -79,6 +88,7 @@ export async function resolveAssignableRole(
   choice: RoleChoice,
 ): Promise<{
   id: string | null;
+  name: string;
   enumRole: WorkspaceRole;
   permissions: readonly GrantablePermission[];
 }> {
@@ -92,12 +102,13 @@ export async function resolveAssignableRole(
   if (choice.roleId !== undefined) {
     const role = await db.role.findFirst({
       where: { id: choice.roleId, workspaceId },
-      select: { id: true, systemKey: true, permissions: true },
+      select: { id: true, name: true, systemKey: true, permissions: true },
     });
     if (!role) throw new NotFoundException("Role not found");
     assertNotOwnerRole(role.systemKey);
     return {
       id: role.id,
+      name: role.name,
       enumRole: role.systemKey ?? WorkspaceRole.MEMBER,
       permissions: role.permissions.filter(isGrantablePermission),
     };

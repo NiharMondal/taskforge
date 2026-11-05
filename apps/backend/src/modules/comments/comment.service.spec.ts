@@ -21,6 +21,8 @@ describe("CommentService", () => {
       update: jest.Mock;
       delete: jest.Mock;
     };
+    auditLog: { create: jest.Mock };
+    $transaction: jest.Mock;
   };
   let service: CommentService;
 
@@ -34,13 +36,23 @@ describe("CommentService", () => {
       comment: {
         findMany: jest.fn().mockResolvedValue([]),
         findFirst: jest.fn(() =>
-          Promise.resolve({ id: commentId, issueId, userId: author }),
+          Promise.resolve({
+            id: commentId,
+            issueId,
+            userId: author,
+            user: { id: author, name: "Author" },
+          }),
         ),
         create: jest.fn().mockResolvedValue({ id: commentId }),
         update: jest.fn().mockResolvedValue({ id: commentId }),
         delete: jest.fn().mockResolvedValue({ id: commentId }),
       },
+      auditLog: { create: jest.fn().mockResolvedValue({ id: "audit-1" }) },
+      $transaction: jest.fn(),
     };
+    prisma.$transaction.mockImplementation((cb: (tx: unknown) => unknown) =>
+      cb(prisma),
+    );
     service = new CommentService(prisma as unknown as PrismaService);
   });
 
@@ -93,13 +105,15 @@ describe("CommentService", () => {
       author = me;
       await edit(as(WorkspaceRole.MEMBER));
 
-      expect(prisma.comment.findFirst).toHaveBeenCalledWith({
-        where: {
-          id: commentId,
-          issueId,
-          issue: { workspaceId, projectId },
-        },
-      });
+      expect(prisma.comment.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            id: commentId,
+            issueId,
+            issue: { workspaceId, projectId },
+          },
+        }),
+      );
     });
 
     it.each([
@@ -185,5 +199,28 @@ describe("CommentService", () => {
         expect(prisma.comment.delete).toHaveBeenCalledTimes(1);
       },
     );
+
+    it("records a moderator's deletion in the issue's history", async () => {
+      await remove(as(WorkspaceRole.ADMIN));
+
+      expect(prisma.auditLog.create).toHaveBeenCalledWith({
+        data: {
+          workspaceId,
+          userId: me,
+          entityType: "ISSUE",
+          entityId: issueId,
+          action: "comment.deleted",
+          metadata: { author: { id: "user-other", name: "Author" } },
+        },
+      });
+    });
+
+    it("doesn't record an author deleting their own comment", async () => {
+      author = me;
+      await remove(as(WorkspaceRole.ADMIN));
+
+      expect(prisma.comment.delete).toHaveBeenCalledTimes(1);
+      expect(prisma.auditLog.create).not.toHaveBeenCalled();
+    });
   });
 });

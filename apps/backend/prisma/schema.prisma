@@ -399,6 +399,9 @@ model AuditLog {
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   user      User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
 
-  @@index([workspaceId])
+  // Serves an entity's history (an issue's timeline): WHERE workspaceId,
+  // entityType, entityId ORDER BY createdAt. Its prefix also covers lookups by
+  // workspace alone, which the old single-column index did.
+  @@index([workspaceId, entityType, entityId, createdAt])
   @@index([entityType])
 }

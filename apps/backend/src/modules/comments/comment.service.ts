@@ -1,4 +1,8 @@
 import type { WorkspaceAccess } from "@/common/permissions/workspace-access";
+import {
+  IssueActivity,
+  recordIssueActivity,
+} from "@/modules/activity/issue-activity";
 import { PrismaService } from "@/prisma/prisma.service";
 import {
   ForbiddenException,
@@ -78,7 +82,8 @@ export class CommentService {
 
   /**
    * The author may delete their own comment while they can still comment;
-   * `comment:delete:any` deletes anyone's.
+   * `comment:delete:any` deletes anyone's — and that moderation goes into the
+   * issue's history, so a comment never disappears without a trace.
    */
   async remove(
     workspaceId: string,
@@ -103,7 +108,21 @@ export class CommentService {
       );
     }
 
-    return this.prisma.comment.delete({ where: { id: comment.id } });
+    if (comment.userId === access.userId) {
+      return this.prisma.comment.delete({ where: { id: comment.id } });
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const deleted = await tx.comment.delete({ where: { id: comment.id } });
+      await recordIssueActivity(tx, {
+        workspaceId,
+        issueId,
+        userId: access.userId,
+        action: IssueActivity.commentDeleted,
+        metadata: { author: { id: comment.user.id, name: comment.user.name } },
+      });
+      return deleted;
+    });
   }
 
   private async findOne(
@@ -114,6 +133,7 @@ export class CommentService {
   ) {
     const comment = await this.prisma.comment.findFirst({
       where: { id: commentId, issueId, issue: { workspaceId, projectId } },
+      include: WITH_AUTHOR,
     });
 
     if (!comment) {

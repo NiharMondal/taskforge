@@ -6,7 +6,12 @@ import {
   ForbiddenException,
   NotFoundException,
 } from "@nestjs/common";
-import { IssueStatus, IssueType, WorkspaceRole } from "generated/prisma/enums";
+import {
+  IssuePriority,
+  IssueStatus,
+  IssueType,
+  WorkspaceRole,
+} from "generated/prisma/enums";
 import { IssueService } from "./issue.service";
 
 describe("IssueService.update permission rules", () => {
@@ -24,6 +29,7 @@ describe("IssueService.update permission rules", () => {
   };
   let prisma: {
     issue: { findFirst: jest.Mock; update: jest.Mock };
+    auditLog: { create: jest.Mock };
     $transaction: jest.Mock;
     $executeRaw: jest.Mock;
   };
@@ -38,9 +44,12 @@ describe("IssueService.update permission rules", () => {
     };
     prisma = {
       issue: {
-        findFirst: jest.fn(() => Promise.resolve({ id: issueId, ...stored })),
+        findFirst: jest.fn(() =>
+          Promise.resolve({ id: issueId, labels: [], sprint: null, ...stored }),
+        ),
         update: jest.fn().mockResolvedValue({ id: issueId }),
       },
+      auditLog: { create: jest.fn().mockResolvedValue({ id: "audit-1" }) },
       $transaction: jest.fn(),
       $executeRaw: jest.fn().mockResolvedValue(1),
     };
@@ -228,6 +237,7 @@ describe("IssueService.create permission rules", () => {
     issue: { create: jest.Mock; findFirst: jest.Mock };
     project: { findFirst: jest.Mock; update: jest.Mock };
     sprint: { findFirst: jest.Mock };
+    auditLog: { create: jest.Mock };
     $transaction: jest.Mock;
     $executeRaw: jest.Mock;
   };
@@ -235,6 +245,7 @@ describe("IssueService.create permission rules", () => {
 
   beforeEach(() => {
     prisma = {
+      auditLog: { create: jest.fn().mockResolvedValue({ id: "audit-1" }) },
       issue: {
         create: jest.fn().mockResolvedValue({ id: "issue-new" }),
         findFirst: jest.fn().mockResolvedValue(null),
@@ -396,6 +407,7 @@ describe("IssueService lane ranks", () => {
       update: jest.Mock;
     };
     project: { findFirst: jest.Mock; update: jest.Mock };
+    auditLog: { create: jest.Mock };
     $transaction: jest.Mock;
     $executeRaw: jest.Mock;
   };
@@ -423,6 +435,8 @@ describe("IssueService lane ranks", () => {
                   status: IssueStatus.TODO,
                   reporterId: "u",
                   assigneeId: null,
+                  labels: [],
+                  sprint: null,
                 },
           ),
         ),
@@ -440,6 +454,7 @@ describe("IssueService lane ranks", () => {
         findFirst: jest.fn().mockResolvedValue({ id: projectId }),
         update: jest.fn().mockResolvedValue({ issueCounter: 7 }),
       },
+      auditLog: { create: jest.fn(track("audit", () => ({ id: "audit-1" }))) },
       $transaction: jest.fn((cb: (tx: unknown) => unknown) => {
         calls.push("begin");
         return cb(prisma);
@@ -458,7 +473,7 @@ describe("IssueService lane ranks", () => {
       status: IssueStatus.TODO,
     });
 
-    expect(calls).toEqual(["begin", "lock", "findFirst", "create"]);
+    expect(calls).toEqual(["begin", "lock", "findFirst", "create", "audit"]);
     expect(rankWritten(prisma.issue.create)).toBe("a4");
   });
 
@@ -473,6 +488,7 @@ describe("IssueService lane ranks", () => {
       "lock",
       "findFirst",
       "update",
+      "audit",
     ]);
     expect(rankWritten(prisma.issue.update)).toBe("a4");
   });
@@ -483,7 +499,8 @@ describe("IssueService lane ranks", () => {
       rank: "a0V",
     });
 
-    expect(prisma.$transaction).not.toHaveBeenCalled();
+    // A transaction (for the history row) but no lane lock.
+    expect(prisma.$executeRaw).not.toHaveBeenCalled();
     expect(rankWritten(prisma.issue.update)).toBe("a0V");
   });
 
@@ -607,9 +624,11 @@ describe("IssueService tenant isolation", () => {
       await expect(create({ assigneeId: "user-B" })).rejects.toBeInstanceOf(
         ForbiddenException,
       );
-      expect(prisma.membership.findUnique).toHaveBeenCalledWith({
-        where: { userId_workspaceId: { userId: "user-B", workspaceId } },
-      });
+      expect(prisma.membership.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { userId_workspaceId: { userId: "user-B", workspaceId } },
+        }),
+      );
       expect(prisma.issue.create).not.toHaveBeenCalled();
     });
 
@@ -633,9 +652,11 @@ describe("IssueService tenant isolation", () => {
       await expect(create({ sprintId: "sprint-B" })).rejects.toBeInstanceOf(
         ForbiddenException,
       );
-      expect(prisma.sprint.findFirst).toHaveBeenCalledWith({
-        where: { id: "sprint-B", workspaceId, projectId },
-      });
+      expect(prisma.sprint.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "sprint-B", workspaceId, projectId },
+        }),
+      );
       expect(prisma.issue.create).not.toHaveBeenCalled();
     });
   });
@@ -648,6 +669,7 @@ describe("IssueService sprint commitment (BACKLOG → TODO)", () => {
     project: { findFirst: jest.Mock; update: jest.Mock };
     sprint: { findFirst: jest.Mock };
     membership: { findUnique: jest.Mock };
+    auditLog: { create: jest.Mock };
     $transaction: jest.Mock;
     $executeRaw: jest.Mock;
   };
@@ -655,6 +677,7 @@ describe("IssueService sprint commitment (BACKLOG → TODO)", () => {
 
   beforeEach(() => {
     prisma = {
+      auditLog: { create: jest.fn().mockResolvedValue({ id: "audit-1" }) },
       issue: {
         // Lane-max lookups find an empty lane.
         findFirst: jest.fn().mockResolvedValue(null),
@@ -684,6 +707,8 @@ describe("IssueService sprint commitment (BACKLOG → TODO)", () => {
       status,
       reporterId: "u",
       assigneeId: null,
+      labels: [],
+      sprint: null,
     });
 
   it("creates an issue planned into a sprint as To Do, not Backlog", async () => {
@@ -770,7 +795,8 @@ describe("IssueService labels", () => {
   let prisma: {
     issue: { findFirst: jest.Mock; create: jest.Mock; update: jest.Mock };
     project: { findFirst: jest.Mock; update: jest.Mock };
-    label: { count: jest.Mock };
+    label: { findMany: jest.Mock };
+    auditLog: { create: jest.Mock };
     $transaction: jest.Mock;
     $executeRaw: jest.Mock;
   };
@@ -785,6 +811,8 @@ describe("IssueService labels", () => {
           type: IssueType.TASK,
           reporterId: "user-other",
           assigneeId: null,
+          labels: [],
+          sprint: null,
         }),
         create: jest.fn().mockResolvedValue({ id: issueId }),
         update: jest.fn().mockResolvedValue({ id: issueId }),
@@ -795,10 +823,13 @@ describe("IssueService labels", () => {
       },
       // Every label asked about is found in the workspace unless a test says so.
       label: {
-        count: jest.fn(({ where }: { where: { id: { in: string[] } } }) =>
-          Promise.resolve(where.id.in.length),
+        findMany: jest.fn(({ where }: { where: { id: { in: string[] } } }) =>
+          Promise.resolve(
+            where.id.in.map((id) => ({ id, name: id, color: "#000000" })),
+          ),
         ),
       },
+      auditLog: { create: jest.fn().mockResolvedValue({ id: "audit-1" }) },
       $transaction: jest.fn(),
       $executeRaw: jest.fn().mockResolvedValue(1),
     };
@@ -816,9 +847,11 @@ describe("IssueService labels", () => {
       labelIds: ["label-1", "label-2"],
     });
 
-    expect(prisma.label.count).toHaveBeenCalledWith({
-      where: { id: { in: ["label-1", "label-2"] }, workspaceId },
-    });
+    expect(prisma.label.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: { in: ["label-1", "label-2"] }, workspaceId },
+      }),
+    );
   });
 
   it.each([
@@ -840,7 +873,9 @@ describe("IssueService labels", () => {
   ])(
     "refuses to %s with a label from another workspace",
     async (_label, act) => {
-      prisma.label.count.mockResolvedValue(1);
+      prisma.label.findMany.mockResolvedValue([
+        { id: "label-1", name: "Bug", color: "#ef4444" },
+      ]);
 
       await expect(act()).rejects.toBeInstanceOf(ForbiddenException);
       expect(prisma.issue.create).not.toHaveBeenCalled();
@@ -882,7 +917,7 @@ describe("IssueService labels", () => {
     });
 
     expect(written(prisma.issue.update).labels).toBeUndefined();
-    expect(prisma.label.count).not.toHaveBeenCalled();
+    expect(prisma.label.findMany).not.toHaveBeenCalled();
   });
 
   it("returns the issue page's labels as a plain list", async () => {
@@ -895,5 +930,149 @@ describe("IssueService labels", () => {
     await expect(
       service.findDetail(workspaceId, projectId, issueId),
     ).resolves.toMatchObject({ labels: [bug] });
+  });
+});
+
+describe("IssueService history", () => {
+  const workspaceId = "ws-1";
+  const projectId = "proj-1";
+  const issueId = "issue-1";
+  const me = "user-me";
+  const owner = accessAs(WorkspaceRole.OWNER, { workspaceId, userId: me });
+
+  let prisma: {
+    issue: { findFirst: jest.Mock; create: jest.Mock; update: jest.Mock };
+    project: { findFirst: jest.Mock; update: jest.Mock };
+    membership: { findUnique: jest.Mock };
+    sprint: { findFirst: jest.Mock };
+    auditLog: { create: jest.Mock };
+    $transaction: jest.Mock;
+    $executeRaw: jest.Mock;
+  };
+  let service: IssueService;
+
+  beforeEach(() => {
+    prisma = {
+      issue: {
+        // The stored issue; lane-max lookups (with orderBy) find an empty lane.
+        findFirst: jest.fn((args: { orderBy?: unknown }) =>
+          Promise.resolve(
+            args.orderBy
+              ? null
+              : {
+                  id: issueId,
+                  title: "Login fails",
+                  description: null,
+                  status: IssueStatus.TODO,
+                  priority: "MEDIUM",
+                  type: IssueType.TASK,
+                  timeEstimate: null,
+                  reporterId: "user-other",
+                  assigneeId: null,
+                  assignee: null,
+                  sprint: null,
+                  labels: [],
+                },
+          ),
+        ),
+        create: jest.fn().mockResolvedValue({ id: "issue-new" }),
+        update: jest.fn().mockResolvedValue({ id: issueId }),
+      },
+      project: {
+        findFirst: jest.fn().mockResolvedValue({ id: projectId }),
+        update: jest.fn().mockResolvedValue({ issueCounter: 1 }),
+      },
+      membership: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ user: { id: "user-b", name: "Bob" } }),
+      },
+      sprint: {
+        findFirst: jest
+          .fn()
+          .mockResolvedValue({ id: "sprint-1", name: "Sprint 1" }),
+      },
+      auditLog: { create: jest.fn().mockResolvedValue({ id: "audit-1" }) },
+      $transaction: jest.fn(),
+      $executeRaw: jest.fn().mockResolvedValue(1),
+    };
+    prisma.$transaction.mockImplementation((cb: (tx: unknown) => unknown) =>
+      cb(prisma),
+    );
+    service = new IssueService(prisma as unknown as PrismaService);
+  });
+
+  const auditRow = () =>
+    (prisma.auditLog.create.mock.calls[0] as [{ data: object }])[0].data;
+
+  it("records who created an issue", async () => {
+    await service.create(workspaceId, projectId, me, owner, { title: "New" });
+
+    expect(auditRow()).toEqual({
+      workspaceId,
+      userId: me,
+      entityType: "ISSUE",
+      entityId: "issue-new",
+      action: "issue.created",
+      metadata: undefined,
+    });
+  });
+
+  it("records one row per save, with every change and the names involved", async () => {
+    await service.update(workspaceId, projectId, issueId, owner, {
+      status: IssueStatus.IN_PROGRESS,
+      assigneeId: "user-b",
+      sprintId: "sprint-1",
+    });
+
+    expect(prisma.auditLog.create).toHaveBeenCalledTimes(1);
+    expect(auditRow()).toEqual({
+      workspaceId,
+      userId: me,
+      entityType: "ISSUE",
+      entityId: issueId,
+      action: "issue.updated",
+      metadata: {
+        changes: [
+          { field: "status", from: "TODO", to: "IN_PROGRESS" },
+          { field: "assignee", from: null, to: { id: "user-b", name: "Bob" } },
+          {
+            field: "sprint",
+            from: null,
+            to: { id: "sprint-1", name: "Sprint 1" },
+          },
+        ],
+      },
+    });
+  });
+
+  it("records nothing for a reorder within the lane", async () => {
+    await service.update(workspaceId, projectId, issueId, owner, {
+      status: IssueStatus.TODO,
+      rank: "a1",
+    });
+
+    expect(prisma.issue.update).toHaveBeenCalledTimes(1);
+    expect(prisma.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it("records nothing when a save sends the values already stored", async () => {
+    await service.update(workspaceId, projectId, issueId, owner, {
+      title: "Login fails",
+      priority: IssuePriority.MEDIUM,
+    });
+
+    expect(prisma.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it("writes nothing, history included, when the update is refused", async () => {
+    await expect(
+      service.update(workspaceId, projectId, issueId, owner, {
+        status: IssueStatus.DONE,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(prisma.issue.update).not.toHaveBeenCalled();
+    expect(prisma.auditLog.create).not.toHaveBeenCalled();
   });
 });

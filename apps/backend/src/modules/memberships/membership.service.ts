@@ -1,6 +1,7 @@
 import {
   accessFromMembership,
   assertActorHolds,
+  assertActorOutranks,
   ASSIGNED_ROLE_INCLUDE,
   WorkspaceAccess,
 } from "@/common/permissions/workspace-access";
@@ -97,9 +98,11 @@ export class MembershipService {
 
   /**
    * `member:manage` is checked on the route. On top of it: nobody changes their
-   * own role, the OWNER is untouchable, and an actor may neither act on a
-   * member nor hand out a role that holds permissions the actor lacks. The
-   * role may be custom (`roleId`); the enum column then reads MEMBER.
+   * own role, the OWNER is untouchable, an actor may only act on a member
+   * with strictly less access than their own (so Admins can't demote each
+   * other), and may not hand out a role that holds permissions the actor
+   * lacks. The role may be custom (`roleId`); the enum column then reads
+   * MEMBER.
    */
   async updateRole(
     workspaceId: string,
@@ -237,7 +240,7 @@ export class MembershipService {
 
   /**
    * The member an actor wants to change or remove: 404 if absent, 403 if it is
-   * the OWNER or holds permissions the actor doesn't.
+   * the OWNER or the actor doesn't hold strictly more access than they do.
    */
   private async getTarget(
     workspaceId: string,
@@ -267,11 +270,7 @@ export class MembershipService {
       throw new ForbiddenException("Cannot modify or remove the OWNER");
     }
 
-    assertActorHolds(
-      actor,
-      targetAccess.permissions,
-      "manage a member with more access",
-    );
+    assertActorOutranks(actor, targetAccess.permissions);
 
     return target;
   }

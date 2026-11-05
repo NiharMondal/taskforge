@@ -327,6 +327,65 @@ describe("MembershipService role changes and removal", () => {
       expect(prisma.membership.delete).not.toHaveBeenCalled();
     });
   });
+
+  describe("acting on a member takes strictly more access", () => {
+    const ownerAccess = accessAs(WorkspaceRole.OWNER, {
+      workspaceId,
+      userId: "user-owner",
+    });
+
+    beforeEach(() => {
+      roster["user-admin-2"] = WorkspaceRole.ADMIN;
+    });
+
+    it("refuses an Admin demoting another Admin", async () => {
+      await expect(
+        service.updateRole(workspaceId, "user-admin-2", adminAccess, {
+          role: WorkspaceRole.MEMBER,
+        }),
+      ).rejects.toThrow("less access than your own");
+      expect(prisma.membership.update).not.toHaveBeenCalled();
+    });
+
+    it("refuses an Admin removing another Admin", async () => {
+      await expect(
+        service.removeMember(workspaceId, "user-admin-2", adminAccess),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(prisma.membership.delete).not.toHaveBeenCalled();
+    });
+
+    it("lets the OWNER demote and remove an Admin", async () => {
+      await service.updateRole(workspaceId, "user-admin-2", ownerAccess, {
+        role: WorkspaceRole.MEMBER,
+      });
+      await service.removeMember(workspaceId, "user-admin-2", ownerAccess);
+
+      expect(prisma.membership.update).toHaveBeenCalled();
+      expect(prisma.membership.delete).toHaveBeenCalled();
+    });
+
+    it("still lets an Admin make a member an Admin", async () => {
+      await service.updateRole(workspaceId, "user-member", adminAccess, {
+        role: WorkspaceRole.ADMIN,
+      });
+
+      expect(prisma.membership.update).toHaveBeenCalled();
+    });
+
+    it("refuses a peer holding the same custom role", async () => {
+      prisma.membership.findUnique.mockResolvedValueOnce({
+        userId: "user-manager-2",
+        role: WorkspaceRole.MEMBER,
+        roleId: "role-manager",
+        assignedRole: { systemKey: null, permissions: ["member:manage"] },
+      });
+
+      await expect(
+        service.removeMember(workspaceId, "user-manager-2", memberManager),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(prisma.membership.delete).not.toHaveBeenCalled();
+    });
+  });
 });
 
 describe("MembershipService ownership transfer and leaving", () => {

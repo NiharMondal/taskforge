@@ -16,7 +16,7 @@ import RemoveMemberButton from "@/features/memberships/components/RemoveMemberBu
 import { useMemberships } from "@/features/memberships/hooks/use-memberships";
 import { useWorkspacePermissions } from "@/features/memberships/hooks/use-workspace-permissions";
 import { getMemberEmail } from "@/features/memberships/lib/member";
-import { holdsAll } from "@/features/memberships/lib/permissions";
+import { holdsAll, outranks } from "@/features/memberships/lib/permissions";
 import { RoleChip } from "@/features/roles/components/RoleChip";
 import { useRoles } from "@/features/roles/hooks/use-roles";
 import { useWorkspace } from "@/features/workspace/context/workspace-context";
@@ -87,15 +87,17 @@ export default function MembersSettings() {
 							{members.map((member) => {
 								// Locked rows: the OWNER (ownership transfer is a
 								// separate flow), the viewer themselves, and
-								// anyone with access the viewer lacks.
+								// anyone without strictly less access than the
+								// viewer (so Admins can't touch other Admins).
+								// A row predating roles reads its built-in.
 								const role = member.assignedRole
 									? roleById.get(member.assignedRole.id)
-									: undefined;
+									: roles.find((r) => r.systemKey === member.role);
 								const isLocked =
 									(member.assignedRole?.systemKey ??
 										member.role) === "OWNER" ||
 									member.userId === currentUserId ||
-									(!!role && !holdsAll(permissions, role.permissions));
+									(!!role && !outranks(permissions, role.permissions));
 								const canEditRow = canManageMembers && !isLocked;
 
 								return (

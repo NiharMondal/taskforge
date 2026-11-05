@@ -17,7 +17,7 @@ Base path: `/memberships`
 
 | Method | Route | Who | Does |
 | --- | --- | --- | --- |
-| `GET` | `/` | Any member | The roster, each row with `user { id, name, avatarUrl, email }` and its role |
+| `GET` | `/` | Any member | The roster, oldest member first, each row with `user { id, name, avatarUrl, email }` and its role. Paginated: `?page=` (default 1), `?limit=` (default 20, max 100), `metaData` in the response |
 | `GET` | `/me` | Any member | The caller's role and the permissions it grants |
 | `GET` | `/:userId` | Any member | One membership |
 | `PATCH` | `/:userId` | `member:manage` | Change a member's role (`{ roleId }`, custom roles included, or a built-in's `{ role }`; never the owner's, never yourself) |

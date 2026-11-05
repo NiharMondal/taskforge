@@ -11,27 +11,63 @@ import { WorkspaceRole } from "generated/prisma/enums";
 import { MembershipService } from "./membership.service";
 
 describe("MembershipService.findAllByWorkspaceId", () => {
-  let prisma: { membership: { findMany: jest.Mock } };
+  let prisma: { membership: { findMany: jest.Mock; count: jest.Mock } };
   let service: MembershipService;
 
   beforeEach(() => {
-    prisma = { membership: { findMany: jest.fn().mockResolvedValue([]) } };
+    prisma = {
+      membership: {
+        findMany: jest.fn().mockResolvedValue([]),
+        count: jest.fn().mockResolvedValue(0),
+      },
+    };
     service = new MembershipService(prisma as unknown as PrismaService);
   });
 
-  it("scopes the roster to the caller's workspace", async () => {
-    await service.findAllByWorkspaceId("ws-A");
+  it("scopes the roster, and its count, to the caller's workspace", async () => {
+    await service.findAllByWorkspaceId("ws-A", {});
 
     expect(prisma.membership.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { workspaceId: "ws-A" } }),
     );
+    expect(prisma.membership.count).toHaveBeenCalledWith({
+      where: { workspaceId: "ws-A" },
+    });
+  });
+
+  it("pages oldest member first, with id breaking ties", async () => {
+    prisma.membership.count.mockResolvedValue(45);
+
+    const { metaData } = await service.findAllByWorkspaceId("ws-A", {
+      page: 2,
+      limit: 20,
+    });
+
+    expect(prisma.membership.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        skip: 20,
+        take: 20,
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      }),
+    );
+    expect(metaData).toEqual({
+      currentPage: 2,
+      totalPages: 3,
+      totalData: 45,
+      pageSize: 20,
+      hasNextPage: true,
+      hasPreviousPage: true,
+    });
   });
 
   it("selects each member's email from User, and no credentials", async () => {
-    await service.findAllByWorkspaceId("ws-A");
+    await service.findAllByWorkspaceId("ws-A", {});
 
     expect(prisma.membership.findMany).toHaveBeenCalledWith({
       where: { workspaceId: "ws-A" },
+      skip: 0,
+      take: 10,
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       include: {
         user: {
           select: {

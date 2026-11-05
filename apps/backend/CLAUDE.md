@@ -205,7 +205,15 @@ const { data, metaData } = await qb.execute(this.prisma.issue);
 ```
 
 `.execute()` runs `findMany` + `count` in parallel and returns `{ data, metaData }`; pass `metaData`
-straight into `sendResponse`. Defaults: page 1, limit 10, maxLimit 100.
+straight into `sendResponse`. Defaults: page 1, limit 10, maxLimit 100. The sort always ends with
+`id` in the same direction, so rows tied on the sort field can't repeat or vanish across pages.
+
+Besides issues, the projects, sprints, memberships, invitations and workspaces lists are paginated
+this way; labels, roles, comments and activity still return everything. `GET /workspaces` is
+scoped by `memberships: { some: { userId } }`, since `Workspace` has no `workspaceId`. Those five take only `PaginationQueryDto` (`src/common/dto/`: `page`,
+`limit`, default 20, max 100) and never call `.filter()`; `QueryIssuesDto` extends it. Without
+`?page`/`?limit` a list answers its first 20 rows — a client that needs the whole list must walk
+`metaData.hasNextPage`, as the web does.
 
 Two sharp edges: `.filter()` turns **every** unrecognized query param into a Prisma `where` clause
 (reserved keys are only `search`, `page`, `limit`, `sort`), so list DTOs must be tight — the global

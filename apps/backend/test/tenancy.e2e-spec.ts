@@ -299,6 +299,39 @@ describe("Tenancy (e2e)", () => {
     });
   });
 
+  describe("list pagination", () => {
+    it("pages a list and says how much there is", async () => {
+      const total = await prisma.project.count({
+        where: { workspaceId: aliceWs },
+      });
+
+      const res = await api()
+        .get("/api/v1/projects?page=1&limit=1")
+        .set(as(aliceToken, aliceWs))
+        .expect(200);
+
+      expect(data<unknown[]>(res)).toHaveLength(1);
+      expect((res.body as { metaData: unknown }).metaData).toEqual({
+        currentPage: 1,
+        totalPages: total,
+        totalData: total,
+        pageSize: 1,
+        hasNextPage: total > 1,
+        hasPreviousPage: false,
+      });
+    });
+
+    it.each(["limit=101", "page=0", "workspaceId=x"])(
+      "refuses ?%s",
+      async (query) => {
+        await api()
+          .get(`/api/v1/memberships?${query}`)
+          .set(as(aliceToken, aliceWs))
+          .expect(400);
+      },
+    );
+  });
+
   describe("before Bob is invited", () => {
     it("rejects Bob sending Alice's workspace header", async () => {
       await api()

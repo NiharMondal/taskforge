@@ -1,13 +1,14 @@
 import { api, inWorkspace } from "@/lib/axios";
+import { getAllPages } from "@/lib/get-all-pages";
 import type { ApiResponse } from "@/types/api";
 import type { Sprint, CreateSprintDto, UpdateSprintDto } from "../types/sprint-types";
 
-/** List all sprints for a project (`GET /projects/:projectId/sprints`). */
+/** List all sprints for a project (`GET /projects/:projectId/sprints`, every page). */
 export async function getSprints(
 	workspaceId: string,
 	projectId: string,
 ): Promise<ApiResponse<Sprint[]>> {
-	return api.get<Sprint[]>(
+	return getAllPages<Sprint>(
 		`/projects/${projectId}/sprints`,
 		inWorkspace(workspaceId),
 	);

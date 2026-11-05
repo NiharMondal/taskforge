@@ -33,6 +33,7 @@ describe("InvitationService", () => {
       findFirst: jest.Mock;
       findUnique: jest.Mock;
       findMany: jest.Mock;
+      count: jest.Mock;
       upsert: jest.Mock;
       update: jest.Mock;
       updateMany: jest.Mock;
@@ -55,6 +56,7 @@ describe("InvitationService", () => {
         findFirst: jest.fn().mockResolvedValue(null),
         findUnique: jest.fn(),
         findMany: jest.fn().mockResolvedValue([]),
+        count: jest.fn().mockResolvedValue(0),
         upsert: jest.fn().mockResolvedValue({ id: "inv-1" }),
         update: jest.fn().mockResolvedValue({}),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
@@ -331,7 +333,7 @@ describe("InvitationService", () => {
 
   describe("listInvitations", () => {
     it("does not select the token", async () => {
-      await service.listInvitations(workspaceId);
+      await service.listInvitations(workspaceId, {});
 
       const args = firstCallArg<{
         where: unknown;

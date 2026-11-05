@@ -1,4 +1,5 @@
 import { api, inWorkspace } from "@/lib/axios";
+import { getAllPages } from "@/lib/get-all-pages";
 
 import type { ApiResponse } from "@/types/api";
 
@@ -14,8 +15,8 @@ import type {
  * Every function returns the full `ApiResponse` envelope (via `api` in
  * `lib/axios`); hooks unwrap `.data` where only the payload matters.
  *
- * `GET /memberships` returns every member of the *active* workspace — the
- * workspace is resolved from the `x-workspace-id` header (AI_GUIDE → "Backend
+ * `GET /memberships` returns the members of the *active* workspace, a page at
+ * a time; `getMemberships` reads every page. The workspace is resolved from the `x-workspace-id` header (AI_GUIDE → "Backend
  * endpoint": "@workspaceId from header"), so no id is passed in the route.
  * The per-member routes are keyed by `userId` (`/memberships/:userId`, see
  * apps/backend/src/modules/memberships/membership.controller.ts); the
@@ -24,7 +25,7 @@ import type {
 export async function getMemberships(
   workspaceId: string,
 ): Promise<ApiResponse<Member[]>> {
-  return api.get<Member[]>("/memberships", inWorkspace(workspaceId));
+  return getAllPages<Member>("/memberships", inWorkspace(workspaceId));
 }
 
 /** The caller's own role and permissions in the workspace. */

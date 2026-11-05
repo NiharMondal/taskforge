@@ -1,6 +1,7 @@
 import { Access } from "@/common/decorators/access.decorator";
 import { CurrentUser } from "@/common/decorators/current-user.decorator";
 import { Public } from "@/common/decorators/public.decorator";
+import { PaginationQueryDto } from "@/common/dto/pagination-query.dto";
 import { RequirePermission } from "@/common/decorators/require-permission.decorator";
 import { WorkspaceId } from "@/common/decorators/workspaceId.decorator";
 import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
@@ -53,13 +54,19 @@ export class InvitationController {
   @Get()
   @RequirePermission("invitation:manage")
   @UseGuards(JwtAuthGuard, WorkspaceGuard)
-  async listInvitations(@WorkspaceId() workspaceId: string) {
-    const invitations =
-      await this.invitationService.listInvitations(workspaceId);
+  async listInvitations(
+    @WorkspaceId() workspaceId: string,
+    @Query() query: PaginationQueryDto,
+  ) {
+    const { data, metaData } = await this.invitationService.listInvitations(
+      workspaceId,
+      query,
+    );
     return sendResponse({
       statusCode: HttpStatus.OK,
       message: "Invitations fetched successfully",
-      data: invitations,
+      data,
+      metaData,
     });
   }
 

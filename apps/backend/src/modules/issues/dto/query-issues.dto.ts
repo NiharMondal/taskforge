@@ -1,17 +1,8 @@
-import { Type } from "class-transformer";
-import {
-  IsEnum,
-  IsInt,
-  IsOptional,
-  IsString,
-  IsUUID,
-  Matches,
-  Max,
-  Min,
-} from "class-validator";
+import { PaginationQueryDto } from "@/common/dto/pagination-query.dto";
+import { IsEnum, IsOptional, IsString, IsUUID, Matches } from "class-validator";
 import { IssuePriority, IssueStatus } from "generated/prisma/enums";
 
-export class QueryIssuesDto {
+export class QueryIssuesDto extends PaginationQueryDto {
   @IsOptional()
   @IsString()
   search?: string;
@@ -42,17 +33,4 @@ export class QueryIssuesDto {
       "sort must be one of createdAt, priority, status or rank, then :asc or :desc",
   })
   sort?: string;
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  page?: number = 1;
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(100)
-  limit?: number = 20;
 }

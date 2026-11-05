@@ -1,3 +1,5 @@
+import { PaginationQueryDto } from "@/common/dto/pagination-query.dto";
+import PrismaQueryBuilder from "@/lib/PrismQueryBuilder";
 import { PrismaService } from "@/prisma/prisma.service";
 import {
   ForbiddenException,
@@ -40,17 +42,15 @@ export class WorkspaceService {
   }
 
   // get user workspace
-  async getUserWorkspaces(userId: string) {
-    const workspaces = await this.prisma.workspace.findMany({
-      where: {
-        memberships: {
-          some: { userId },
-        },
-      },
-      orderBy: { createdAt: "desc" },
-    });
-
-    return workspaces;
+  async getUserWorkspaces(userId: string, query: PaginationQueryDto) {
+    return new PrismaQueryBuilder(query, {
+      defaultField: "createdAt",
+      defaultOrder: "desc",
+    })
+      .withDefaultFilter({ memberships: { some: { userId } } })
+      .paginate()
+      .sort()
+      .execute(this.prisma.workspace);
   }
 
   // get single workspace

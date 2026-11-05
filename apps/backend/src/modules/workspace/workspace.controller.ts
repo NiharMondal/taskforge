@@ -1,4 +1,5 @@
 import { CurrentUser } from "@/common/decorators/current-user.decorator";
+import { PaginationQueryDto } from "@/common/dto/pagination-query.dto";
 import { RequirePermission } from "@/common/decorators/require-permission.decorator";
 import { WorkspaceId } from "@/common/decorators/workspaceId.decorator";
 import { WorkspaceGuard } from "@/common/guards/workspace.guard";
@@ -13,6 +14,7 @@ import {
   HttpStatus,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from "@nestjs/common";
 import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
@@ -43,12 +45,19 @@ export class WorkspaceController {
   // GET ALL workspaces of user
   @Get()
   @HttpCode(HttpStatus.OK)
-  async findAll(@CurrentUser() user: JwtPayload) {
-    const res = await this.workspaceService.getUserWorkspaces(user.sub);
+  async findAll(
+    @CurrentUser() user: JwtPayload,
+    @Query() query: PaginationQueryDto,
+  ) {
+    const { data, metaData } = await this.workspaceService.getUserWorkspaces(
+      user.sub,
+      query,
+    );
     return sendResponse({
       statusCode: HttpStatus.OK,
       message: "Workspaces fetched successfully",
-      data: res,
+      data,
+      metaData,
     });
   }
 

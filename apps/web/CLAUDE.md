@@ -92,7 +92,7 @@ export const getIssues = (projectId: string) =>
 queryFn: async () => (await getIssues(projectId)).data
 ```
 
-`getIssues` is the exception to that one-liner: the issues endpoint is paginated (default 20, max 100), so it walks every page (using `metaData.hasNextPage`) and returns the full list — the board and list render the whole project. That is a stop-gap (one serial request per 100 issues); the real fix is per-lane pagination.
+The list endpoints are the exception to that one-liner: issues, projects, sprints, memberships, invitations and workspaces are paginated (default 20, max 100), so their API functions call `getAllPages` (`src/lib/get-all-pages.ts`), which walks every page (using `metaData.hasNextPage`) and returns the full list — the board and list render the whole project, and pickers, id lookups and the workspace switcher need every row. Calling `api.get` on one of them silently gets the first 20. Walking is a stop-gap (one serial request per 100 rows); for issues the real fix is per-lane pagination.
 
 A user's email is `User.email` (the backend's `Auth` table holds only sign-in methods: password hash or Google id). Only the profile (`/users/:id`) and the members roster select it, so `ICommonUserEntity` has no `email`; read a member's with `getMemberEmail` / `getMemberName` (`features/memberships/lib/member.ts`).
 

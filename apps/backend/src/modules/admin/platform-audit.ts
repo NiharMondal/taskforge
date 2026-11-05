@@ -1,33 +1,19 @@
+import {
+  PLATFORM_AUDIT_ACTION_TARGET,
+  type PlatformAuditAction,
+  type PlatformAuditMetadata,
+} from "@taskforge/shared";
 import type { Prisma } from "generated/prisma/client";
-import type { PlatformRole } from "generated/prisma/enums";
 
 /**
  * The platform audit log (`spec/admin-spec.md`): what platform staff, or the
  * `set-platform-role` script, did. Kept apart from `AuditLog`, which belongs to
- * one workspace. Write a row with the transaction client of the change itself,
- * so the log can't disagree with it.
+ * one workspace. The actions, their target types and each one's `metadata`
+ * are in `@taskforge/shared` (`admin.ts`), which the web reads them with.
+ * Write a row with the transaction client of the change itself, so the log
+ * can't disagree with it; names are copied in so a row still reads after the
+ * target is deleted.
  */
-
-/** Each action and the `metadata` its row carries. */
-export interface PlatformAuditMetadata {
-  /** A user's platform role was granted, changed or removed. */
-  "platform_role.changed": {
-    email: string;
-    from: PlatformRole | null;
-    to: PlatformRole | null;
-  };
-}
-
-export type PlatformAuditAction = keyof PlatformAuditMetadata;
-
-/** What an action is about. */
-export const PLATFORM_AUDIT_TARGET: Record<
-  PlatformAuditAction,
-  "USER" | "WORKSPACE"
-> = {
-  "platform_role.changed": "USER",
-};
-
 export function recordPlatformEvent<A extends PlatformAuditAction>(
   db: Pick<Prisma.TransactionClient, "platformAuditLog">,
   entry: {
@@ -42,7 +28,7 @@ export function recordPlatformEvent<A extends PlatformAuditAction>(
     data: {
       actorId: entry.actorId,
       action: entry.action,
-      targetType: PLATFORM_AUDIT_TARGET[entry.action],
+      targetType: PLATFORM_AUDIT_ACTION_TARGET[entry.action],
       targetId: entry.targetId,
       metadata: entry.metadata,
     },

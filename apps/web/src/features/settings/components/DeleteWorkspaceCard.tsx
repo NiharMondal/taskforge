@@ -10,7 +10,7 @@ import {
 	toast,
 } from "@heroui/react";
 import { useBoolean } from "ahooks";
-import { Trash2 } from "lucide-react";
+import { Trash } from "lucide-react";
 
 import ConfirmModal from "@/components/ui/confirm-modal";
 import { useWorkspace } from "@/features/workspace/context/workspace-context";
@@ -63,7 +63,7 @@ export default function DeleteWorkspaceCard({
 					isDisabled={!fallback}
 					onClick={open}
 				>
-					<Trash2 className="size-4" />
+					<Trash className="size-4" />
 					Delete workspace
 				</Button>
 

@@ -4,6 +4,7 @@ import { getAllPages } from "@/lib/get-all-pages";
 import type { ApiResponse } from "@/types/api";
 
 import type {
+	AssignedIssue,
 	CreateIssueDto,
 	Issue,
 	UpdateIssueDto,
@@ -40,6 +41,21 @@ export async function getIssues(
 		inWorkspace(workspaceId),
 	);
 }
+/**
+ * The caller's open issues across the workspace's projects
+ * (`GET /issues/assigned`), most urgent first. One page only: the dashboard
+ * shows the top few and reads the total from `metaData.totalData`.
+ */
+export async function getAssignedIssues(
+	workspaceId: string,
+	limit: number,
+): Promise<ApiResponse<AssignedIssue[]>> {
+	return api.get<AssignedIssue[]>(
+		"/issues/assigned",
+		inWorkspace(workspaceId, { params: { limit } }),
+	);
+}
+
 export async function getSingleIssue(
 	workspaceId: string,
 	projectId: string,

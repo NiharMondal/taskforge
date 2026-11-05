@@ -1,6 +1,7 @@
 import { PrismaService } from "@/prisma/prisma.service";
 import { ForbiddenException } from "@nestjs/common";
 import { WorkspaceRole } from "generated/prisma/enums";
+import { WorkspaceSuspendedException } from "../exceptions/suspended.exception";
 import { AuthenticatedRequest } from "../types/authenticated-request.interface";
 import {
   ALL_PERMISSIONS,
@@ -101,11 +102,18 @@ export async function resolveWorkspaceAccess(
 
   const membership = await prisma.membership.findUnique({
     where: { userId_workspaceId: { userId: user.sub, workspaceId } },
-    include: ASSIGNED_ROLE_INCLUDE,
+    include: {
+      ...ASSIGNED_ROLE_INCLUDE,
+      workspace: { select: { suspendedAt: true } },
+    },
   });
 
   if (!membership) {
     throw new ForbiddenException("No access to this workspace");
+  }
+  // Checked after membership, so only members learn a workspace is suspended.
+  if (membership.workspace.suspendedAt) {
+    throw new WorkspaceSuspendedException();
   }
 
   const access = accessFromMembership(membership, {

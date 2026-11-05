@@ -1,5 +1,6 @@
 "use client";
 
+import SuspendedWorkspaceGate from "@/features/workspace/components/SuspendedWorkspaceGate";
 import { WorkspaceProvider } from "@/features/workspace/context/workspace-context";
 
 import Header, { type HeaderUser } from "./Header";
@@ -28,7 +29,9 @@ export default function AppLayout({
 
           <div className="flex min-w-0 flex-1 flex-col">
             <Header user={user} />
-            <main className="flex-1 overflow-y-auto p-6">{children}</main>
+            <main className="flex-1 overflow-y-auto p-6">
+              <SuspendedWorkspaceGate>{children}</SuspendedWorkspaceGate>
+            </main>
           </div>
         </div>
       </SidebarProvider>

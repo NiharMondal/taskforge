@@ -1,6 +1,7 @@
 "use client";
 
 import {
+	Chip,
 	cn,
 	DropdownItem,
 	DropdownMenu,
@@ -102,8 +103,15 @@ export default function WorkspaceMenu() {
 									: (activeWorkspace?.name ?? "No workspace")}
 						</span>
 						{activeWorkspace && (
-							<span className="truncate text-xs text-muted">
-								{planLabel(activeWorkspace)}
+							<span
+								className={cn(
+									"truncate text-xs",
+									activeWorkspace.suspended ? "text-danger" : "text-muted",
+								)}
+							>
+								{activeWorkspace.suspended
+									? "Suspended"
+									: planLabel(activeWorkspace)}
 							</span>
 						)}
 					</span>
@@ -130,7 +138,13 @@ export default function WorkspaceMenu() {
 										<span className="min-w-0 flex-1 truncate">
 											{workspace.name}
 										</span>
-										<ProBadge plan={workspace.plan} />
+										{workspace.suspended ? (
+											<Chip size="sm" variant="soft" color="danger" className="shrink-0">
+												Suspended
+											</Chip>
+										) : (
+											<ProBadge plan={workspace.plan} />
+										)}
 										<Check
 											aria-hidden
 											className={cn(

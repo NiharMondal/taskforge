@@ -1,3 +1,4 @@
+import { WorkspaceSuspendedException } from "@/common/exceptions/suspended.exception";
 import { appUrl, futureDate, generateToken, normalizeEmail } from "@/helper";
 import {
   assertActorHolds,
@@ -234,10 +235,16 @@ export class InvitationService {
   async acceptInvitation(token: string, userId: string) {
     const invitation = await this.prisma.invitation.findUnique({
       where: { token },
+      include: { workspace: { select: { suspendedAt: true } } },
     });
 
     if (!invitation) {
       throw new NotFoundException("Invitation not found");
+    }
+
+    // Joining would only lead to a workspace nobody can open.
+    if (invitation.workspace.suspendedAt) {
+      throw new WorkspaceSuspendedException();
     }
 
     if (invitation.status !== InvitationStatus.PENDING) {

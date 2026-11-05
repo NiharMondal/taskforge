@@ -12,14 +12,24 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { resolvePostLoginTarget } from "../lib/callback-url";
+import { SUSPENDED_MESSAGE } from "../constants";
 import { LoginInput, loginSchema } from "../schemas/auth-schema";
 
 /**
  * Why the user just landed here signed out, by query parameter: set after a
- * password change or account deletion (Settings → Profile) or a reset
- * (`/reset-password`).
+ * password change or account deletion (Settings → Profile), a reset
+ * (`/reset-password`), or a suspension (a Google sign-in, or a session that
+ * ended because of it).
  */
-const NOTICES = {
+const NOTICES: Record<
+	string,
+	{ title: string; description: string; status?: "success" | "danger" }
+> = {
+	suspended: {
+		title: "Account suspended",
+		description: SUSPENDED_MESSAGE,
+		status: "danger",
+	},
 	passwordChanged: {
 		title: "Password changed",
 		description:
@@ -35,15 +45,13 @@ const NOTICES = {
 		description:
 			"Your account and the workspaces only you belonged to are gone. We emailed you a confirmation.",
 	},
-} as const;
+};
 
 export default function LoginForm() {
 	const [showPassword, setShowPassword] = useState(false);
 	const router = useRouter();
 	const searchParams = useSearchParams();
-	const noticeKey = (Object.keys(NOTICES) as (keyof typeof NOTICES)[]).find(
-		(key) => searchParams.has(key),
-	);
+	const noticeKey = Object.keys(NOTICES).find((key) => searchParams.has(key));
 	const notice = noticeKey && NOTICES[noticeKey];
 	const methods = useForm<LoginInput>({
 		resolver: zodResolver(loginSchema),
@@ -72,7 +80,9 @@ export default function LoginForm() {
 						? "Invalid Credentials"
 						: res.code === "email_unverified"
 							? "Confirm your email first: sign up again with this address and we'll email you a link."
-							: "Something went wrong. Please try again.",
+							: res.code === "account_suspended"
+								? SUSPENDED_MESSAGE
+								: "Something went wrong. Please try again.",
 				);
 				return;
 			}
@@ -87,7 +97,7 @@ export default function LoginForm() {
 	return (
 		<>
 			{notice && (
-				<Alert status="success" className="mb-5">
+				<Alert status={notice.status ?? "success"} className="mb-5">
 					<Alert.Indicator />
 					<Alert.Content>
 						<Alert.Title>{notice.title}</Alert.Title>

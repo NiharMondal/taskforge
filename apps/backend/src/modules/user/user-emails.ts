@@ -28,3 +28,31 @@ export function accountDeletedEmail(params: {
     }),
   };
 }
+
+/**
+ * Sent after platform staff delete an account (`DELETE /admin/users/:id`), to
+ * the address it had. The staff's reason is an internal note and isn't
+ * included.
+ */
+export function accountDeletedByStaffEmail(params: {
+  name: string;
+  url: string;
+}): Email {
+  const footer =
+    "If you think this was a mistake, reply to this email or contact support.";
+  return {
+    subject: "Your TaskForge account was deleted",
+    text:
+      `Hi ${params.name},\n\n` +
+      `Our team deleted your TaskForge account, along with the workspaces only you belonged to. ` +
+      `Issues and comments you wrote in shared workspaces stay there, shown as by "Deleted user".\n\n` +
+      footer,
+    html: emailLayout({
+      heading: "Your account was deleted",
+      body: `Hi ${escapeHtml(params.name)}, our team deleted your TaskForge account, along with the workspaces only you belonged to. Issues and comments you wrote in shared workspaces stay there, shown as by "Deleted user".`,
+      buttonLabel: "Visit TaskForge",
+      url: params.url,
+      footer,
+    }),
+  };
+}

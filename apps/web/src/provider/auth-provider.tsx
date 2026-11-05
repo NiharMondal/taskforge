@@ -60,9 +60,18 @@ const tokenOf = (session: Session | null | undefined) =>
 /** `useSession().update`, kept by {@link SessionTokenBridge}. */
 let updateSession: ReturnType<typeof useSession>["update"] | undefined;
 
+/** Where a session ended for this reason lands; the login form explains a suspension. */
+const SIGNED_OUT_URL: Record<NonNullable<Session["error"]>, string> = {
+  SessionExpired: "/login",
+  AccountSuspended: "/login?suspended=1",
+};
+
 registerSessionRefresher(async () => {
   if (!updateSession) return null;
   const session = await updateSession({ refreshAccessToken: true });
+  // Suspended while signed in: say so, rather than the plain sign-out the
+  // failed request would otherwise trigger.
+  if (session?.error === "AccountSuspended") signOutOnce(session.error);
   const token = tokenOf(session);
   setSessionToken(token);
   return token;
@@ -71,12 +80,12 @@ registerSessionRefresher(async () => {
 // Guard against a burst of concurrent 401s (e.g. a page firing several queries)
 // triggering multiple sign-out/redirect calls.
 let signingOut = false;
-function signOutOnce() {
+function signOutOnce(reason: NonNullable<Session["error"]> = "SessionExpired") {
   if (signingOut) return;
   signingOut = true;
-  signOut({ callbackUrl: "/login" });
+  signOut({ callbackUrl: SIGNED_OUT_URL[reason] });
 }
-registerUnauthorizedHandler(signOutOnce);
+registerUnauthorizedHandler(() => signOutOnce());
 
 /**
  * Mirrors the session's access token into `sessionToken` *during render* (like
@@ -93,10 +102,11 @@ function SessionTokenBridge() {
     updateSession = update;
   }, [update]);
 
-  // The backend refused the refresh token (signed out elsewhere, or reused).
-  const sessionEnded = session?.error === "SessionExpired";
+  // The backend refused the refresh token (signed out elsewhere, reused, or
+  // the account was suspended).
+  const sessionEnded = session?.error;
   useEffect(() => {
-    if (sessionEnded) signOutOnce();
+    if (sessionEnded) signOutOnce(sessionEnded);
   }, [sessionEnded]);
 
   return null;

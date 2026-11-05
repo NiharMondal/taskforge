@@ -1,13 +1,11 @@
 import { PaginationQueryDto } from "@/common/dto/pagination-query.dto";
 import {
+  MAX_ADMIN_SEARCH_LENGTH,
   SUBSCRIPTION_PLAN_VALUES,
   type SubscriptionPlan,
 } from "@taskforge/shared";
 import { Transform } from "class-transformer";
 import { IsIn, IsOptional, IsString, MaxLength } from "class-validator";
-
-/** The longest `?search=` the admin lists accept. */
-export const MAX_ADMIN_SEARCH_LENGTH = 200;
 
 /** Trimmed; blank means no search. */
 const trimToUndefined = ({ value }: { value: unknown }) => {

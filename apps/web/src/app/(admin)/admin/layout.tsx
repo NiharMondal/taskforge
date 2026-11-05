@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 
 import AdminShell from "@/features/admin/components/AdminShell";
-import { fetchPlatformRole } from "@/features/admin/lib/fetch-platform-role";
+import { fetchPlatformViewer } from "@/features/admin/lib/fetch-platform-viewer";
 import { auth } from "@/lib/auth";
 
 /**
@@ -22,8 +22,8 @@ export default async function AdminLayout({
 	const session = await auth();
 	if (!session || session.error) redirect("/login");
 
-	const platformRole = await fetchPlatformRole(session.accessToken);
-	if (!platformRole) notFound();
+	const viewer = await fetchPlatformViewer(session.accessToken);
+	if (!viewer) notFound();
 
-	return <AdminShell platformRole={platformRole}>{children}</AdminShell>;
+	return <AdminShell viewer={viewer}>{children}</AdminShell>;
 }

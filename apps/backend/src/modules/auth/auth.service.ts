@@ -1,3 +1,4 @@
+import { AccountSuspendedException } from "@/common/exceptions/suspended.exception";
 import { passwordUtils } from "@/common/utils/password";
 import { appUrl, generateToken, hashToken, normalizeEmail } from "@/helper";
 import { MailService } from "@/modules/mail/mail.service";
@@ -184,6 +185,9 @@ export class AuthService {
         );
       }
 
+      // Following the link would replace the password and sign in.
+      if (existing?.suspendedAt) throw new AccountSuspendedException();
+
       if (existing) {
         // A password account registered before verification existed, by
         // whoever typed this address. Its owner has now proven it: their name
@@ -258,6 +262,9 @@ export class AuthService {
       );
     }
 
+    // After the password check, so only the account's owner learns it.
+    if (auth.user.suspendedAt) throw new AccountSuspendedException();
+
     return this.session(auth.user);
   }
 
@@ -289,6 +296,7 @@ export class AuthService {
     });
 
     if (linked) {
+      if (linked.user.suspendedAt) throw new AccountSuspendedException();
       return this.session(linked.user, picture);
     }
 
@@ -301,6 +309,9 @@ export class AuthService {
     });
 
     if (existingUser) {
+      // Not linked either: a suspended account gains no new way in.
+      if (existingUser.suspendedAt) throw new AccountSuspendedException();
+
       // One Google login per user. A different Google account claiming this
       // email must not take over the link that is already there.
       if (existingUser.auths.length > 0) {
@@ -359,11 +370,14 @@ export class AuthService {
     const { userId, familyId } = await this.refreshTokens.consume(refreshToken);
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, email: true },
+      select: { id: true, email: true, suspendedAt: true },
     });
     if (!user) {
       throw new UnauthorizedException("Your session has ended. Sign in again.");
     }
+    // Suspending revokes every refresh token, so this only catches a refresh
+    // racing the suspension. The token presented is spent either way.
+    if (user.suspendedAt) throw new AccountSuspendedException();
     return this.issueTokens(user, familyId);
   }
 

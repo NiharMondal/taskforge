@@ -306,6 +306,51 @@ describe("AccountService", () => {
     });
   });
 
+  describe("deleteAccountAsStaff", () => {
+    it("needs no confirmation and records in the deleting transaction, before the user goes", async () => {
+      prisma.user.findUnique.mockResolvedValue(
+        account([
+          membership("ws-solo", WorkspaceRole.OWNER, 1),
+          membership("ws-team", WorkspaceRole.MEMBER, 4),
+        ]),
+      );
+      const record = jest.fn().mockResolvedValue(undefined);
+
+      await service.deleteAccountAsStaff(me, record);
+
+      expect(record).toHaveBeenCalledWith(prisma, [
+        { id: "ws-solo", name: "Workspace ws-solo" },
+      ]);
+      expect(record.mock.invocationCallOrder[0]).toBeLessThan(
+        prisma.user.delete.mock.invocationCallOrder[0],
+      );
+      expect(prisma.user.delete).toHaveBeenCalledWith({ where: { id: me } });
+      // The email says staff did it.
+      expect(mail.sendInBackground).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: "ann@example.com",
+          text: expect.stringContaining("Our team deleted") as string,
+        }),
+      );
+    });
+
+    it("still refuses (409) an owner of a workspace other people use, recording nothing", async () => {
+      prisma.user.findUnique.mockResolvedValue(
+        account([membership("ws-shared", WorkspaceRole.OWNER, 3)]),
+      );
+      const record = jest.fn();
+
+      const error = (await service
+        .deleteAccountAsStaff(me, record)
+        .catch((e: unknown) => e)) as ConflictException;
+
+      expect(error).toBeInstanceOf(ConflictException);
+      expect(error.message).toContain("This user owns a workspace");
+      expect(record).not.toHaveBeenCalled();
+      expect(prisma.user.delete).not.toHaveBeenCalled();
+    });
+  });
+
   describe("exportData", () => {
     beforeEach(() => {
       prisma.user.findUnique.mockResolvedValue({

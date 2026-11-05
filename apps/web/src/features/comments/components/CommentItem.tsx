@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { Button, toast } from "@heroui/react";
 import { useBoolean } from "ahooks";
 import { formatDistanceToNow } from "date-fns";
-import { Pencil, Trash2 } from "lucide-react";
+import { Pencil, Trash } from "lucide-react";
 
 import Avatar from "@/components/ui/avatar";
 import ConfirmModal from "@/components/ui/confirm-modal";
@@ -139,7 +139,7 @@ export default function CommentItem({
 									aria-label="Delete comment"
 									onPress={openConfirm}
 								>
-									<Trash2 className="size-3.5" />
+									<Trash className="size-3.5" />
 								</Button>
 							)}
 						</div>

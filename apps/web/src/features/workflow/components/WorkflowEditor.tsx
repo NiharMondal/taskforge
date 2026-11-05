@@ -20,7 +20,7 @@ import {
 	Pencil,
 	Plus,
 	Star,
-	Trash2,
+	Trash,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -286,7 +286,7 @@ export default function WorkflowEditor({ projectId }: { projectId: string }) {
 														aria-label={`Delete ${status.name}`}
 														onPress={() => setDeleting(status)}
 													>
-														<Trash2 className="size-4 text-danger" />
+														<Trash className="size-4 text-danger" />
 													</Button>
 												)}
 											</div>

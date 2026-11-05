@@ -140,3 +140,13 @@ whoever pre-registered the address loses their way in. Without `GOOGLE_CLIENT_ID
 | --- | --- |
 | `400` | Not a 64-character hex token |
 | `401` | Unknown, expired, revoked, or reused after the grace period |
+| `403` | The account is suspended (`code: "ACCOUNT_SUSPENDED"`) |
+
+## Suspended accounts
+
+Platform staff can suspend an account (`spec/admin-spec.md`). Suspending revokes every refresh token,
+and while it lasts `login` (after the password check, so a wrong password is still the generic 401),
+`google` (linked, or linking by email), `refresh` and `verify-email` (taking over an existing
+account) answer **403** `{ code: "ACCOUNT_SUSPENDED", message }`. The staff's reason is never in the
+body. An access token already issued works until it expires (at most 15 minutes).
+

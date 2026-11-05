@@ -46,3 +46,12 @@ export function PlatformRoleChip({ role }: { role: PlatformRole }) {
 		</Chip>
 	);
 }
+
+/** A user or workspace suspended by platform staff. */
+export function SuspendedChip() {
+	return (
+		<Chip size="sm" variant="soft" color="danger">
+			Suspended
+		</Chip>
+	);
+}

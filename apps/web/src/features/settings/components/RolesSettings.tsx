@@ -12,7 +12,7 @@ import {
 	Spinner,
 	toast,
 } from "@heroui/react";
-import { Copy, Eye, Pencil, Plus, Trash2 } from "lucide-react";
+import { Copy, Eye, Pencil, Plus, Trash } from "lucide-react";
 import Link from "next/link";
 
 import ConfirmModal from "@/components/ui/confirm-modal";
@@ -253,7 +253,7 @@ export default function RolesSettings() {
 											isDisabled={role.memberCount > 0}
 											onPress={() => setDialog({ kind: "delete", role })}
 										>
-											<Trash2 className="size-3.5" />
+											<Trash className="size-3.5" />
 										</Button>
 									)}
 								</div>

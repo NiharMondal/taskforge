@@ -13,8 +13,10 @@ import { initialsOf } from "@/util/initials";
 
 import { SIGN_IN_PROVIDER_LABELS } from "../constants";
 import { useAdminUser } from "../hooks/use-admin";
+import { AdminUserActions, SuspensionBanner } from "./admin-actions";
+import { AdminHistory } from "./AdminAuditLog";
 import type { AdminUserDetail as User } from "../types/admin-types";
-import { PlanChip, PlatformRoleChip } from "./admin-chips";
+import { PlanChip, PlatformRoleChip, SuspendedChip } from "./admin-chips";
 import {
 	AdminLoading,
 	AdminQueryError,
@@ -56,10 +58,13 @@ export default function AdminUserDetail({ userId }: { userId: string }) {
 					<div className="flex items-center gap-2">
 						<h1 className="truncate text-lg font-semibold">{user.name}</h1>
 						{user.platformRole && <PlatformRoleChip role={user.platformRole} />}
+						{user.suspendedAt && <SuspendedChip />}
 					</div>
 					<p className="truncate text-sm text-muted">{user.email}</p>
 				</div>
 			</div>
+
+			<SuspensionBanner suspension={user} what="account" />
 
 			<Card>
 				<CardContent>
@@ -102,6 +107,8 @@ export default function AdminUserDetail({ userId }: { userId: string }) {
 
 			<Counts user={user} />
 			<MembershipsCard user={user} />
+			<AdminUserActions user={user} />
+			<AdminHistory targetType="USER" targetId={user.id} />
 		</div>
 	);
 }

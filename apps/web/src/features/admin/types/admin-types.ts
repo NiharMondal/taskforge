@@ -1,5 +1,8 @@
 import type {
 	AuthProvider as SignInProvider,
+	PlatformAuditAction,
+	PlatformAuditMetadata,
+	PlatformAuditTargetType,
 	PlatformRole,
 	SubscriptionPlan,
 	SubscriptionStatus,
@@ -11,7 +14,22 @@ import type {
  * (apps/backend/src/modules/admin/, `apps/backend/spec/admin-spec.md`).
  * Platform-wide, so nothing here carries a workspace id of its own.
  */
-export type { PlatformRole, SignInProvider };
+export type {
+	PlatformAuditAction,
+	PlatformAuditMetadata,
+	PlatformAuditTargetType,
+	PlatformRole,
+	SignInProvider,
+};
+
+/**
+ * A suspension by platform staff, as only the /admin routes return it.
+ * `suspendedReason` is the staff's internal note; the user never sees it.
+ */
+export interface AdminSuspension {
+	suspendedAt: string | null;
+	suspendedReason: string | null;
+}
 
 /** `GET /admin/stats`. */
 export interface AdminStats {
@@ -20,11 +38,13 @@ export interface AdminStats {
 		newLast7Days: number;
 		newLast30Days: number;
 		platformStaff: number;
+		suspended: number;
 	};
 	workspaces: {
 		total: number;
 		/** By the plan in force (a lapsed subscription counts as Free). */
 		byPlan: Record<SubscriptionPlan, number>;
+		suspended: number;
 	};
 	subscriptions: {
 		/** Workspaces with a subscription row (a checkout was started). */
@@ -49,7 +69,7 @@ export interface AdminRoleSummary {
 }
 
 /** One row of `GET /admin/workspaces`. */
-export interface AdminWorkspaceRow {
+export interface AdminWorkspaceRow extends AdminSuspension {
 	id: string;
 	name: string;
 	slug: string;
@@ -69,7 +89,7 @@ export interface AdminWorkspaceRow {
 }
 
 /** `GET /admin/workspaces/:id`. */
-export interface AdminWorkspaceDetail {
+export interface AdminWorkspaceDetail extends AdminSuspension {
 	id: string;
 	name: string;
 	slug: string;
@@ -122,7 +142,7 @@ export interface AdminWorkspaceDetail {
 }
 
 /** One row of `GET /admin/users`. */
-export interface AdminUserRow {
+export interface AdminUserRow extends AdminSuspension {
 	id: string;
 	name: string;
 	email: string;
@@ -135,7 +155,7 @@ export interface AdminUserRow {
 }
 
 /** `GET /admin/users/:id`. Never a password hash or a token. */
-export interface AdminUserDetail {
+export interface AdminUserDetail extends AdminSuspension {
 	id: string;
 	name: string;
 	email: string;
@@ -179,4 +199,49 @@ export interface AdminUsersQuery {
 /** `?search=&plan=&page=` on `GET /admin/workspaces`. */
 export interface AdminWorkspacesQuery extends AdminUsersQuery {
 	plan?: SubscriptionPlan;
+}
+
+/** Who is looking at the console: from `GET /users/me`, read by the admin layout. */
+export interface AdminViewer {
+	id: string;
+	platformRole: PlatformRole;
+}
+
+/** Body of `PATCH /admin/users/:id` and `PATCH /admin/workspaces/:id`. */
+export interface SetSuspendedDto {
+	suspended: boolean;
+	reason: string;
+}
+
+/** Body of every other admin action: why. */
+export interface AdminReasonDto {
+	reason: string;
+}
+
+interface PlatformAuditEntryBase<A extends PlatformAuditAction> {
+	id: string;
+	action: A;
+	targetType: PlatformAuditTargetType;
+	targetId: string | null;
+	metadata: PlatformAuditMetadata[A];
+	createdAt: string;
+	/** Platform staff who did it; `null` for the `set-platform-role` script or a deleted account. */
+	actor: { id: string; name: string; email: string } | null;
+}
+
+/**
+ * One row of `GET /admin/audit-log`. A union over the actions, so switching
+ * on `action` narrows `metadata`. Names are copied in when it happened, so a
+ * deleted user or workspace still reads.
+ */
+export type PlatformAuditEntry = {
+	[A in PlatformAuditAction]: PlatformAuditEntryBase<A>;
+}[PlatformAuditAction];
+
+/** `?targetType=&targetId=&page=` on `GET /admin/audit-log`. */
+export interface PlatformAuditQuery {
+	targetType?: PlatformAuditTargetType;
+	targetId?: string;
+	page?: number;
+	limit?: number;
 }

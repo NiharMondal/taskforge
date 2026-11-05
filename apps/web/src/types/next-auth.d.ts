@@ -11,6 +11,9 @@
  */
 import type { DefaultSession } from "next-auth";
 
+/** Why a session ended without the user signing out. */
+export type SessionEndReason = "SessionExpired" | "AccountSuspended";
+
 declare module "next-auth" {
   /** Returned by `authorize`, persisted into the JWT. */
   interface User {
@@ -20,13 +23,22 @@ declare module "next-auth" {
     accessTokenExpiresAt?: string;
     /** Exchanged for a new token pair. Kept in the JWT, never in the session. */
     refreshToken?: string;
+    /**
+     * Set by the Google provider when the backend refused a suspended
+     * account; the `signIn` callback (auth.ts) turns it away.
+     */
+    suspended?: boolean;
   }
 
   interface Session {
     /** Backend-issued JWT, mirrored from the token in the `session` callback. */
     accessToken?: string;
     /** Set when the backend refused the refresh token: the session is over. */
-    error?: "SessionExpired";
+    /**
+     * Set when the session is over: the backend refused the refresh token
+     * (`SessionExpired`), or the account was suspended (`AccountSuspended`).
+     */
+    error?: SessionEndReason;
     user: {
       id: string;
     } & DefaultSession["user"];

@@ -61,10 +61,15 @@ export class PlatformRoleGuard implements CanActivate {
 
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { platformRole: true },
+      select: { platformRole: true, suspendedAt: true },
     });
 
-    if (!platformRoleSatisfies(user?.platformRole, required)) {
+    // A suspended account keeps a valid access token for up to 15 minutes;
+    // staff access ends at once.
+    if (
+      user?.suspendedAt ||
+      !platformRoleSatisfies(user?.platformRole, required)
+    ) {
       throw new ForbiddenException("Platform access required");
     }
 

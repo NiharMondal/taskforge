@@ -68,12 +68,12 @@ async function withFreshAccessToken(token: JWT, force: boolean): Promise<JWT> {
 
 	try {
 		const tokens = await refreshBackendTokens(token.refreshToken);
-		if (!tokens) {
+		if (typeof tokens === "string") {
 			return {
 				...token,
 				accessToken: undefined,
 				refreshToken: undefined,
-				error: "SessionExpired",
+				error: tokens,
 			};
 		}
 		return { ...token, ...tokens, error: undefined };
@@ -150,7 +150,9 @@ export const authConfig = {
       // Mirror the avatar onto the client session explicitly (same reason as the
       // jwt callback) so `session.user.image` is always driven by our token.
       session.user.image = typeof token.picture === "string" ? token.picture : null;
-      if (token.error === "SessionExpired") session.error = "SessionExpired";
+      if (token.error === "SessionExpired" || token.error === "AccountSuspended") {
+        session.error = token.error;
+      }
       return session;
     },
 

@@ -17,7 +17,7 @@ The steps go from easiest to hardest. Each one is one PR from `develop` and leav
 | 9 | ✅ Workspace audit log — done | M | — |
 | 10 | ✅ Account deletion and data export — done | M–L | 1 |
 | 11 | ✅ Platform admin: foundation + read-only console — done | L | — |
-| 12 | Platform admin: actions (suspend, revoke, delete) | L | 10, 11 |
+| 12 | ✅ Platform admin: actions (suspend, revoke, delete) — done | L | 10, 11 |
 | 13 | Production and later | — | external choices |
 
 ## Every step is done when
@@ -357,7 +357,21 @@ Unit tests (699), e2e (76, against a migrated `taskforge_e2e`), typecheck, lint 
 - Responses never contain secrets.
 - The script sets and clears the role.
 
-## Step 12 — Platform admin: actions
+## Step 12 — Platform admin: actions ✅
+
+**Status: done (2026-11-02, branch `platform-admin-console`, with step 11).** Migration `20261102150000_suspensions`, the five actions and `GET /admin/audit-log` (`AdminActionsService`), enforcement in auth, `resolveWorkspaceAccess` and invitation accept, and the web's action cards, history, audit log page, login messages and suspended-workspace notice. Specs: `apps/backend/spec/admin-spec.md`, `spec/auth-spec.md`, `apps/web/spec/admin.md`, `spec/auth.md`. Beyond the plan:
+- Every action requires a reason (1–500 characters, `MAX_ADMIN_REASON_LENGTH`); it goes into the audit row. **The reason is a staff note**: only `/admin` returns it (`withoutStaffNote` strips it from the user and workspace routes) and the 403s never carry it.
+- The platform audit vocabulary (actions, targets, metadata) moved to `@taskforge/shared` (`admin.ts`) with the two error codes, so the web's sentences are type-checked against the backend's writes.
+- A suspended account is refused only **after** its password checks out, so suspension isn't revealed to someone guessing. Google won't link to a suspended account either.
+- `PlatformRoleGuard` refuses suspended staff at once, without waiting for the token to expire.
+- Suspend/lift are conditional updates: a second admin, or suspending twice, gets a 409.
+- `revoke-sessions` reports how many sessions were still usable (`revokeAllForUser` now returns it).
+- Admin deletion of a user emails them a different "our team deleted your account" message; the 409 (owns a shared workspace) says to delete the workspace first.
+- Joining a suspended workspace by invitation is refused too.
+- Web: a workspace suspended while open is noticed from the first 403 `WORKSPACE_SUSPENDED` (the workspace list refetches), and `SuspendedWorkspaceGate` replaces the pages instead of letting them fail.
+- Known gaps (in `admin-spec.md`): a suspended workspace can't be left, transferred or deleted by its members.
+
+Unit tests (739), e2e (81, against a migrated `taskforge_e2e`), typecheck, lint and `next build` pass. Not checked in a browser: the dev database is still missing the step 9–12 migrations.
 
 **Depends on:** 10 (deletion logic) and 11.
 

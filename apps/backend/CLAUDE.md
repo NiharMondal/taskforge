@@ -215,8 +215,21 @@ tracked by `req.user.sub` instead of the client address).
 ## Platform admin
 
 `src/modules/admin/` (`spec/admin-spec.md`) serves `GET /admin/stats`, `/admin/workspaces`,
-`/admin/workspaces/:id`, `/admin/users` and `/admin/users/:id`: read-only, across every workspace,
-with no `x-workspace-id` and no `WorkspaceGuard`. `User.platformRole` (`ADMIN` | `SUPPORT` | null) is
+`/admin/workspaces/:id`, `/admin/users` and `/admin/users/:id` (SUPPORT and ADMIN), and the ADMIN
+actions — `PATCH /admin/users/:id` and `/admin/workspaces/:id` (`{ suspended, reason }`),
+`POST /admin/users/:id/revoke-sessions`, `DELETE /admin/users/:id` and `/admin/workspaces/:id`
+(`{ reason }`), `GET /admin/audit-log` — across every workspace, with no `x-workspace-id` and no
+`WorkspaceGuard`. Actions live in `AdminActionsService`: an admin never acts on themselves or another
+ADMIN (403); each writes one `PlatformAuditLog` row in the transaction of the change; deletes reuse
+`AccountService.deleteAccountAsStaff` and `WorkspaceService.delete` (both take a hook that runs in
+their transaction for the audit row). **Suspension:** `User`/`Workspace.suspendedAt` +
+`suspendedReason` (a staff note — only /admin returns it; other routes pass rows through
+`withoutStaffNote`). A suspended account gets 403 `ACCOUNT_SUSPENDED`
+(`AccountSuspendedException`) from login (after the password check), Google, refresh and
+verify-email, and suspending revokes its refresh tokens; its access token lives out its 15 minutes.
+A suspended workspace gets 403 `WORKSPACE_SUSPENDED` from `resolveWorkspaceAccess` (every scoped
+route) and from invitation accept; `GET /workspaces` lists it with `suspended: true`. Plans are
+never changed here: that is Stripe's (coupons, trials). `User.platformRole` (`ADMIN` | `SUPPORT` | null) is
 the boundary. `@RequirePlatformRole(role)` applies `PlatformRoleGuard`
 (`src/common/guards/platform-role.guard.ts`), which reads the role **from the database on every
 request** (never from the JWT) and 403s without at least that role (ADMIN passes SUPPORT routes).
@@ -490,12 +503,12 @@ membership is created or deleted (never throws); `WorkspaceService.delete` calls
 they need no database. Current coverage: `WorkspaceGuard`, `JwtAuthGuard`, `PermissionsGuard`, `IssueService`
 permission rules and tenant isolation, `MembershipService` role changes/removal, `UserController`/`UserService`,
 `InvitationService`/controller, account deletion and data export (`AccountService` and its routes, throttling included), register/verify/login/Google sign-in/refresh/change, forgot and reset password (`AuthService`,
-`RefreshTokenService`, `GoogleTokenVerifier`, throttling), `WorkspaceService`, `BillingService` (with `StripeService` mocked) and the plan limits, `SprintService.endSprint`, `CommentService`, `LabelService`, `ActivityService`, `RoleService` and the role DTOs, `WorkflowService`, `issueChanges`, the history rows `IssueService` writes, the workspace audit rows (each action, inside its transaction) and `GET /audit-log`, the health check, the cleanup (`CleanupService` and its route), the platform admin (`PlatformRoleGuard`, `AdminController`/`AdminService`, `setPlatformRole`), and the issue, comment and label DTOs.
+`RefreshTokenService`, `GoogleTokenVerifier`, throttling), `WorkspaceService`, `BillingService` (with `StripeService` mocked) and the plan limits, `SprintService.endSprint`, `CommentService`, `LabelService`, `ActivityService`, `RoleService` and the role DTOs, `WorkflowService`, `issueChanges`, the history rows `IssueService` writes, the workspace audit rows (each action, inside its transaction) and `GET /audit-log`, the health check, the cleanup (`CleanupService` and its route), the platform admin (`PlatformRoleGuard`, `AdminController`/`AdminService`/`AdminActionsService`, `setPlatformRole`, suspension in auth, guards and invitations), and the issue, comment and label DTOs.
 `jest` maps `@/` and `generated/` in `package.json` and transforms the ESM-only `fractional-indexing` (a dependency of `@taskforge/shared`, which Jest loads as TypeScript source).
 
 `pnpm run test:e2e` (`test/*.e2e-spec.ts`) boots the real `AppModule` through `configureApp()` and
 drives it with supertest against Postgres: sign-up through the emailed link (read from the
-mocked `MailService`), refresh-token rotation and sign-out, changing and resetting the password, exporting data and deleting an account (409 while owning a shared workspace, shared issues and comments kept), the platform admin console (403 without a role, the script granting and clearing one, no credentials in responses), unknown body keys, cross-workspace isolation, the header/path-param
+mocked `MailService`), refresh-token rotation and sign-out, changing and resetting the password, exporting data and deleting an account (409 while owning a shared workspace, shared issues and comments kept), the platform admin console (403 without a role, the script granting and clearing one, no credentials in responses; suspend and lift a user and a workspace, revoke sessions, delete a workspace and an account, one audit row each), unknown body keys, cross-workspace isolation, the header/path-param
 check, invite → accept, MEMBER limits, comments (isolation, authorship, cascade on issue delete), labels (isolation, MEMBER limits, cascade on label delete), custom roles (create, assign by
 `roleId`, enforcement, built-ins locked, delete refused while in use), workflows (the default, Free's 402s, moves along custom transitions, copying, deleting a status with issues), an issue's history, and
 billing without Stripe (the three plan limits as 402s, Pro lifting them, checkout's 503, and a

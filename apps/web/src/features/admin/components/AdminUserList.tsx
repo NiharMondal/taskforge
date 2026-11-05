@@ -12,7 +12,7 @@ import { SIGN_IN_PROVIDER_LABELS } from "../constants";
 import { useAdminUsers } from "../hooks/use-admin";
 import { useAdminListNavigation } from "../hooks/use-admin-list-navigation";
 import type { AdminListParams } from "../lib/list-params";
-import { PlatformRoleChip } from "./admin-chips";
+import { PlatformRoleChip, SuspendedChip } from "./admin-chips";
 import { AdminLoading, AdminPager, AdminQueryError } from "./admin-states";
 import AdminSearchField from "./AdminSearchField";
 
@@ -72,6 +72,7 @@ export default function AdminUserList({ params }: { params: AdminListParams }) {
 													{user.platformRole && (
 														<PlatformRoleChip role={user.platformRole} />
 													)}
+													{user.suspendedAt && <SuspendedChip />}
 												</span>
 												<span className="truncate text-xs text-muted">
 													{user.email}

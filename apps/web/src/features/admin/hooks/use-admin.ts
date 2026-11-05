@@ -1,18 +1,32 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import {
+	keepPreviousData,
+	useMutation,
+	useQuery,
+	useQueryClient,
+} from "@tanstack/react-query";
 
 import { ApiError } from "@/lib/api-error";
 
 import {
+	deleteUser,
+	deleteWorkspace,
 	getAdminStats,
 	getAdminUser,
 	getAdminUsers,
 	getAdminWorkspace,
 	getAdminWorkspaces,
+	getPlatformAuditLog,
+	revokeUserSessions,
+	setUserSuspended,
+	setWorkspaceSuspended,
 } from "../api/admin-api";
 import { ADMIN_PAGE_SIZE } from "../constants";
 import type {
+	AdminReasonDto,
 	AdminUsersQuery,
 	AdminWorkspacesQuery,
+	PlatformAuditQuery,
+	SetSuspendedDto,
 } from "../types/admin-types";
 
 /**
@@ -36,12 +50,20 @@ export const adminKeys = {
 	users: (query: AdminUsersQuery) =>
 		[...adminKeys.all, "users", query.search ?? "", query.page ?? 1] as const,
 	user: (userId: string) => [...adminKeys.all, "user", userId] as const,
+	auditLog: (query: PlatformAuditQuery) =>
+		[
+			...adminKeys.all,
+			"audit-log",
+			query.targetType ?? "ALL",
+			query.targetId ?? "",
+			query.page ?? 1,
+		] as const,
 };
 
 /**
  * Shared by every admin query: always refetched on mount (staff want the
- * current state, and nothing here is invalidated by a mutation yet), and a
- * 403 or 404 isn't retried.
+ * current state; the admin actions also refetch everything under
+ * `adminKeys.all`), and a 403 or 404 isn't retried.
  */
 const ADMIN_QUERY_OPTIONS = {
 	staleTime: 0,
@@ -103,3 +125,51 @@ export function useAdminUser(userId: string) {
 		...ADMIN_QUERY_OPTIONS,
 	});
 }
+
+/** One page of the platform audit log (ADMIN only): `{ entries, meta }`. */
+export function useAdminAuditLog(
+	query: PlatformAuditQuery,
+	{ enabled = true }: { enabled?: boolean } = {},
+) {
+	const params = { ...query, limit: query.limit ?? ADMIN_PAGE_SIZE };
+	return useQuery({
+		queryKey: adminKeys.auditLog(query),
+		queryFn: async () => {
+			const res = await getPlatformAuditLog(params);
+			return { entries: res.data, meta: res.metaData };
+		},
+		enabled,
+		placeholderData: keepPreviousData,
+		...ADMIN_QUERY_OPTIONS,
+	});
+}
+
+/**
+ * The admin actions (ADMIN only). Each one changes what several admin views
+ * show — the detail, the lists, the stats, the audit log — so success
+ * refetches everything under `adminKeys.all`. The caller shows the toast.
+ */
+function useAdminMutation<V, R>(mutationFn: (vars: V) => Promise<R>) {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn,
+		onSuccess: () => queryClient.invalidateQueries({ queryKey: adminKeys.all }),
+	});
+}
+
+export const useSetUserSuspended = (userId: string) =>
+	useAdminMutation((dto: SetSuspendedDto) => setUserSuspended(userId, dto));
+
+export const useRevokeUserSessions = (userId: string) =>
+	useAdminMutation((dto: AdminReasonDto) => revokeUserSessions(userId, dto));
+
+export const useDeleteUser = (userId: string) =>
+	useAdminMutation((dto: AdminReasonDto) => deleteUser(userId, dto));
+
+export const useSetWorkspaceSuspended = (workspaceId: string) =>
+	useAdminMutation((dto: SetSuspendedDto) =>
+		setWorkspaceSuspended(workspaceId, dto),
+	);
+
+export const useDeleteWorkspace = (workspaceId: string) =>
+	useAdminMutation((dto: AdminReasonDto) => deleteWorkspace(workspaceId, dto));

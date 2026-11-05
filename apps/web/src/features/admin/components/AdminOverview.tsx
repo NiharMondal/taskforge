@@ -48,6 +48,15 @@ export default function AdminOverview() {
 				<Stat label="Platform staff" value={stats.users.platformStaff} />
 			</section>
 
+			{(stats.users.suspended > 0 || stats.workspaces.suspended > 0) && (
+				<p className="text-sm text-danger">
+					Suspended: {number.format(stats.users.suspended)}{" "}
+					{stats.users.suspended === 1 ? "account" : "accounts"},{" "}
+					{number.format(stats.workspaces.suspended)}{" "}
+					{stats.workspaces.suspended === 1 ? "workspace" : "workspaces"}.
+				</p>
+			)}
+
 			<div className="grid gap-4 lg:grid-cols-2">
 				<Card>
 					<CardHeader className="flex flex-col gap-1">

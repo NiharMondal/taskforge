@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	createIssue,
 	deleteIssue,
+	getAssignedIssues,
 	getIssues,
 	getSingleIssue,
 	updateIssue,
@@ -32,6 +33,13 @@ export const issueKeys = {
 	/** Under `detail`, so whatever refreshes the issue refreshes its history. */
 	activity: (workspaceId: string, projectId: string, issueId: string) =>
 		["issues", workspaceId, projectId, issueId, "activity"] as const,
+	/**
+	 * The caller's open issues across projects (dashboard). Under
+	 * `["issues", workspaceId]`, so a workspace-wide issue invalidation (e.g. a
+	 * label edit) refreshes it too.
+	 */
+	assigned: (workspaceId: string, limit: number) =>
+		["issues", workspaceId, "assigned", { limit }] as const,
 };
 
 export function useIssues(workspaceId: string, projectId: string) {
@@ -48,6 +56,27 @@ export function useIssues(workspaceId: string, projectId: string) {
 		staleTime: 60_000,
 	});
 }
+/**
+ * The caller's open issues across the workspace (`GET /issues/assigned`):
+ * the first `limit` rows plus the total. Refetches on every mount
+ * (`staleTime: 0`) — issue mutations invalidate per-project keys only, so this
+ * is how an issue finished on the board drops off the dashboard.
+ */
+export function useAssignedIssues(workspaceId: string, limit: number) {
+	return useQuery({
+		queryKey: issueKeys.assigned(workspaceId, limit),
+		queryFn: async () => {
+			const res = await getAssignedIssues(workspaceId, limit);
+			return {
+				issues: res.data,
+				total: res.metaData?.totalData ?? res.data.length,
+			};
+		},
+		enabled: !!workspaceId,
+		staleTime: 0,
+	});
+}
+
 export function useSingleIssue(
 	workspaceId: string,
 	projectId: string,

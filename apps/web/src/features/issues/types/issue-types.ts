@@ -88,6 +88,30 @@ export interface Issue {
   updatedAt: string;
 }
 
+/**
+ * A row of `GET /issues/assigned`: one of the caller's open issues, from any
+ * project of the workspace, so it embeds its project (for the key and name).
+ * No labels, assignee or reporter — the assignee is the caller.
+ */
+export interface AssignedIssue
+  extends Pick<
+    Issue,
+    | "id"
+    | "title"
+    | "statusId"
+    | "status"
+    | "priority"
+    | "type"
+    | "number"
+    | "projectId"
+    | "sprintId"
+    | "createdAt"
+    | "updatedAt"
+  > {
+  project: { id: string; name: string; key: string };
+  sprint: Sprint | null;
+}
+
 export interface CreateIssueDto {
   title: string;
   description?: string;

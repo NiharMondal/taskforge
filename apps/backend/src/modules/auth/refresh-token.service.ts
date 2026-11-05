@@ -94,12 +94,27 @@ export class RefreshTokenService {
     if (stored) await this.revokeFamily(stored.familyId);
   }
 
-  /** End every session of `userId`, e.g. when the account changes hands. */
+  /**
+   * End every session of `userId`, e.g. when the account changes hands.
+   * Returns how many of them could still have been used.
+   */
   async revokeAllForUser(userId: string, db: Db = this.prisma) {
+    const now = new Date();
+    const { count: live } = await db.refreshToken.updateMany({
+      where: {
+        userId,
+        revokedAt: null,
+        replacedAt: null,
+        expiresAt: { gt: now },
+      },
+      data: { revokedAt: now },
+    });
+    // Replaced ones too, so none is reusable within its grace period.
     await db.refreshToken.updateMany({
       where: { userId, revokedAt: null },
-      data: { revokedAt: new Date() },
+      data: { revokedAt: now },
     });
+    return live;
   }
 
   private async revokeFamily(familyId: string) {

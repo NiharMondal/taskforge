@@ -5,6 +5,7 @@ import {
   PRO_TRIAL_DAYS,
 } from "@taskforge/shared";
 import { countSeatsTaken } from "@/common/plans/plan-limits";
+import { appUrl } from "@/helper";
 import type { WorkspaceAccess } from "@/common/permissions/workspace-access";
 import { PrismaService } from "@/prisma/prisma.service";
 import {
@@ -126,8 +127,8 @@ export class BillingService {
       seats: Math.max(seats, 1),
       // One trial per workspace: a past subscription, even a canceled one, rules it out.
       trialDays: existing?.stripeSubscriptionId ? undefined : PRO_TRIAL_DAYS,
-      successUrl: this.appUrl("/settings/billing?checkout=success"),
-      cancelUrl: this.appUrl("/settings/billing?checkout=canceled"),
+      successUrl: appUrl(this.config, "/settings/billing?checkout=success"),
+      cancelUrl: appUrl(this.config, "/settings/billing?checkout=canceled"),
     });
     return { url };
   }
@@ -146,7 +147,7 @@ export class BillingService {
 
     const url = await this.stripe.createPortalSession(
       subscription.stripeCustomerId,
-      this.appUrl("/settings/billing"),
+      appUrl(this.config, "/settings/billing"),
     );
     return { url };
   }
@@ -365,12 +366,6 @@ export class BillingService {
       update: { stripeCustomerId: customerId },
     });
     return customerId;
-  }
-
-  private appUrl(path: string) {
-    const appUrl =
-      this.config.get<string>("APP_URL") ?? "http://localhost:3000";
-    return `${appUrl.replace(/\/+$/, "")}${path}`;
   }
 }
 

@@ -59,4 +59,19 @@ export class MailService implements OnModuleInit {
     );
     return info;
   }
+
+  /**
+   * Send without waiting for SMTP: the caller's response doesn't depend on
+   * the email, and how long sending takes reveals nothing about which email
+   * went out. A failure is logged, never thrown.
+   */
+  sendInBackground(params: SendMailParams) {
+    void this.sendMail(params).catch((error: unknown) => {
+      this.logger.error(
+        `Failed to send "${params.subject}" to ${params.to}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    });
+  }
 }

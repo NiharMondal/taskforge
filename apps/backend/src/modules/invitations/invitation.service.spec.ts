@@ -46,7 +46,7 @@ describe("InvitationService", () => {
     subscription: { findUnique: jest.Mock };
     $transaction: jest.Mock;
   };
-  let mail: { sendMail: jest.Mock };
+  let mail: { sendInBackground: jest.Mock };
   let billing: { syncSeats: jest.Mock };
   let service: InvitationService;
 
@@ -93,7 +93,7 @@ describe("InvitationService", () => {
       cb(prisma),
     );
 
-    mail = { sendMail: jest.fn().mockResolvedValue({}) };
+    mail = { sendInBackground: jest.fn() };
     billing = { syncSeats: jest.fn().mockResolvedValue(undefined) };
     service = new InvitationService(
       prisma as unknown as PrismaService,
@@ -283,7 +283,7 @@ describe("InvitationService", () => {
       expect(prisma.invitation.upsert).toHaveBeenCalledWith(
         expect.objectContaining({ create }),
       );
-      expect(mail.sendMail).toHaveBeenCalledWith(
+      expect(mail.sendInBackground).toHaveBeenCalledWith(
         expect.objectContaining({ to: "bob@example.com" }),
       );
     });
@@ -372,7 +372,7 @@ describe("InvitationService", () => {
         create: { token: string };
       }>(prisma.invitation.upsert);
       expect(create.token).toMatch(/^[0-9a-f]{64}$/);
-      const mailed = firstCallArg<{ text: string }>(mail.sendMail);
+      const mailed = firstCallArg<{ text: string }>(mail.sendInBackground);
       expect(mailed.text).toContain(create.token);
     });
 
@@ -390,7 +390,7 @@ describe("InvitationService", () => {
         html: string;
         text: string;
         subject: string;
-      }>(mail.sendMail);
+      }>(mail.sendInBackground);
       expect(mailed.html).not.toContain("<script>");
       expect(mailed.html).not.toContain("<img");
       expect(mailed.html).toContain("&lt;script&gt;");

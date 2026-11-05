@@ -252,6 +252,16 @@ asset nor another user's pending upload can be destroyed through it. `User` stor
 `avatarUrl` and `avatarPublicId`; `avatarUrl` is never taken from the client (it is the promoted
 asset's URL, Google's picture, or `null` after `avatarPublicId: null` removes the avatar).
 
+## Email
+
+`src/modules/mail/`: an email is a builder returning `Email` (`{ subject, text, html }`, from
+`email-layout.ts`) next to the module that sends it (`auth-emails.ts`, `invitation-emails.ts`),
+rendered with `emailLayout()`. The layout escapes only the `url`; escape user-controlled text in
+the HTML part yourself with `escapeHtml` (`src/helper`), and leave the subject and text part plain.
+Send with `MailService.sendInBackground({ to, ...email })` — it doesn't await SMTP and logs a
+failure — and build links with `appUrl(this.config, path)` from `src/helper`. Specs mock
+`sendInBackground`.
+
 ## Workflows
 
 `src/modules/workflows/` serves `/projects/:projectId/workflow` (`spec/workflow-spec.md`). A

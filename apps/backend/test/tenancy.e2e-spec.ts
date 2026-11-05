@@ -73,13 +73,15 @@ describe("Tenancy (e2e)", () => {
     return headers;
   };
 
-  const mail = { sendMail: jest.fn().mockResolvedValue(undefined) };
+  const mail = { sendInBackground: jest.fn() };
   /** Every workspace a sign-up created, for cleanup. */
   const createdWorkspaces: string[] = [];
 
   /** The token in the last verification link emailed to `email`. */
   const verificationToken = (email: string) => {
-    const sent = (mail.sendMail.mock.calls as [{ to: string; text: string }][])
+    const sent = (
+      mail.sendInBackground.mock.calls as [{ to: string; text: string }][]
+    )
       .map(([m]) => m)
       .filter((m) => m.to === email)
       .pop();

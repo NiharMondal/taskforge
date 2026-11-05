@@ -1,5 +1,5 @@
 import { passwordUtils } from "@/common/utils/password";
-import { generateToken, hashToken, normalizeEmail } from "@/helper";
+import { appUrl, generateToken, hashToken, normalizeEmail } from "@/helper";
 import { MailService } from "@/modules/mail/mail.service";
 import { PrismaService } from "@/prisma/prisma.service";
 import {
@@ -7,7 +7,6 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
-  Logger,
   UnauthorizedException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
@@ -50,8 +49,6 @@ const invalidVerificationLink = () =>
 
 @Injectable()
 export class AuthService {
-  private readonly logger = new Logger(AuthService.name);
-
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
@@ -82,13 +79,13 @@ export class AuthService {
     });
 
     if (existingUser?.emailVerifiedAt) {
-      this.sendInBackground(
-        email,
-        alreadyRegisteredEmail({
+      this.mail.sendInBackground({
+        to: email,
+        ...alreadyRegisteredEmail({
           name: existingUser.name,
-          url: this.appUrl("/login"),
+          url: appUrl(this.config, "/login"),
         }),
-      );
+      });
       return { email };
     }
     // An unverified `existingUser` was registered before verification existed;
@@ -120,13 +117,16 @@ export class AuthService {
       },
     });
 
-    this.sendInBackground(
-      email,
-      verificationEmail({
+    this.mail.sendInBackground({
+      to: email,
+      ...verificationEmail({
         name: dto.name,
-        url: this.appUrl(`/verify-email?token=${encodeURIComponent(token)}`),
+        url: appUrl(
+          this.config,
+          `/verify-email?token=${encodeURIComponent(token)}`,
+        ),
       }),
-    );
+    });
     return { email };
   }
 
@@ -420,27 +420,5 @@ export class AuthService {
       ).toISOString(),
       refreshToken,
     };
-  }
-
-  private appUrl(path: string) {
-    const base = this.config.get<string>("APP_URL") ?? "http://localhost:3000";
-    return `${base.replace(/\/+$/, "")}${path}`;
-  }
-
-  /**
-   * Mail goes out after the response, so how long SMTP takes doesn't reveal
-   * which email was sent. A failure is logged; the user can register again.
-   */
-  private sendInBackground(
-    to: string,
-    email: { subject: string; text: string; html: string },
-  ) {
-    void this.mail.sendMail({ to, ...email }).catch((error: unknown) => {
-      this.logger.error(
-        `Failed to send "${email.subject}" to ${to}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-    });
   }
 }

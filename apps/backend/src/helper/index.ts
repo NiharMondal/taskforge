@@ -15,6 +15,18 @@ export const futureDate = (days = 7) =>
 /** Canonical form for matching emails: they are case-insensitive in practice. */
 export const normalizeEmail = (email: string) => email.trim().toLowerCase();
 
+/**
+ * An absolute link into the web app, for emails and Stripe redirects. `config`
+ * is the Nest `ConfigService`; `APP_URL` defaults to the local web app.
+ */
+export const appUrl = (
+  config: { get<T = string>(key: string): T | undefined },
+  path: string,
+) => {
+  const base = config.get<string>("APP_URL") ?? "http://localhost:3000";
+  return `${base.replace(/\/+$/, "")}${path}`;
+};
+
 const HTML_ESCAPES: Record<string, string> = {
   "&": "&amp;",
   "<": "&lt;",

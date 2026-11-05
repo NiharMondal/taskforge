@@ -32,17 +32,23 @@ export class MailService implements OnModuleInit {
     });
   }
 
-  async onModuleInit() {
-    try {
-      await this.transporter.verify();
-      this.logger.log("SMTP transport verified and ready");
-    } catch (error) {
-      this.logger.error(
-        `SMTP transport verification failed: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+  /**
+   * Checks the SMTP connection in the background. Awaiting it here would hold
+   * up `app.listen()` until the check finishes, and an unreachable SMTP host
+   * takes nodemailer's 2-minute connection timeout, long enough for a host's
+   * port scan (Render's) to give up on the deploy. The result is only logged.
+   */
+  onModuleInit() {
+    this.transporter
+      .verify()
+      .then(() => this.logger.log("SMTP transport verified and ready"))
+      .catch((error: unknown) =>
+        this.logger.error(
+          `SMTP transport verification failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        ),
       );
-    }
   }
 
   async sendMail(params: SendMailParams) {

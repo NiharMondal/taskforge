@@ -91,8 +91,12 @@ workspace. The permission catalog and the built-ins' defaults are
 (as `comment_permissions` and `label_permissions` did), and the `add_workspace_roles` seed plus those grant migrations must
 add up to `DEFAULT_ROLE_PERMISSIONS`.
 
-- **OWNER holds every permission in code** (its stored list is ignored), including
-  `workspace:delete`, which no role can be granted. It can't be assigned, invited to or removed.
+- **OWNER holds every permission in code** (its stored list is ignored), including the
+  owner-only `workspace:delete` and `workspace:transfer`, which no role can be granted. It can't be
+  assigned, invited to or removed; the owner leaves the role only through
+  `POST /memberships/transfer-ownership`, which swaps OWNER and ADMIN in one transaction (the
+  step-down matches on still being the owner, so a racing transfer gets a 409). Any non-owner can
+  leave with `DELETE /memberships/me`, except from their only workspace (`spec/membership-spec.md`).
 - **Unknown stored keys are ignored**, and a membership with no `roleId` (written before roles)
   falls back to its enum's defaults.
 - **Issue writes are field-level** (`src/common/permissions/issue-access.ts`): an allow-list maps

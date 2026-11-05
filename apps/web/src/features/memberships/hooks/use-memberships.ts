@@ -2,11 +2,17 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
   getMemberships,
+  leaveWorkspace,
   removeMembership,
+  transferOwnership,
   updateMembership,
 } from "../api/membership-api";
 import type { Member } from "../types/membership-types";
-import type { WorkspaceRole } from "@/features/workspace/types/workspace-types";
+import { workspaceKeys } from "@/features/workspace/hooks/use-workspaces";
+import type {
+  Workspace,
+  WorkspaceRole,
+} from "@/features/workspace/types/workspace-types";
 
 /** Centralized query keys for the memberships feature. */
 export const membershipKeys = {
@@ -100,6 +106,46 @@ export function useRemoveMembership(workspaceId: string) {
 
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: key });
+    },
+  });
+}
+
+/**
+ * Hand the workspace to another member. Two roles change at once (theirs and
+ * the caller's), so the roster refetches rather than being patched in place;
+ * the permission flags follow it.
+ */
+export function useTransferOwnership(workspaceId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (userId: string) => transferOwnership(workspaceId, userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: membershipKeys.list(workspaceId),
+      });
+    },
+  });
+}
+
+/**
+ * Leave a workspace. Like deleting one (`useDeleteWorkspace`), it is dropped
+ * from the cached list so `WorkspaceProvider` falls back to another, and every
+ * query keyed by its id is removed — their requests would now 403.
+ */
+export function useLeaveWorkspace() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (workspaceId: string) => leaveWorkspace(workspaceId),
+    onSuccess: (_res, workspaceId) => {
+      queryClient.setQueryData<Workspace[]>(workspaceKeys.all, (old) =>
+        old?.filter((workspace) => workspace.id !== workspaceId),
+      );
+      queryClient.removeQueries({
+        predicate: (query) => query.queryKey.includes(workspaceId),
+      });
+      queryClient.invalidateQueries({ queryKey: workspaceKeys.all });
     },
   });
 }

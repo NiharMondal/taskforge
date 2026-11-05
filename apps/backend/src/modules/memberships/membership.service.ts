@@ -6,6 +6,8 @@ import {
 } from "@/common/permissions/workspace-access";
 import { PrismaService } from "@/prisma/prisma.service";
 import {
+  BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -100,7 +102,7 @@ export class MembershipService {
 
     if (role === WorkspaceRole.OWNER) {
       throw new ForbiddenException(
-        "Use transferOwnership API instead of assigning OWNER role",
+        "The owner role can't be assigned; the owner transfers it with POST /memberships/transfer-ownership",
       );
     }
 
@@ -134,6 +136,88 @@ export class MembershipService {
         userId_workspaceId: {
           userId: targetUserId,
           workspaceId,
+        },
+      },
+    });
+  }
+
+  /**
+   * Hand the workspace to another member: they become OWNER and the caller,
+   * the current OWNER, becomes ADMIN — in one transaction, so the workspace
+   * never has no owner or two. `workspace:transfer` (OWNER only) is checked on
+   * the route.
+   */
+  async transferOwnership(
+    workspaceId: string,
+    actor: WorkspaceAccess,
+    newOwnerId: string,
+  ) {
+    if (newOwnerId === actor.userId) {
+      throw new BadRequestException("You already own this workspace");
+    }
+
+    const ownerRole = await findSystemRole(
+      this.prisma,
+      workspaceId,
+      WorkspaceRole.OWNER,
+    );
+    const adminRole = await findSystemRole(
+      this.prisma,
+      workspaceId,
+      WorkspaceRole.ADMIN,
+    );
+
+    return this.prisma.$transaction(async (tx) => {
+      // Step down only while still the owner: of two transfers racing, the
+      // second finds no OWNER row for the caller and changes nothing.
+      const steppedDown = await tx.membership.updateMany({
+        where: { workspaceId, userId: actor.userId, role: WorkspaceRole.OWNER },
+        data: { role: WorkspaceRole.ADMIN, roleId: adminRole.id },
+      });
+      if (steppedDown.count !== 1) {
+        throw new ConflictException("You no longer own this workspace");
+      }
+
+      const promoted = await tx.membership.updateMany({
+        where: { workspaceId, userId: newOwnerId },
+        data: { role: WorkspaceRole.OWNER, roleId: ownerRole.id },
+      });
+      if (promoted.count !== 1) {
+        // Throwing rolls the step-down back too.
+        throw new NotFoundException("Member not found");
+      }
+
+      return tx.membership.findUnique({
+        where: { userId_workspaceId: { userId: newOwnerId, workspaceId } },
+        include: ASSIGNED_ROLE_SUMMARY,
+      });
+    });
+  }
+
+  /**
+   * The caller leaves the workspace. The OWNER can't — they transfer it or
+   * delete it first — and nobody leaves their only workspace, because the app
+   * needs one to land in (the same reason deleting your last one isn't offered).
+   */
+  async leave(actor: WorkspaceAccess) {
+    if (actor.isOwner) {
+      throw new ForbiddenException(
+        "The owner can't leave. Transfer ownership or delete the workspace instead.",
+      );
+    }
+
+    const memberships = await this.prisma.membership.count({
+      where: { userId: actor.userId },
+    });
+    if (memberships <= 1) {
+      throw new BadRequestException("You can't leave your only workspace");
+    }
+
+    return this.prisma.membership.delete({
+      where: {
+        userId_workspaceId: {
+          userId: actor.userId,
+          workspaceId: actor.workspaceId,
         },
       },
     });

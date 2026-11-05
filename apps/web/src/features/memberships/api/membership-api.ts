@@ -43,3 +43,28 @@ export async function removeMembership(
 ): Promise<ApiResponse<Member>> {
   return api.delete<Member>(`/memberships/${userId}`, inWorkspace(workspaceId));
 }
+
+/**
+ * Hand the workspace to another member (`POST /memberships/transfer-ownership`,
+ * OWNER only): they become OWNER and the caller becomes ADMIN.
+ */
+export async function transferOwnership(
+  workspaceId: string,
+  userId: string,
+): Promise<ApiResponse<Member>> {
+  return api.post<Member>(
+    "/memberships/transfer-ownership",
+    { userId },
+    inWorkspace(workspaceId),
+  );
+}
+
+/**
+ * Leave the workspace yourself (`DELETE /memberships/me`). Refused for the
+ * OWNER and for your only workspace.
+ */
+export async function leaveWorkspace(
+  workspaceId: string,
+): Promise<ApiResponse<Member>> {
+  return api.delete<Member>("/memberships/me", inWorkspace(workspaceId));
+}

@@ -1,7 +1,12 @@
 import { accessAs } from "@/common/permissions/test-access";
 import { WorkspaceAccess } from "@/common/permissions/workspace-access";
 import { PrismaService } from "@/prisma/prisma.service";
-import { ForbiddenException, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from "@nestjs/common";
 import { WorkspaceRole } from "generated/prisma/enums";
 import { MembershipService } from "./membership.service";
 
@@ -221,6 +226,125 @@ describe("MembershipService role changes and removal", () => {
       await expect(
         service.removeMember(workspaceId, "user-owner", adminAccess),
       ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(prisma.membership.delete).not.toHaveBeenCalled();
+    });
+  });
+});
+
+describe("MembershipService ownership transfer and leaving", () => {
+  const workspaceId = "ws-A";
+  const owner = accessAs(WorkspaceRole.OWNER, {
+    workspaceId,
+    userId: "user-owner",
+  });
+  const member = accessAs(WorkspaceRole.MEMBER, {
+    workspaceId,
+    userId: "user-member",
+  });
+
+  let prisma: {
+    membership: {
+      updateMany: jest.Mock;
+      findUnique: jest.Mock;
+      count: jest.Mock;
+      delete: jest.Mock;
+    };
+    role: { findFirst: jest.Mock };
+    $transaction: jest.Mock;
+  };
+  let service: MembershipService;
+
+  beforeEach(() => {
+    prisma = {
+      membership: {
+        // One row matched unless a test says otherwise.
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUnique: jest.fn().mockResolvedValue({ userId: "user-member" }),
+        count: jest.fn().mockResolvedValue(2),
+        delete: jest.fn().mockResolvedValue({ userId: "user-member" }),
+      },
+      role: {
+        findFirst: jest.fn(({ where }: { where: { systemKey: string } }) =>
+          Promise.resolve({ id: `role-${where.systemKey}`, permissions: [] }),
+        ),
+      },
+      $transaction: jest.fn(),
+    };
+    prisma.$transaction.mockImplementation((cb: (tx: unknown) => unknown) =>
+      cb(prisma),
+    );
+    service = new MembershipService(prisma as unknown as PrismaService);
+  });
+
+  describe("transferOwnership", () => {
+    it("makes the member OWNER and the old owner ADMIN, in this workspace", async () => {
+      await service.transferOwnership(workspaceId, owner, "user-member");
+
+      expect(prisma.membership.updateMany).toHaveBeenNthCalledWith(1, {
+        where: { workspaceId, userId: "user-owner", role: WorkspaceRole.OWNER },
+        data: { role: WorkspaceRole.ADMIN, roleId: "role-ADMIN" },
+      });
+      expect(prisma.membership.updateMany).toHaveBeenNthCalledWith(2, {
+        where: { workspaceId, userId: "user-member" },
+        data: { role: WorkspaceRole.OWNER, roleId: "role-OWNER" },
+      });
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    });
+
+    it("refuses a transfer to yourself", async () => {
+      await expect(
+        service.transferOwnership(workspaceId, owner, "user-owner"),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.membership.updateMany).not.toHaveBeenCalled();
+    });
+
+    it("404s someone who isn't in this workspace (the step-down rolls back)", async () => {
+      prisma.membership.updateMany
+        .mockResolvedValueOnce({ count: 1 })
+        .mockResolvedValueOnce({ count: 0 });
+
+      await expect(
+        service.transferOwnership(workspaceId, owner, "user-elsewhere"),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it("refuses when the caller is no longer the owner (a racing transfer won)", async () => {
+      prisma.membership.updateMany.mockResolvedValueOnce({ count: 0 });
+
+      await expect(
+        service.transferOwnership(workspaceId, owner, "user-member"),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(prisma.membership.updateMany).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("leave", () => {
+    it("removes the caller's own membership in this workspace", async () => {
+      await service.leave(member);
+
+      expect(prisma.membership.delete).toHaveBeenCalledWith({
+        where: {
+          userId_workspaceId: { userId: "user-member", workspaceId },
+        },
+      });
+    });
+
+    it("refuses the owner", async () => {
+      await expect(service.leave(owner)).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+      expect(prisma.membership.delete).not.toHaveBeenCalled();
+    });
+
+    it("refuses leaving your only workspace", async () => {
+      prisma.membership.count.mockResolvedValue(1);
+
+      await expect(service.leave(member)).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      expect(prisma.membership.count).toHaveBeenCalledWith({
+        where: { userId: "user-member" },
+      });
       expect(prisma.membership.delete).not.toHaveBeenCalled();
     });
   });

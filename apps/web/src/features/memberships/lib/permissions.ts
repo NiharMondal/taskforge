@@ -40,6 +40,10 @@ export interface Permissions {
 	canDeleteAnyComment: boolean;
 	/** OWNER only; the backend never grants `workspace:delete` to a role. */
 	canDeleteWorkspace: boolean;
+	/** OWNER only (`workspace:transfer`, never grantable). */
+	canTransferOwnership: boolean;
+	/** Anyone but the OWNER, who must transfer or delete the workspace first. */
+	canLeaveWorkspace: boolean;
 }
 
 export function getPermissions(role: WorkspaceRole | undefined): Permissions {
@@ -60,6 +64,8 @@ export function getPermissions(role: WorkspaceRole | undefined): Permissions {
 		canComment: isManager || isMember,
 		canDeleteAnyComment: isManager,
 		canDeleteWorkspace: role === "OWNER",
+		canTransferOwnership: role === "OWNER",
+		canLeaveWorkspace: !!role && role !== "OWNER",
 	};
 }
 

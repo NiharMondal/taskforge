@@ -56,7 +56,7 @@ export default function ConfirmModal({
 
 				{typeToConfirm && (
 					<TextField value={typed} onChange={setTyped}>
-						<Label>
+						<Label className="font-normal">
 							Type{" "}
 							<span className="font-medium text-foreground">
 								{typeToConfirm}

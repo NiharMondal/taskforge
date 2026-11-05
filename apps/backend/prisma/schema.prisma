@@ -17,15 +17,13 @@ enum WorkspaceRole {
   VIEWER
 }
 
-enum IssueStatus {
+// What a workflow status means to the code, whatever the project calls it
+// (spec/workflow-spec.md).
+enum StatusCategory {
   BACKLOG
-  TODO
-  IN_PROGRESS
-  IN_REVIEW
-  QA_REQUESTED
-  QA_FAILED
-  DEPLOYED
-  DONE
+  UNSTARTED
+  STARTED
+  COMPLETED
 }
 
 enum IssuePriority {
@@ -49,6 +47,19 @@ enum SubscriptionPlan {
   ENTERPRISE
 }
 
+// Stripe's subscription statuses, one for one. ACTIVE, TRIALING and PAST_DUE
+// keep a paid plan in force (`effectivePlan` in @taskforge/shared).
+enum SubscriptionStatus {
+  ACTIVE
+  TRIALING
+  PAST_DUE
+  UNPAID
+  CANCELED
+  INCOMPLETE
+  INCOMPLETE_EXPIRED
+  PAUSED
+}
+
 enum InvitationStatus {
   PENDING
   ACCEPTED
@@ -62,10 +73,71 @@ enum AuthProvider {
   FACEBOOK
 }
 
+// Platform (super) admin access, across every workspace (spec/admin-spec.md).
+// ADMIN may act; SUPPORT only reads. Granted only by `pnpm run
+// set-platform-role`, never through the API.
+enum PlatformRole {
+  ADMIN
+  SUPPORT
+}
+
 //// AUTH
 // One row per way a user can sign in. EMAIL rows carry the password hash;
 // provider rows (GOOGLE, ...) carry the provider's stable account id. The email
 // itself is identity, not a credential, so it lives on `User`.
+// A password sign-up waiting for its email to be confirmed. No User exists
+// until the link in the email is followed (POST /auth/verify-email), so an
+// address nobody has proven gets no account, token or workspace. Several may
+// be pending for one email; whichever link is followed wins, with its own
+// password, and the rest are deleted.
+model PendingRegistration {
+  id           String   @id @default(uuid())
+  email        String
+  name         String
+  passwordHash String
+  // SHA-256 of the token in the emailed link; the token itself is never stored.
+  tokenHash    String   @unique
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  @@index([email])
+}
+
+// One refresh token. Each use replaces it with a new one in the same family
+// (one family per sign-in); presenting a replaced token after the grace period
+// means it leaked, and revokes the whole family. See RefreshTokenService.
+// A "forgot password" link. Following it sets the user's password (creating
+// the EMAIL sign-in method for a Google-only account) and ends every session.
+model PasswordReset {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // SHA-256 of the token in the emailed link; the token itself is never stored.
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model RefreshToken {
+  id         String    @id @default(uuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  familyId   String
+  // SHA-256 of the token; the token itself is never stored.
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  // Set when this token was exchanged for a new one.
+  replacedAt DateTime?
+  // Set on sign-out, on reuse, and when the account's password is dropped.
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+  @@index([familyId])
+}
+
 model Auth {
   id         String       @id @default(uuid())
   provider   AuthProvider
@@ -88,10 +160,20 @@ model User {
   email           String    @unique
   avatarUrl       String?
   avatarPublicId  String?
-  // When someone proved they own `email` (today: a Google sign-in). Null means
-  // nobody has — e.g. a password registration — and a first Google sign-in
-  // then drops that password (see AuthService.googleSignIn).
+  // When someone proved they own `email`: a Google sign-in, or the link in the
+  // verification email that finishes a password registration. Null only on
+  // password accounts registered before verification existed; they can't sign
+  // in with a password until they register again, and a first Google sign-in
+  // drops that password (see AuthService.googleSignIn).
   emailVerifiedAt DateTime?
+  // Null for everyone but the people who run the product. Read from the
+  // database on every admin request (PlatformRoleGuard), never put in the JWT.
+  platformRole    PlatformRole?
+  // Set by platform staff (`PATCH /admin/users/:id`): the account can't sign
+  // in, verify an email or refresh a session. The reason is a staff note,
+  // returned only by /admin routes. Both are cleared on unsuspend.
+  suspendedAt     DateTime?
+  suspendedReason String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -101,8 +183,12 @@ model User {
   createdIssues  Issue[]      @relation("CreatedIssues")
   assignedIssues Issue[]      @relation("AssignedIssues")
 
-  comments  Comment[]
-  auditLogs AuditLog[]
+  comments       Comment[]
+  auditLogs      AuditLog[]
+  refreshTokens  RefreshToken[]
+  passwordResets PasswordReset[]
+
+  platformAuditLogs PlatformAuditLog[]
 }
 
 //// WORKSPACE (TENANT ROOT)
@@ -112,19 +198,25 @@ model Workspace {
   name        String
   slug        String  @default(cuid())
   description String?
+  // Set by platform staff (`PATCH /admin/workspaces/:id`): every
+  // workspace-scoped request is a 403 WORKSPACE_SUSPENDED. Billing is left to
+  // Stripe. The reason is a staff note, returned only by /admin routes.
+  suspendedAt     DateTime?
+  suspendedReason String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  memberships  Membership[]
-  projects     Project[]
-  issues       Issue[]
-  sprints      Sprint[]
-  invitations  Invitation[]
-  subscription Subscription?
-  auditLogs    AuditLog[]
-  labels       Label[]
-  roles        Role[]
+  memberships      Membership[]
+  projects         Project[]
+  issues           Issue[]
+  sprints          Sprint[]
+  invitations      Invitation[]
+  subscription     Subscription?
+  auditLogs        AuditLog[]
+  labels           Label[]
+  roles            Role[]
+  workflowStatuses WorkflowStatus[]
 }
 
 //// MEMBERSHIP (RBAC CORE)
@@ -177,10 +269,15 @@ model Role {
 //// PROJECTS
 
 model Project {
-  id          String  @id @default(uuid())
-  name        String
-  key         String  @default(cuid())
-  description String?
+  id           String  @id @default(uuid())
+  name         String
+  // Human-readable prefix for issue keys (e.g. "WA" → WA-12), derived from the
+  // name on create and never changed after, so keys people have shared stay
+  // valid. Unique within the workspace.
+  key          String
+  description  String?
+  // The last issue number handed out; the next issue gets issueCounter + 1.
+  issueCounter Int     @default(0)
 
   workspaceId String
 
@@ -189,11 +286,62 @@ model Project {
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
-  issues  Issue[]
-  sprints Sprint[]
+  issues      Issue[]
+  sprints     Sprint[]
+  statuses    WorkflowStatus[]
+  transitions WorkflowTransition[]
 
   @@unique([workspaceId, key])
   @@index([workspaceId])
+}
+
+//// WORKFLOWS
+
+// One column of a project's board (spec/workflow-spec.md). Every project has its
+// own, seeded from DEFAULT_WORKFLOW_STATUSES in @taskforge/shared on create.
+model WorkflowStatus {
+  id        String         @id @default(uuid())
+  name      String
+  // Hex, like a label's color.
+  color     String
+  category  StatusCategory
+  // Column order: a fractional-indexing key, like Issue.rank. The column is
+  // COLLATE "C" (set in the custom_workflows migration) for the same reason.
+  position  String
+  // Where an issue lands when created without a status. Exactly one per project.
+  isDefault Boolean        @default(false)
+
+  workspaceId String
+  projectId   String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  issues          Issue[]
+  transitionsFrom WorkflowTransition[] @relation("TransitionFrom")
+  transitionsTo   WorkflowTransition[] @relation("TransitionTo")
+
+  @@index([workspaceId, projectId])
+  @@index([projectId, position])
+}
+
+// A move an issue may make between two statuses of one project. Staying in the
+// same status is always allowed and never stored.
+model WorkflowTransition {
+  projectId    String
+  fromStatusId String
+  toStatusId   String
+
+  project    Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  fromStatus WorkflowStatus @relation("TransitionFrom", fields: [fromStatusId], references: [id], onDelete: Cascade)
+  toStatus   WorkflowStatus @relation("TransitionTo", fields: [toStatusId], references: [id], onDelete: Cascade)
+
+  @@id([fromStatusId, toStatusId])
+  @@index([projectId])
+  @@index([toStatusId])
 }
 
 //// SPRINTS
@@ -231,10 +379,17 @@ model Issue {
   title       String
   description String?
 
-  status   IssueStatus   @default(BACKLOG)
+  // A status of the issue's own project's workflow. A status is never deleted
+  // with issues in it (WorkflowService moves them first). NoAction, not
+  // Restrict: Postgres checks it at the end of the statement, so deleting a
+  // project or workspace can cascade to issues and statuses in either order.
+  statusId String
   priority IssuePriority @default(MEDIUM)
   type     IssueType     @default(TASK)
-  // Board ordering within a (project, status) lane. Fractional index
+  // Per-project sequence, shown with the project key as `WA-12`. Allocated
+  // from Project.issueCounter on create; never reused.
+  number   Int
+  // Board ordering within a (project, statusId) lane. Fractional index
   // (base-62 string, e.g. "a0", "a0V") so a card can be inserted between any
   // two neighbors without renumbering siblings — generated client-side via the
   // `fractional-indexing` lib. Nullable so it can be added over existing rows;
@@ -247,7 +402,9 @@ model Issue {
   projectId   String
   sprintId    String?
 
-  reporterId String
+  // Null once the reporter's account is deleted: their issues stay with the
+  // workspace (SetNull), shown as reported by "Deleted user".
+  reporterId String?
   assigneeId String?
 
   parentIssueId String?
@@ -258,11 +415,12 @@ model Issue {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  sprint    Sprint?   @relation(fields: [sprintId], references: [id], onDelete: SetNull)
+  workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project   Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sprint    Sprint?        @relation(fields: [sprintId], references: [id], onDelete: SetNull)
+  status    WorkflowStatus @relation(fields: [statusId], references: [id], onDelete: NoAction)
 
-  reporter User  @relation("CreatedIssues", fields: [reporterId], references: [id], onDelete: Cascade)
+  reporter User? @relation("CreatedIssues", fields: [reporterId], references: [id], onDelete: SetNull)
   assignee User? @relation("AssignedIssues", fields: [assigneeId], references: [id], onDelete: SetNull)
 
   // Self relation
@@ -272,15 +430,16 @@ model Issue {
   comments Comment[]
   labels   IssueLabel[]
 
+  @@unique([projectId, number])
   @@index([workspaceId, projectId])
-  @@index([workspaceId, status])
+  @@index([workspaceId, statusId])
   @@index([workspaceId, assigneeId])
   // Foreign keys Postgres doesn't index on its own: ending a sprint filters on
   // sprintId, and deleting a parent cascades through parentIssueId.
   @@index([sprintId])
   @@index([parentIssueId])
-  // Serves the board query: WHERE projectId=? AND status=? ORDER BY rank.
-  @@index([projectId, status, rank])
+  // Serves the board query: WHERE projectId=? AND statusId=? ORDER BY rank.
+  @@index([projectId, statusId, rank])
 }
 
 //// COMMENTS
@@ -290,13 +449,14 @@ model Comment {
   content String
 
   issueId String
-  userId  String
+  // The author; null once their account is deleted, so the conversation stays.
+  userId  String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   issue Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
-  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user  User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([issueId])
 }
@@ -353,22 +513,37 @@ model Invitation {
 
 //// SUBSCRIPTION (SAAS LAYER)
 
+// One per workspace, written by the billing module (`spec/billing-spec.md`).
+// No row means FREE. `status` is null while only the Stripe customer exists
+// (checkout started, nothing subscribed yet); the webhook writes the rest.
 model Subscription {
   id          String @id @default(uuid())
   workspaceId String @unique
 
-  plan   SubscriptionPlan @default(FREE)
-  status String?
+  plan   SubscriptionPlan    @default(FREE)
+  status SubscriptionStatus?
 
-  stripeCustomerId     String?
-  stripeSubscriptionId String?
+  stripeCustomerId     String? @unique
+  stripeSubscriptionId String? @unique
 
-  currentPeriodEnd DateTime?
+  // Stripe's quantity: members billed for.
+  seats             Int?
+  currentPeriodEnd  DateTime?
+  cancelAtPeriodEnd Boolean   @default(false)
+  trialEndsAt       DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+// Stripe webhook events already applied. Stripe may deliver an event more than
+// once; its id is recorded in the same transaction that applies it.
+model StripeEvent {
+  id          String   @id
+  type        String
+  processedAt DateTime @default(now())
 }
 
 //// AUDIT LOGS
@@ -390,6 +565,38 @@ model AuditLog {
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   user      User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
 
-  @@index([workspaceId])
+  // Serves an entity's history (an issue's timeline): WHERE workspaceId,
+  // entityType, entityId ORDER BY createdAt. Its prefix also covers lookups by
+  // workspace alone, which the old single-column index did.
+  @@index([workspaceId, entityType, entityId, createdAt])
+  // Serves the workspace audit log (GET /audit-log): a workspace's rows,
+  // newest first.
+  @@index([workspaceId, createdAt])
   @@index([entityType])
+}
+
+// What platform staff did, across workspaces (spec/admin-spec.md). Apart from
+// AuditLog, which belongs to one workspace. `actorId` is null for the
+// `set-platform-role` script (run from a shell, by nobody the app knows) and
+// once the actor's account is deleted; `targetType`/`targetId` name what was
+// acted on ("USER", "WORKSPACE") and stay after it is deleted.
+model PlatformAuditLog {
+  id String @id @default(uuid())
+
+  actorId String?
+
+  action     String
+  targetType String
+  targetId   String?
+
+  metadata Json?
+
+  createdAt DateTime @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  // The log newest first, and one target's history.
+  @@index([createdAt])
+  @@index([targetType, targetId, createdAt])
+  @@index([actorId])
 }

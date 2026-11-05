@@ -30,12 +30,42 @@ export async function getAuthToken(): Promise<string | null> {
 }
 
 /**
+ * Pluggable "get me a new access token" callback. The backend access token
+ * lasts 15 minutes; when one is rejected, the HTTP layer asks the auth layer
+ * to renew it (through the refresh token kept in the Auth.js cookie) and
+ * retries the request once before giving up.
+ */
+type SessionRefresher = () => Promise<string | null>;
+
+let sessionRefresher: SessionRefresher = async () => null;
+let pendingRefresh: Promise<string | null> | null = null;
+
+/** Register the function that renews the session and returns the new token. */
+export function registerSessionRefresher(refresher: SessionRefresher): void {
+  sessionRefresher = refresher;
+}
+
+/**
+ * A renewed access token, or null if the session can't be renewed. Requests
+ * that fail together (a page firing several queries) share one renewal.
+ */
+export function refreshAuthToken(): Promise<string | null> {
+  pendingRefresh ??= sessionRefresher()
+    .catch(() => null)
+    .finally(() => {
+      pendingRefresh = null;
+    });
+  return pendingRefresh;
+}
+
+/**
  * Pluggable "session no longer valid" callback.
  *
  * The backend `accessToken` lives *inside* the Auth.js session and can expire
- * independently of the session cookie. When the backend rejects a request with
- * 401, the cookie may still look valid — so the proxy keeps the user on
- * protected pages while every API call fails. The HTTP layer signals that here
+ * independently of the session cookie. When the backend still rejects a
+ * request with 401 after a renewal attempt, the cookie may still look valid —
+ * so the proxy keeps the user on protected pages while every API call fails.
+ * The HTTP layer signals that here
  * and the auth layer (auth-provider) registers a handler that signs the user
  * out. Kept decoupled for the same reason as the token getter: axios.ts must
  * never import next-auth.

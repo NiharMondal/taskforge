@@ -1,8 +1,9 @@
 import { api, inWorkspace } from "@/lib/axios";
+import { getAllPages } from "@/lib/get-all-pages";
 
 import type { ApiResponse } from "@/types/api";
 
-import type { Project } from "../types/project-types";
+import type { CreateProjectDto, Project } from "../types/project-types";
 import { TProjectFormValues } from "../schema/project-schema";
 
 /**
@@ -18,17 +19,17 @@ import { TProjectFormValues } from "../schema/project-schema";
  * changes which tenant's projects come back.
  */
 
-/** List the active workspace's projects (`GET /projects`). */
+/** List all of the workspace's projects (`GET /projects`, every page). */
 export async function getProjects(
 	workspaceId: string,
 ): Promise<ApiResponse<Project[]>> {
-	return api.get<Project[]>("/projects", inWorkspace(workspaceId));
+	return getAllPages<Project>("/projects", inWorkspace(workspaceId));
 }
 
 /** Create a project in the active workspace (`POST /projects`). */
 export async function createProject(
 	workspaceId: string,
-	dto: TProjectFormValues,
+	dto: CreateProjectDto,
 ): Promise<ApiResponse<Project>> {
 	return api.post<Project>("/projects", dto, inWorkspace(workspaceId));
 }

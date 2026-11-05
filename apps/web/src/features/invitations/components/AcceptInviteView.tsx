@@ -16,7 +16,6 @@ import { MailCheck } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 
-import { ROLE_LABELS } from "@/features/memberships/constants";
 import { useWorkspace } from "@/features/workspace/context/workspace-context";
 import { getApiErrorMessage } from "@/lib/api-error";
 
@@ -88,7 +87,7 @@ export default function AcceptInviteView({ token }: { token: string }) {
 							<span className="font-medium text-foreground">
 								{preview.workspaceName}
 							</span>{" "}
-							on TaskForge as {ROLE_LABELS[preview.role]}.
+							on TaskForge as {preview.roleName}.
 						</>
 					) : (
 						"Accept the invitation to join the workspace on TaskForge."

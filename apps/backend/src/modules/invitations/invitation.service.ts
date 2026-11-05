@@ -1,27 +1,29 @@
-import {
-  escapeHtml,
-  futureDate,
-  generateToken,
-  normalizeEmail,
-} from "@/helper";
+import { WorkspaceSuspendedException } from "@/common/exceptions/suspended.exception";
+import { appUrl, futureDate, generateToken, normalizeEmail } from "@/helper";
 import {
   assertActorHolds,
   WorkspaceAccess,
 } from "@/common/permissions/workspace-access";
+import { PaginationQueryDto } from "@/common/dto/pagination-query.dto";
+import { assertCanAddMember } from "@/common/plans/plan-limits";
+import PrismaQueryBuilder from "@/lib/PrismQueryBuilder";
 import { PrismaService } from "@/prisma/prisma.service";
 import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
-  Logger,
   NotFoundException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { InvitationStatus, WorkspaceRole } from "generated/prisma/enums";
+import { recordWorkspaceEvent } from "../activity/workspace-activity";
+import { BillingService } from "../billing/billing.service";
 import { MailService } from "../mail/mail.service";
-import { findSystemRole } from "../roles/system-roles";
+import { SYSTEM_ROLE_NAMES } from "@taskforge/shared";
+import { findSystemRole, resolveAssignableRole } from "../roles/system-roles";
 import { SendInvitationDto } from "./dto/send-invitation.dto";
+import { invitationEmail } from "./invitation-emails";
 
 /**
  * What callers of the API may see of an invitation. `token` is excluded: it is
@@ -32,6 +34,9 @@ const PUBLIC_INVITATION_SELECT = {
   email: true,
   workspaceId: true,
   role: true,
+  roleId: true,
+  // The role it grants, by name: `role` reads MEMBER for a custom one.
+  assignedRole: { select: { id: true, name: true, systemKey: true } },
   status: true,
   expiresAt: true,
   createdAt: true,
@@ -40,12 +45,11 @@ const PUBLIC_INVITATION_SELECT = {
 
 @Injectable()
 export class InvitationService {
-  private readonly logger = new Logger(InvitationService.name);
-
   constructor(
     private prisma: PrismaService,
     private mail: MailService,
     private config: ConfigService,
+    private billing: BillingService,
   ) {}
 
   /** `invitation:manage` is checked on the route. */
@@ -54,8 +58,14 @@ export class InvitationService {
     actor: WorkspaceAccess,
     dto: SendInvitationDto,
   ) {
-    const role = dto.role ?? WorkspaceRole.MEMBER;
-    const invitedRole = await findSystemRole(this.prisma, workspaceId, role);
+    const invitedRole = await resolveAssignableRole(
+      this.prisma,
+      workspaceId,
+      dto.roleId === undefined && dto.role === undefined
+        ? { role: WorkspaceRole.MEMBER }
+        : { roleId: dto.roleId, role: dto.role },
+    );
+    const role = invitedRole.enumRole;
     assertActorHolds(
       actor,
       invitedRole.permissions,
@@ -87,8 +97,9 @@ export class InvitationService {
       where: { workspaceId, email: { equals: email, mode: "insensitive" } },
     });
 
-    // A PENDING invite past its expiry is dead (nothing flips it to EXPIRED
-    // until someone opens the link), so it must not block a re-invite.
+    // A PENDING invite past its expiry is dead (it only becomes EXPIRED when
+    // someone opens the link or the daily cleanup runs), so it must not block
+    // a re-invite.
     if (
       existing?.status === InvitationStatus.PENDING &&
       existing.expiresAt > new Date()
@@ -102,22 +113,41 @@ export class InvitationService {
     const expiresAt = futureDate(); // By Default 7 Days
     const roleId = invitedRole.id;
 
-    const invitation = await this.prisma.invitation.upsert({
-      // Key on the stored spelling so a legacy mixed-case row is updated, not
-      // duplicated next to a new lowercase one.
-      where: {
-        email_workspaceId: { email: existing?.email ?? email, workspaceId },
-      },
-      create: { email, token, workspaceId, role, roleId, expiresAt },
-      update: {
-        email,
-        token,
-        role,
-        roleId,
-        expiresAt,
-        status: InvitationStatus.PENDING,
-      },
-      select: PUBLIC_INVITATION_SELECT,
+    const invitation = await this.prisma.$transaction(async (tx) => {
+      // The invitation reserves a seat, so the plan is checked here and not
+      // on accept. A re-sent expired or revoked one holds no seat until now.
+      // The check locks the workspace's seats until this commits, so of two
+      // invitations racing for the last seat, the second sees the first.
+      await assertCanAddMember(tx, workspaceId);
+
+      const saved = await tx.invitation.upsert({
+        // Key on the stored spelling so a legacy mixed-case row is updated,
+        // not duplicated next to a new lowercase one.
+        where: {
+          email_workspaceId: { email: existing?.email ?? email, workspaceId },
+        },
+        create: { email, token, workspaceId, role, roleId, expiresAt },
+        update: {
+          email,
+          token,
+          role,
+          roleId,
+          expiresAt,
+          status: InvitationStatus.PENDING,
+        },
+        select: PUBLIC_INVITATION_SELECT,
+      });
+      await recordWorkspaceEvent(tx, {
+        workspaceId,
+        userId: actor.userId,
+        action: "invitation.sent",
+        entityId: saved.id,
+        metadata: {
+          email,
+          role: { id: invitedRole.id, name: invitedRole.name },
+        },
+      });
+      return saved;
     });
 
     const workspace = await this.prisma.workspace.findUnique({
@@ -130,40 +160,51 @@ export class InvitationService {
       select: { name: true },
     });
 
-    // Fire-and-forget: a transient email failure must not roll back a
-    // successfully persisted invitation. Failures are logged for retry/audit.
-    void this.sendInvitationEmail({
+    // In the background: a transient email failure must not roll back a
+    // successfully persisted invitation. Failures are logged.
+    this.mail.sendInBackground({
       to: email,
-      inviterName: actor_user?.name ?? "A workspace member",
-      workspaceName: workspace?.name ?? "a workspace",
-      token,
-    }).catch((error) => {
-      this.logger.error(
-        `Failed to send invitation email to ${email}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
+      ...invitationEmail({
+        inviterName: actor_user?.name ?? "A workspace member",
+        workspaceName: workspace?.name ?? "a workspace",
+        url: appUrl(
+          this.config,
+          `/invitations/accept?token=${encodeURIComponent(token)}`,
+        ),
+      }),
     });
 
     return invitation;
   }
 
-  async listInvitations(workspaceId: string) {
-    return this.prisma.invitation.findMany({
-      where: { workspaceId },
-      select: PUBLIC_INVITATION_SELECT,
-      orderBy: { createdAt: "desc" },
-    });
+  async listInvitations(workspaceId: string, query: PaginationQueryDto) {
+    return new PrismaQueryBuilder(query, {
+      defaultField: "createdAt",
+      defaultOrder: "desc",
+    })
+      .withDefaultFilter({ workspaceId })
+      .paginate()
+      .sort()
+      .select(PUBLIC_INVITATION_SELECT)
+      .execute(this.prisma.invitation);
   }
 
   async validateToken(token: string) {
     const invitation = await this.prisma.invitation.findUnique({
       where: { token },
-      include: { workspace: { select: { name: true } } },
+      include: {
+        workspace: { select: { name: true } },
+        assignedRole: { select: { name: true } },
+      },
     });
 
     if (!invitation) {
       throw new NotFoundException("Invitation not found");
+    }
+
+    // The daily cleanup marks expired invitations EXPIRED; say so, as below.
+    if (invitation.status === InvitationStatus.EXPIRED) {
+      throw new BadRequestException("Invitation has expired");
     }
 
     if (invitation.status !== InvitationStatus.PENDING) {
@@ -185,6 +226,8 @@ export class InvitationService {
       workspaceId: invitation.workspaceId,
       workspaceName: invitation.workspace.name,
       role: invitation.role,
+      roleName:
+        invitation.assignedRole?.name ?? SYSTEM_ROLE_NAMES[invitation.role],
       expiresAt: invitation.expiresAt,
     };
   }
@@ -192,10 +235,16 @@ export class InvitationService {
   async acceptInvitation(token: string, userId: string) {
     const invitation = await this.prisma.invitation.findUnique({
       where: { token },
+      include: { workspace: { select: { suspendedAt: true } } },
     });
 
     if (!invitation) {
       throw new NotFoundException("Invitation not found");
+    }
+
+    // Joining would only lead to a workspace nobody can open.
+    if (invitation.workspace.suspendedAt) {
+      throw new WorkspaceSuspendedException();
     }
 
     if (invitation.status !== InvitationStatus.PENDING) {
@@ -234,7 +283,7 @@ export class InvitationService {
       throw new ConflictException("You are already a member of this workspace");
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const accepted = await this.prisma.$transaction(async (tx) => {
       // Claim the invitation first, and only if it is still the one checked
       // above: PENDING, unexpired, same token. Between that check and now it
       // may have been revoked, re-sent (new token, maybe a new role) or
@@ -258,9 +307,14 @@ export class InvitationService {
       }
 
       // Invitations sent before roles existed have no roleId; map their enum.
-      const roleId =
-        invitation.roleId ??
-        (await findSystemRole(tx, invitation.workspaceId, invitation.role)).id;
+      const role =
+        (invitation.roleId &&
+          (await tx.role.findUnique({
+            where: { id: invitation.roleId },
+            select: { id: true, name: true },
+          }))) ||
+        (await findSystemRole(tx, invitation.workspaceId, invitation.role));
+      const roleId = invitation.roleId ?? role.id;
 
       // A membership created since the check above makes this a P2002, which
       // rolls back the claim and answers 409.
@@ -273,12 +327,31 @@ export class InvitationService {
         },
       });
 
+      await recordWorkspaceEvent(tx, {
+        workspaceId: invitation.workspaceId,
+        userId,
+        action: "invitation.accepted",
+        entityId: invitation.id,
+        metadata: {
+          email: invitation.email,
+          role: { id: role.id, name: role.name },
+        },
+      });
+
       return { workspaceId: invitation.workspaceId, membership };
     });
+
+    // After the commit: a Stripe failure must not undo the membership.
+    await this.billing.syncSeats(accepted.workspaceId);
+    return accepted;
   }
 
   /** `invitation:manage` is checked on the route. */
-  async revokeInvitation(workspaceId: string, invitationId: string) {
+  async revokeInvitation(
+    workspaceId: string,
+    invitationId: string,
+    actorId: string,
+  ) {
     const invitation = await this.prisma.invitation.findFirst({
       where: { id: invitationId, workspaceId },
     });
@@ -291,58 +364,19 @@ export class InvitationService {
       throw new BadRequestException("Only pending invitations can be revoked");
     }
 
-    return this.prisma.invitation.update({
-      where: { id: invitationId },
-      data: { status: InvitationStatus.REVOKED },
+    return this.prisma.$transaction(async (tx) => {
+      const revoked = await tx.invitation.update({
+        where: { id: invitationId },
+        data: { status: InvitationStatus.REVOKED },
+      });
+      await recordWorkspaceEvent(tx, {
+        workspaceId,
+        userId: actorId,
+        action: "invitation.revoked",
+        entityId: invitationId,
+        metadata: { email: invitation.email },
+      });
+      return revoked;
     });
-  }
-
-  private async sendInvitationEmail(params: {
-    to: string;
-    inviterName: string;
-    workspaceName: string;
-    token: string;
-  }) {
-    const appUrl =
-      this.config.get<string>("APP_URL") ?? "http://localhost:3000";
-    const acceptUrl = `${appUrl.replace(/\/+$/, "")}/invitations/accept?token=${encodeURIComponent(
-      params.token,
-    )}`;
-
-    const subject = `${params.inviterName} invited you to join "${params.workspaceName}" on TaskForge`;
-
-    const text =
-      `${params.inviterName} has invited you to join the "${params.workspaceName}" workspace on TaskForge.\n\n` +
-      `Accept your invitation: ${acceptUrl}\n\n` +
-      `This invitation expires in 7 days. If you weren't expecting this, you can safely ignore this email.`;
-
-    // Inviter and workspace names are user-controlled, so they must be escaped
-    // before landing in the HTML part (the subject and text part are plain text).
-    const inviterName = escapeHtml(params.inviterName);
-    const workspaceName = escapeHtml(params.workspaceName);
-    const safeUrl = escapeHtml(acceptUrl);
-
-    const html = `
-      <div style="font-family: Arial, Helvetica, sans-serif; max-width: 480px; margin: 0 auto; color: #1a1a1a;">
-        <h2 style="margin-bottom: 8px;">You've been invited to TaskForge</h2>
-        <p><strong>${inviterName}</strong> has invited you to join the
-          <strong>${workspaceName}</strong> workspace.</p>
-        <p style="margin: 24px 0;">
-          <a href="${safeUrl}"
-             style="background:#4f46e5;color:#fff;padding:12px 20px;border-radius:6px;text-decoration:none;display:inline-block;">
-            Accept invitation
-          </a>
-        </p>
-        <p style="font-size: 13px; color: #666;">
-          Or paste this link into your browser:<br />
-          <a href="${safeUrl}">${safeUrl}</a>
-        </p>
-        <p style="font-size: 12px; color: #999; margin-top: 24px;">
-          This invitation expires in 7 days. If you weren't expecting this, you can safely ignore this email.
-        </p>
-      </div>
-    `;
-
-    await this.mail.sendMail({ to: params.to, subject, text, html });
   }
 }

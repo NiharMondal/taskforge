@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 
 import { cn } from "@heroui/react";
 
+import { useWorkspacePermissions } from "@/features/memberships/hooks/use-workspace-permissions";
 import { useWorkspace } from "@/features/workspace/context/workspace-context";
 
 import { SETTINGS_TABS } from "../constants";
@@ -12,11 +13,16 @@ import { SETTINGS_TABS } from "../constants";
 /**
  * Settings header + tab navigation. The tabs are real route links (not local
  * state) so each section is deep-linkable and the active tab survives reloads.
- * Active styling uses semantic tokens only (see globals.css).
+ * Active styling uses semantic tokens only (see globals.css). A tab with
+ * `requires` shows only when the viewer holds that permission flag.
  */
 export default function SettingsNav() {
 	const pathname = usePathname();
 	const { activeWorkspace } = useWorkspace();
+	const permissions = useWorkspacePermissions();
+	const tabs = SETTINGS_TABS.filter(
+		(tab) => !tab.requires || permissions[tab.requires],
+	);
 
 	return (
 		<div className="flex flex-col gap-6">
@@ -30,7 +36,7 @@ export default function SettingsNav() {
 			</header>
 
 			<nav className="flex gap-1 border-b border-border">
-				{SETTINGS_TABS.map((tab) => {
+				{tabs.map((tab) => {
 					const isActive =
 						pathname === tab.href ||
 						pathname.startsWith(`${tab.href}/`);

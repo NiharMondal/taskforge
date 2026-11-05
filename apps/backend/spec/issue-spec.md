@@ -8,7 +8,8 @@ Build a backend issue tracking system scoped to workspace projects. Issues are t
 - `reporterId` is always sourced from the authenticated user's JWT (`sub`). It is never accepted from the request body.
 - Issues are workspace-isolated: a user from Workspace A must never be able to read or mutate Workspace B's issues.
 - Creating needs `issue:create` (OWNER, ADMIN, MEMBER by default); deleting needs `issue:delete` (OWNER, ADMIN).
-- Updating is field-level (see the PATCH table). A `MEMBER` may change `status`/`rank` on any issue and edit every field of issues they reported or are assigned to, but never set `DONE`. `VIEWER` is read-only.
+- Updating is field-level (see the PATCH table). A `MEMBER` may change `statusId`/`rank` on any issue and edit every field of issues they reported or are assigned to, but never move one into a `COMPLETED` status. `VIEWER` is read-only.
+- Statuses are the project's own (`spec/workflow-spec.md`): `statusId` names a status of the issue's project, and rules read its category, never its name. Created without one, an issue lands in the project's default status. Responses embed `status: { id, name, color, category }`.
 
 ---
 
@@ -22,14 +23,14 @@ model Issue {
   title       String
   description String?
 
-  status   IssueStatus   @default(BACKLOG)
+  statusId String         // a WorkflowStatus of this project (see workflow-spec.md)
   priority IssuePriority @default(MEDIUM)
 
   workspaceId String
   projectId   String
   sprintId    String?
 
-  reporterId String
+  reporterId String?   // null once the reporter's account is deleted
   assigneeId String?
 
   createdAt DateTime @default(now())
@@ -39,30 +40,19 @@ model Issue {
   project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   sprint    Sprint?   @relation(fields: [sprintId], references: [id], onDelete: SetNull)
 
-  reporter User  @relation("CreatedIssues", fields: [reporterId], references: [id], onDelete: Cascade)
+  reporter User? @relation("CreatedIssues", fields: [reporterId], references: [id], onDelete: SetNull)
   assignee User? @relation("AssignedIssues", fields: [assigneeId], references: [id], onDelete: SetNull)
 
   comments Comment[]
   labels   IssueLabel[]
 
   @@index([workspaceId, projectId])
-  @@index([workspaceId, status])
+  @@index([workspaceId, statusId])
   @@index([workspaceId, assigneeId])
 }
 
-enum IssueStatus {
-  BACKLOG
-  TODO
-  IN_PROGRESS
-  IN_REVIEW
-  QA_REQUESTED
-  QA_FAILED
-  DEPLOYED
-  DONE
-}
-// A PATCH may only move status along the workflow in
-// src/modules/issues/status-transitions.ts (e.g. QA_REQUESTED → QA_FAILED or
-// DEPLOYED); anything else is a 400. DONE is terminal.
+// A PATCH may only move an issue along a WorkflowTransition of its project
+// (staying put is always allowed); anything else is a 400.
 
 enum IssuePriority {
   LOW
@@ -90,19 +80,27 @@ Base path: `/projects/:projectId/issues`
 
 **`POST /projects/:projectId/issues`**
 
-**Auth:** Required. `ADMIN` or `OWNER` only.
+**Auth:** Required. `issue:create` (Owner, Admin and Member by default).
 
 **Request body:**
 ```json
 {
   "title": "Fix login bug",
   "description": "Users are getting 500 on login when email has uppercase letters",
-  "status": "BACKLOG",
+  "statusId": "uuid-optional",
   "priority": "HIGH",
+  "type": "BUG",
+  "timeEstimate": 3,
   "sprintId": "uuid-optional",
-  "assigneeId": "uuid-optional"
+  "assigneeId": "uuid-optional",
+  "labelIds": ["uuid", "uuid"],
+  "parentIssueId": "uuid-optional"
 }
 ```
+
+- `type` is `EPIC`, `STORY`, `TASK` or `BUG` (default `TASK`). `SUBTASK` can't be sent: an issue created with `parentIssueId` is a sub-issue, typed `SUBTASK`, and sending `type` with `parentIssueId` is a `400`.
+- `timeEstimate` holds **story points** despite its name: a whole number from 0 to 100, or `null` for not estimated.
+- `labelIds`: up to 10 unique ids of this workspace's labels (`spec/label-spec.md`); one from another workspace is a `403`.
 
 **What the backend does:**
 1. Validates the request body with `CreateIssueDto`.
@@ -136,7 +134,7 @@ Base path: `/projects/:projectId/issues`
 **Query params (all optional):**
 | Param | Type | Description |
 |-------|------|-------------|
-| `status` | `IssueStatus` | Filter by status |
+| `statusId` | `string` (UUID) | Filter by workflow status |
 | `priority` | `IssuePriority` | Filter by priority |
 | `assigneeId` | `string` (UUID) | Filter by assignee |
 | `sprintId` | `string` (UUID) | Filter by sprint |
@@ -156,13 +154,29 @@ Base path: `/projects/:projectId/issues`
   "message": "Issues fetched successfully",
   "data": [ /* Issue[] */ ],
   "metaData": {
-    "page": 1,
-    "limit": 20,
-    "total": 42,
-    "totalPages": 3
+    "currentPage": 1,
+    "totalPages": 3,
+    "totalData": 42,
+    "pageSize": 20,
+    "hasNextPage": true,
+    "hasPreviousPage": false
   }
 }
 ```
+
+---
+
+### 2a. My Assigned Issues (dashboard)
+
+**`GET /issues/assigned`** — the one workspace-wide issue route (`AssignedIssuesController`).
+
+**Auth:** Required. Any workspace member (`x-workspace-id`).
+
+**Query params (optional):** `page`, `limit` (default 20, max 100). Nothing else — the assignee is always the caller (`sub`), so it can't list another member's work.
+
+**What the backend does:** returns the caller's issues in this workspace, across every project, whose status category isn't `COMPLETED`; ordered by priority (`URGENT` first), then `updatedAt` desc. Each row embeds `status`, `sprint` (`{ id, name }` or `null`) and `project: { id, name, key }`. `metaData.totalData` is the caller's total open count.
+
+**Success:** `200 OK`, `data: Issue[]` with `metaData` as above.
 
 ---
 
@@ -200,8 +214,8 @@ Base path: `/projects/:projectId/issues`
 
 | Role | Allowed fields | Status restriction |
 |------|---------------|-------------------|
-| `OWNER` / `ADMIN` | All fields | Can set any status including `DONE` |
-| `MEMBER` | `status`, `rank` on any issue; all fields on issues they reported or are assigned to (as stored before the update) | Cannot set `DONE` |
+| `OWNER` / `ADMIN` | All fields | Can set any status, completed ones included |
+| `MEMBER` | `statusId`, `rank` on any issue; all fields on issues they reported or are assigned to (as stored before the update) | Cannot move it into a `COMPLETED` status |
 | `VIEWER` | None | — |
 
 Rules are permissions on the member's `Role` (`issue:status`, `issue:status:done`, `issue:edit:any`, `issue:edit:own`); the table shows the built-in defaults. Unlisted fields are refused.
@@ -211,18 +225,25 @@ Rules are permissions on the member's `Role` (`issue:status`, `issue:status:done
 {
   "title": "Updated title",
   "description": "Updated description",
-  "status": "IN_PROGRESS",
+  "statusId": "uuid",
   "priority": "URGENT",
+  "type": "STORY",
+  "timeEstimate": 5,
   "sprintId": "uuid-or-null",
-  "assigneeId": "uuid-or-null"
+  "assigneeId": "uuid-or-null",
+  "labelIds": ["uuid"]
 }
 ```
+
+`labelIds` replaces the issue's labels (`[]` removes them all; leave it out to keep them) and is a content field like the title. The list and single-issue responses embed `labels: [{ id, name, color }]`.
+
+`type` and `timeEstimate` follow the create rules and are content fields (`issue:edit:any` / `issue:edit:own`); `timeEstimate: null` clears the estimate. A sub-issue's type can't be changed (`400`), but it can be estimated.
 
 **What the backend does:**
 1. Checks the caller's role permissions (see the table above).
 2. Verifies the issue exists in this workspace + project.
 3. Checks each field against those permissions; for a `MEMBER`, ownership is judged on the issue as stored before the update. A field the caller may not change is a `403`.
-4. If `status` changes, checks it against the workflow (`400` if not allowed).
+4. If `statusId` changes, checks it is this project's (`400`) and that the project's workflow has that move (`400` if not). Joining a sprint from a backlog status is the exception: see `workflow-spec.md`.
 5. Applies the partial update.
 
 **Success:** `200 OK`
@@ -238,8 +259,8 @@ Rules are permissions on the member's `Role` (`issue:status`, `issue:status:done
 **Errors:**
 | Status | Reason |
 |--------|--------|
-| `400` | Validation failure |
-| `403` | `MEMBER` attempted to update a restricted field or set status to `DONE` |
+| `400` | Validation failure, a disallowed status transition, or a `type` sent for a sub-issue |
+| `403` | `MEMBER` attempted to update a restricted field or move the issue into a completed status |
 | `404` | Issue not found in this project/workspace |
 
 ---

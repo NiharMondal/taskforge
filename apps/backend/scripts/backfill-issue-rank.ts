@@ -3,7 +3,7 @@
  *
  * `rank` was added nullable so it could land on an existing table, which leaves
  * every pre-existing issue un-ranked. This assigns evenly spaced fractional
- * indexes per `(projectId, status)` lane, preserving the order those rows
+ * indexes per `(projectId, statusId)` lane, preserving the order those rows
  * already appeared in (`createdAt ASC` — what the board fell back to before
  * ranks existed).
  *
@@ -16,7 +16,7 @@
 import "dotenv/config";
 
 import { PrismaPg } from "@prisma/adapter-pg";
-import { generateNKeysBetween } from "fractional-indexing";
+import { ranksBetween } from "@taskforge/shared";
 import { PrismaClient } from "generated/prisma/client";
 
 const prisma = new PrismaClient({
@@ -24,13 +24,14 @@ const prisma = new PrismaClient({
 });
 
 /** Lane key — ranks are only ever compared within one `(project, status)` lane. */
-const laneKey = (projectId: string, status: string) => `${projectId}:${status}`;
+const laneKey = (projectId: string, statusId: string) =>
+  `${projectId}:${statusId}`;
 
 async function main() {
   const unranked = await prisma.issue.findMany({
     where: { rank: null },
-    orderBy: [{ projectId: "asc" }, { status: "asc" }, { createdAt: "asc" }],
-    select: { id: true, projectId: true, status: true },
+    orderBy: [{ projectId: "asc" }, { statusId: "asc" }, { createdAt: "asc" }],
+    select: { id: true, projectId: true, statusId: true },
   });
 
   if (unranked.length === 0) {
@@ -40,7 +41,7 @@ async function main() {
 
   const lanes = new Map<string, string[]>();
   for (const issue of unranked) {
-    const key = laneKey(issue.projectId, issue.status);
+    const key = laneKey(issue.projectId, issue.statusId);
     const lane = lanes.get(key) ?? [];
     lane.push(issue.id);
     lanes.set(key, lane);
@@ -52,19 +53,15 @@ async function main() {
   const ranked = await prisma.issue.findMany({
     where: { rank: { not: null } },
     orderBy: { rank: "asc" },
-    select: { projectId: true, status: true, rank: true },
+    select: { projectId: true, statusId: true, rank: true },
   });
   const maxRank = new Map<string, string>();
   for (const issue of ranked) {
-    maxRank.set(laneKey(issue.projectId, issue.status), issue.rank!);
+    maxRank.set(laneKey(issue.projectId, issue.statusId), issue.rank!);
   }
 
   for (const [key, ids] of lanes) {
-    const keys = generateNKeysBetween(
-      maxRank.get(key) ?? null,
-      null,
-      ids.length,
-    );
+    const keys = ranksBetween(maxRank.get(key) ?? null, null, ids.length);
     await prisma.$transaction(
       ids.map((id, index) =>
         prisma.issue.update({ where: { id }, data: { rank: keys[index] } }),

@@ -4,7 +4,8 @@ import { NestFactory } from "@nestjs/core";
 import "dotenv/config";
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // `rawBody` keeps the request bytes for the Stripe webhook's signature check.
+  const app = await NestFactory.create(AppModule, { rawBody: true });
   configureApp(app);
   // Run OnModuleDestroy (PrismaService.$disconnect) on SIGTERM/SIGINT instead of
   // dropping the DB connections mid-flight.

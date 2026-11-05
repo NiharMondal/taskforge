@@ -1,23 +1,57 @@
+import { PlanLimitException } from "@/common/plans/plan-limits";
 import { PrismaService } from "@/prisma/prisma.service";
+import { BadGatewayException, NotFoundException } from "@nestjs/common";
 import { WorkspaceRole } from "generated/prisma/enums";
+import { BillingService } from "../billing/billing.service";
 import { WorkspaceService } from "./workspace.service";
 
 describe("WorkspaceService", () => {
   let prisma: {
-    workspace: { create: jest.Mock; update: jest.Mock };
-    membership: { create: jest.Mock };
+    workspace: {
+      create: jest.Mock;
+      update: jest.Mock;
+      findUnique: jest.Mock;
+      findUniqueOrThrow: jest.Mock;
+      findMany: jest.Mock;
+      count: jest.Mock;
+      delete: jest.Mock;
+    };
+    membership: { create: jest.Mock; findMany: jest.Mock };
     role: { createManyAndReturn: jest.Mock };
+    auditLog: { create: jest.Mock };
     $transaction: jest.Mock;
   };
+  let billing: { cancelForDeletion: jest.Mock };
   let service: WorkspaceService;
 
   beforeEach(() => {
     prisma = {
       workspace: {
         create: jest.fn().mockResolvedValue({ id: "ws-1" }),
-        update: jest.fn().mockResolvedValue({ id: "ws-1" }),
+        // The stored workspace after the update: Acme with what was sent.
+        update: jest.fn(
+          ({ data }: { data: { name?: string; description?: string } }) =>
+            Promise.resolve({
+              id: "ws-1",
+              name: data.name ?? "Acme",
+              description: data.description ?? null,
+            }),
+        ),
+        findUnique: jest.fn().mockResolvedValue({ id: "ws-1", name: "Acme" }),
+        findUniqueOrThrow: jest
+          .fn()
+          .mockResolvedValue({ name: "Acme", description: null }),
+        findMany: jest.fn().mockResolvedValue([]),
+        count: jest.fn().mockResolvedValue(0),
+        delete: jest.fn().mockResolvedValue({ id: "ws-1" }),
       },
-      membership: { create: jest.fn().mockResolvedValue({}) },
+      membership: {
+        create: jest.fn().mockResolvedValue({}),
+        // The workspaces the caller owns: one Free one (their first).
+        findMany: jest
+          .fn()
+          .mockResolvedValue([{ workspace: { subscription: null } }]),
+      },
       role: {
         createManyAndReturn: jest.fn(
           ({ data }: { data: { systemKey: WorkspaceRole }[] }) =>
@@ -29,12 +63,17 @@ describe("WorkspaceService", () => {
             ),
         ),
       },
+      auditLog: { create: jest.fn().mockResolvedValue({}) },
       $transaction: jest.fn(),
     };
     prisma.$transaction.mockImplementation((cb: (tx: unknown) => unknown) =>
       cb(prisma),
     );
-    service = new WorkspaceService(prisma as unknown as PrismaService);
+    billing = { cancelForDeletion: jest.fn().mockResolvedValue(undefined) };
+    service = new WorkspaceService(
+      prisma as unknown as PrismaService,
+      billing as unknown as BillingService,
+    );
   });
 
   describe("create", () => {
@@ -56,7 +95,12 @@ describe("WorkspaceService", () => {
         expect.objectContaining({
           name: "Member",
           systemKey: WorkspaceRole.MEMBER,
-          permissions: ["issue:create", "issue:edit:own", "issue:status"],
+          permissions: [
+            "issue:create",
+            "issue:edit:own",
+            "issue:status",
+            "comment:create",
+          ],
         }),
       ]);
       expect(prisma.role.createManyAndReturn).toHaveBeenCalledWith({
@@ -73,6 +117,41 @@ describe("WorkspaceService", () => {
       });
     });
 
+    it("402s a third Free workspace the caller would own", async () => {
+      prisma.membership.findMany.mockResolvedValue([
+        { workspace: { subscription: null } },
+        { workspace: { subscription: { plan: "PRO", status: "CANCELED" } } },
+      ]);
+
+      const error = await service
+        .create("user-1", { name: "Acme" })
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(PlanLimitException);
+      expect((error as PlanLimitException).getResponse()).toMatchObject({
+        code: "PLAN_LIMIT",
+        limit: "ownedWorkspaces",
+      });
+      expect(prisma.workspace.create).not.toHaveBeenCalled();
+      expect(prisma.membership.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { userId: "user-1", role: WorkspaceRole.OWNER },
+        }),
+      );
+    });
+
+    it("doesn't count owned workspaces on a paid plan", async () => {
+      prisma.membership.findMany.mockResolvedValue([
+        { workspace: { subscription: null } },
+        { workspace: { subscription: { plan: "PRO", status: "ACTIVE" } } },
+        { workspace: { subscription: { plan: "PRO", status: "PAST_DUE" } } },
+      ]);
+
+      await service.create("user-1", { name: "Acme" });
+
+      expect(prisma.workspace.create).toHaveBeenCalled();
+    });
+
     it("leaves the description unset when none is sent", async () => {
       await service.create("user-1", { name: "Acme" });
 
@@ -83,8 +162,42 @@ describe("WorkspaceService", () => {
   });
 
   describe("update", () => {
+    const auditRows = () =>
+      (
+        prisma.auditLog.create.mock.calls as [
+          { data: Record<string, unknown> },
+        ][]
+      ).map(([arg]) => arg.data);
+
+    it("records workspace.updated once, with the rename and not the description text", async () => {
+      await service.update("ws-1", "user-1", {
+        name: "Acme Inc",
+        description: "Secret plans",
+      });
+
+      expect(auditRows()).toEqual([
+        {
+          workspaceId: "ws-1",
+          userId: "user-1",
+          action: "workspace.updated",
+          entityType: "WORKSPACE",
+          entityId: "ws-1",
+          metadata: {
+            name: { from: "Acme", to: "Acme Inc" },
+            description: true,
+          },
+        },
+      ]);
+    });
+
+    it("records nothing for a save that changed nothing", async () => {
+      await service.update("ws-1", "user-1", { name: "Acme" });
+
+      expect(prisma.auditLog.create).not.toHaveBeenCalled();
+    });
+
     it("persists the description", async () => {
-      await service.update("ws-1", { description: "New blurb" });
+      await service.update("ws-1", "user-1", { description: "New blurb" });
 
       expect(prisma.workspace.update).toHaveBeenCalledWith({
         where: { id: "ws-1" },
@@ -93,12 +206,116 @@ describe("WorkspaceService", () => {
     });
 
     it("can clear the description with an empty string", async () => {
-      await service.update("ws-1", { name: "Acme", description: "" });
+      await service.update("ws-1", "user-1", { name: "Acme", description: "" });
 
       expect(prisma.workspace.update).toHaveBeenCalledWith({
         where: { id: "ws-1" },
         data: { name: "Acme", description: "" },
       });
+    });
+  });
+
+  describe("findOne", () => {
+    // Membership is WorkspaceGuard's job; any member may read the row.
+    it("returns the workspace without a second membership lookup", async () => {
+      await expect(service.findOne("ws-1")).resolves.toEqual({
+        id: "ws-1",
+        name: "Acme",
+      });
+      expect(prisma.workspace.findUnique).toHaveBeenCalledWith({
+        where: { id: "ws-1" },
+      });
+    });
+
+    it("404s a workspace that no longer exists", async () => {
+      prisma.workspace.findUnique.mockResolvedValue(null);
+
+      await expect(service.findOne("ws-gone")).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+  });
+
+  describe("getUserWorkspaces", () => {
+    it("lists each workspace with the plan it is on now", async () => {
+      const row = { suspendedAt: null, suspendedReason: null };
+      prisma.workspace.findMany.mockResolvedValue([
+        { id: "ws-1", ...row, subscription: null },
+        {
+          id: "ws-2",
+          ...row,
+          subscription: { plan: "PRO", status: "TRIALING" },
+        },
+        { id: "ws-3", ...row, subscription: { plan: "PRO", status: "UNPAID" } },
+      ]);
+
+      const { data } = await service.getUserWorkspaces("user-1", {});
+
+      const listed = { suspendedAt: null, suspended: false };
+      expect(data).toEqual([
+        { id: "ws-1", ...listed, plan: "FREE" },
+        { id: "ws-2", ...listed, plan: "PRO" },
+        { id: "ws-3", ...listed, plan: "FREE" },
+      ]);
+    });
+  });
+
+  describe("delete", () => {
+    it("cancels the subscription before deleting", async () => {
+      await service.delete("ws-1");
+
+      expect(billing.cancelForDeletion).toHaveBeenCalledWith("ws-1");
+      expect(
+        billing.cancelForDeletion.mock.invocationCallOrder[0],
+      ).toBeLessThan(prisma.workspace.delete.mock.invocationCallOrder[0]);
+    });
+
+    it("keeps the workspace when the subscription can't be canceled", async () => {
+      billing.cancelForDeletion.mockRejectedValue(new BadGatewayException());
+
+      await expect(service.delete("ws-1")).rejects.toBeInstanceOf(
+        BadGatewayException,
+      );
+      expect(prisma.workspace.delete).not.toHaveBeenCalled();
+    });
+
+    it("runs beforeDelete in the deleting transaction, before the rows go", async () => {
+      const beforeDelete = jest.fn().mockResolvedValue(undefined);
+
+      await service.delete("ws-1", beforeDelete);
+
+      expect(beforeDelete).toHaveBeenCalledWith(prisma);
+      expect(beforeDelete.mock.invocationCallOrder[0]).toBeLessThan(
+        prisma.workspace.delete.mock.invocationCallOrder[0],
+      );
+    });
+  });
+
+  describe("the staff's suspension note", () => {
+    const suspended = {
+      id: "ws-1",
+      name: "Acme",
+      suspendedAt: new Date("2026-11-01"),
+      suspendedReason: "Chargeback investigation",
+      subscription: null,
+    };
+
+    it("is left out of GET /workspaces, which flags the workspace as suspended", async () => {
+      prisma.workspace.findMany.mockResolvedValue([suspended]);
+      prisma.workspace.count.mockResolvedValue(1);
+
+      const { data } = await service.getUserWorkspaces("user-1", {});
+
+      expect(data[0]).toMatchObject({ suspended: true, plan: "FREE" });
+      expect(data[0]).not.toHaveProperty("suspendedReason");
+    });
+
+    it("is left out of GET /workspaces/:id", async () => {
+      prisma.workspace.findUnique.mockResolvedValue(suspended);
+
+      await expect(service.findOne("ws-1")).resolves.not.toHaveProperty(
+        "suspendedReason",
+      );
     });
   });
 });

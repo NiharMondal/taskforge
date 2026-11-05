@@ -9,19 +9,12 @@
  * assuming they're present (AI_GUIDE → "never guess API").
  */
 
-export type IssueStatus =
-  | "BACKLOG"
-  | "TODO"
-  | "IN_PROGRESS"
-  | "IN_REVIEW"
-  | "QA_REQUESTED"
-  | "QA_FAILED"
-  | "DEPLOYED"
-  | "DONE";
+import type { IssueLabelRef } from "@/features/labels/types/label-types";
+import type { IssueStatusRef } from "@/features/workflow/types/workflow-types";
 
-export type IssuePriority = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+import type { IssuePriority, IssueType } from "@taskforge/shared";
 
-export type IssueType = "EPIC" | "STORY" | "TASK" | "BUG" | "SUBTASK";
+export type { IssuePriority, IssueStatusRef, IssueType };
 
 export interface IssueUser {
   id: string;
@@ -33,13 +26,37 @@ export interface Sprint {
   id: string;
   name: string;
 }
+
+/** A parent issue as embedded in its sub-issues (list and detail routes). */
+export interface ParentIssueRef {
+  id: string;
+  number: number;
+  title: string;
+}
+
+/** A sub-issue as embedded in its parent (detail route only). */
+export interface SubIssue {
+  id: string;
+  number: number;
+  title: string;
+  statusId: string;
+  status: IssueStatusRef;
+  priority: IssuePriority;
+  assigneeId?: string | null;
+  assignee?: IssueUser | null;
+}
 export interface Issue {
   id: string;
   title: string;
   description?: string | null;
-  status: IssueStatus;
+  /** A status of the project's own workflow (`useWorkflow`). */
+  statusId: string;
+  /** The status, embedded by every issue route. */
+  status: IssueStatusRef;
   priority: IssuePriority;
   type: IssueType;
+  /** Per-project sequence; shown with the project key as `WA-12` (see `IssueKey`). */
+  number: number;
   /** Fractional index for board ordering within a lane (see `lib/rank.ts`). */
   rank?: string | null;
   workspaceId: string;
@@ -50,24 +67,73 @@ export interface Issue {
    * single-issue route doesn't, so read `sprintId` when you only need the id.
    */
   sprint?: Sprint | null;
+  /** Set on sub-issues. Nesting is one level deep: a sub-issue has no sub-issues. */
   parentIssueId?: string | null;
-  /** Not editable yet: the create/update DTOs don't accept it. */
+  /** Embedded by the list and detail routes; `null` for top-level issues. */
+  parentIssue?: ParentIssueRef | null;
+  /** Detail route only (`useSingleIssue`), ordered by number. */
+  subIssues?: SubIssue[];
+  /** Story points (0–100), despite the name; `null` when not estimated. */
   timeEstimate?: number | null;
-  reporterId: string;
+  /** `null` once the reporter's account is deleted (the issue stays). */
+  reporterId: string | null;
   assigneeId?: string | null;
-  reporter?: IssueUser;
+  reporter?: IssueUser | null;
   assignee?: IssueUser | null;
+  /** List and detail routes: the issue's labels, alphabetically. */
+  labels?: IssueLabelRef[];
+  /** List route only. The thread itself comes from the comments route. */
+  _count?: { comments: number };
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * A row of `GET /issues/assigned`: one of the caller's open issues, from any
+ * project of the workspace, so it embeds its project (for the key and name).
+ * No labels, assignee or reporter — the assignee is the caller.
+ */
+export interface AssignedIssue
+  extends Pick<
+    Issue,
+    | "id"
+    | "title"
+    | "statusId"
+    | "status"
+    | "priority"
+    | "type"
+    | "number"
+    | "projectId"
+    | "sprintId"
+    | "createdAt"
+    | "updatedAt"
+  > {
+  project: { id: string; name: string; key: string };
+  sprint: Sprint | null;
 }
 
 export interface CreateIssueDto {
   title: string;
   description?: string;
-  status?: IssueStatus;
+  /** Left out, the project's default status. */
+  statusId?: string;
   priority?: IssuePriority;
+  /**
+   * Never SUBTASK — the backend refuses it, and refuses any type sent with
+   * `parentIssueId` or for an existing sub-issue.
+   */
+  type?: IssueType;
+  /** Story points; `null` clears the estimate. */
+  timeEstimate?: number | null;
+  /** Workspace label ids. On update the list replaces the issue's labels. */
+  labelIds?: string[];
   assigneeId?: string | null;
   sprintId?: string | null;
+  /**
+   * Create as a sub-issue of this issue (same project). The backend types it
+   * SUBTASK and, without a `sprintId`, puts it in the parent's sprint.
+   */
+  parentIssueId?: string;
 }
 
 /**

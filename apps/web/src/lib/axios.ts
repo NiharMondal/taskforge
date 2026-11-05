@@ -1,12 +1,16 @@
-import axios from "axios";
-import type { AxiosRequestConfig } from "axios";
+import axios, { AxiosError } from "axios";
+import type { AxiosRequestConfig, InternalAxiosRequestConfig } from "axios";
 
 import type { ApiResponse } from "@/types/api";
 
 import { getActiveWorkspaceId } from "./active-workspace";
 import { API_URL } from "./api-url";
 import { toApiError } from "./api-error";
-import { getAuthToken, notifyUnauthorized } from "./auth-token";
+import {
+  getAuthToken,
+  notifyUnauthorized,
+  refreshAuthToken,
+} from "./auth-token";
 
 /**
  * Central axios instance. Import `apiClient` everywhere — never call axios
@@ -63,14 +67,38 @@ apiClient.interceptors.request.use(async (config) => {
   return config;
 });
 
+/** Marks a request already retried with a renewed token, so it isn't again. */
+type RetriableConfig = InternalAxiosRequestConfig & { _renewedToken?: boolean };
+
 // Response: normalize every failure into an `ApiError` so callers handle one shape.
-// A 401 means the backend token expired/was rejected — the Auth.js cookie may
-// still look valid, so we signal the auth layer to sign the user out instead of
-// leaving them on a protected page with every request failing.
+// A 401 on a signed request usually means the 15-minute access token expired:
+// renew it once and retry. If that doesn't help, the session is over — the
+// Auth.js cookie may still look valid, so we signal the auth layer to sign the
+// user out instead of leaving them on a protected page with every request failing.
 apiClient.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
     const apiError = toApiError(error);
+    const config =
+      error instanceof AxiosError
+        ? (error.config as RetriableConfig | undefined)
+        : undefined;
+
+    if (
+      apiError.status === 401 &&
+      config &&
+      !config._renewedToken &&
+      config.headers.has("Authorization")
+    ) {
+      const sent = config.headers.get("Authorization");
+      const token = await refreshAuthToken();
+      if (token && sent !== `Bearer ${token}`) {
+        config._renewedToken = true;
+        // The request interceptor attaches the renewed token again.
+        return apiClient.request(config);
+      }
+    }
+
     if (apiError.status === 401) {
       notifyUnauthorized();
     }

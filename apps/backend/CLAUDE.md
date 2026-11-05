@@ -23,6 +23,7 @@ pnpm run test # Jest unit tests (rootDir=src, matches *.spec.ts)
 pnpm run test:e2e # Supertest e2e against a real Postgres (test/jest-e2e.json) — see Tests
 pnpm run test:cov # coverage
 pnpm run studio # Prisma Studio
+pnpm run set-platform-role <email> <ADMIN|SUPPORT|none> # grant/remove platform admin (spec/admin-spec.md)
 
 Single test file / single test:
 
@@ -46,7 +47,7 @@ Consequences:
 
 - `generated/` is gitignored. A fresh clone will not compile until `pnpm exec prisma generate` runs (`pnpm install` does it via the root `postinstall`).
 - Import models/enums from the generated path, NOT from `@prisma/client`:
-  - enums: `import { WorkspaceRole, IssueStatus } from "generated/prisma/enums"`
+  - enums: `import { WorkspaceRole, StatusCategory } from "generated/prisma/enums"`
   - types: `import { User } from "generated/prisma/client"`
   - Note these are bare `generated/...` specifiers (resolved via the tsconfig `paths` entry `generated/*` → `./generated/*`; there is no `baseUrl`), not `@/`-prefixed.
 - `prisma/migrations/` is committed. History starts at the `*_init` baseline (generated from the schema on 2026-10-01); earlier migrations were never tracked. Add schema changes with `pnpm exec prisma migrate dev --name <change>` and commit the new folder.
@@ -60,8 +61,11 @@ Three layers, applied in order. `src/modules/auth/CLAUDE.md` has module-level de
 
 1. **`JwtAuthGuard` — global.** Registered once in `app.module.ts` via `APP_GUARD`. It applies to
    every route, so you do not need `@UseGuards(JwtAuthGuard)` (existing controllers still list it
-   redundantly; harmless). Opt out with `@Public()` (used on `POST /auth/register`, `POST /auth/login`, `POST /auth/google`,
-   `GET /invitations/validate` and `GET /`).
+   redundantly; harmless). Opt out with `@Public()` (used on every `/auth/*` route but
+   `PATCH /auth/password` — `register`, `verify-email`, `login`, `google`, `refresh`, `logout`,
+   `forgot-password`, `reset-password` — plus
+   `GET /invitations/validate`, `POST /billing/webhook`, `GET /health`, `POST /maintenance/cleanup`
+   (which checks its own `CRON_SECRET`) and `GET /`).
    It throws `UnauthorizedException("Token not provided!")` (401) when the `authorization` header is missing.
    `JwtStrategy.validate()` returns the payload unchanged, so `req.user` is `{ sub, email }`.
 2. **`WorkspaceGuard` — opt-in per controller/route.** Resolves the tenant from the
@@ -78,42 +82,77 @@ Parameter decorators (in `src/common/decorators/`): `@CurrentUser(): JwtPayload`
 `@WorkspaceId(): string` (throws if `WorkspaceGuard` did not run), `@Access(): WorkspaceAccess`.
 
 Token secret is `JWT_ACCESS_SECRET`, read via `ConfigService.getOrThrow` — never `process.env`
-directly and never hardcoded. Access token expiry is `1d` (`auth.module.ts`). There is currently
-**no refresh token implementation**.
+directly and never hardcoded. Access tokens last 15 minutes (`ACCESS_TOKEN_TTL_SECONDS` in
+`auth.constants.ts`). Every sign-in also returns an opaque refresh token (`RefreshTokenService`,
+stored as a SHA-256 hash): `POST /auth/refresh` replaces it with the next one in its family, a
+replaced token reused after 60 seconds revokes the family, and `POST /auth/logout` revokes it
+(`spec/auth-spec.md`).
 
 ### Roles and permissions
 
 Each workspace has `Role` rows (name + `permissions: String[]`); `Membership.roleId` /
 `Invitation.roleId` point at one. The four built-ins carry a `systemKey` and are created by
 `seedSystemRoles` (`src/modules/roles/system-roles.ts`) in every transaction that creates a
-workspace. The permission catalog and the built-ins' defaults are
-`src/common/permissions/permissions.ts` — a new key needs a migration to reach existing Role rows,
-and the `add_workspace_roles` migration's seed must match `DEFAULT_ROLE_PERMISSIONS`.
+workspace. The permission catalog and the built-ins' defaults are in
+`@taskforge/shared` (`packages/shared/src/permissions.ts`) — a new key needs a migration to reach existing Role rows
+(as `comment_permissions`, `label_permissions` and `audit_log` did), and the `add_workspace_roles` seed plus those grant migrations must
+add up to `DEFAULT_ROLE_PERMISSIONS`.
 
-- **OWNER holds every permission in code** (its stored list is ignored), including
-  `workspace:delete`, which no role can be granted. It can't be assigned, invited to or removed.
+- **OWNER holds every permission in code** (its stored list is ignored), including the
+  owner-only `workspace:delete`, `workspace:transfer` and `billing:manage`, which no role can be granted. It can't be
+  assigned, invited to or removed; the owner leaves the role only through
+  `POST /memberships/transfer-ownership`, which swaps OWNER and ADMIN in one transaction (the
+  step-down matches on still being the owner, so a racing transfer gets a 409). Any non-owner can
+  leave with `DELETE /memberships/me`, except from their only workspace (`spec/membership-spec.md`).
 - **Unknown stored keys are ignored**, and a membership with no `roleId` (written before roles)
   falls back to its enum's defaults.
 - **Issue writes are field-level** (`src/common/permissions/issue-access.ts`): an allow-list maps
-  each field to `issue:status` (`status`, `rank`) or the content permissions (`issue:edit:any`, or
+  each field to `issue:status` (`statusId`, `rank`) or the content permissions (`issue:edit:any`, or
   `issue:edit:own` when the *stored* issue's reporter or assignee is the caller). Fields missing from
-  the map are refused. DONE needs `issue:status:done`, on create too.
-- **No escalation:** `assertActorHolds` refuses a role change, removal or invitation that involves
-  a permission the actor doesn't hold.
-- `Membership.role` / `Invitation.role` (enum) are still written next to `roleId` for older code and
-  the web app; read permissions from `request.access`, never from the enum.
+  the map are refused. Moving into a `COMPLETED`-category status needs `issue:status:done`, on
+  create too (`assertCanSetStatus`, called by the service once it has resolved the status).
+- **No escalation:** `assertActorHolds` refuses handing out a role (role change, invitation) that
+  holds a permission the actor doesn't. Changing or removing a member takes *strictly more* access
+  (`assertActorOutranks`: every one of the target's permissions plus at least one more), so two
+  Admins — or two holders of the same custom role — can't demote or remove each other; the OWNER,
+  with the owner-only keys, outranks everyone. An Admin can still make someone an Admin.
+- `GET /workspaces/:id` is open to any member (`WorkspaceGuard` only): it returns the same row
+  `GET /workspaces` already lists. `PATCH` needs `workspace:manage`, `DELETE` `workspace:delete`.
+- **Custom roles** (`src/modules/roles/`, `spec/role-spec.md`): `GET /roles` for any member;
+  `role:manage` creates, edits and deletes custom roles. The built-ins are read-only (grant
+  migrations extend them by `systemKey`), names are unique ignoring case, and a role still held by a
+  member or a live invitation can't be deleted (409). Members and invitations get a role by
+  `roleId` (or a built-in's `role`), resolved by `resolveAssignableRole` in `system-roles.ts`, which
+  refuses the owner's.
+- `Membership.role` / `Invitation.role` (enum) are still written next to `roleId` — the built-in's
+  key, or MEMBER for a custom role; read permissions from `request.access`, never from the enum.
 
 ### Accounts and sign-in methods
 
 `User.email` (unique) is the one email for a person. `Auth` holds one row per sign-in method,
 `@@unique([userId, provider])`: an `EMAIL` row carries the bcrypt `password`, a `GOOGLE` row carries
-Google's `sub` as `providerId` (`@@unique([provider, providerId])`). Registering creates User +
-EMAIL auth + workspace + OWNER membership in one transaction; a first Google sign-in does the same
-with a GOOGLE auth. The email column is on `User`, never on `Auth`. Password login starts from
+Google's `sub` as `providerId` (`@@unique([provider, providerId])`). Registering creates **no**
+user: it stores a `PendingRegistration` (name, email, password hash, hashed token) and emails a
+link; `POST /auth/verify-email` then creates User + EMAIL auth + workspace + OWNER membership in one
+transaction (`AuthService.createAccount`), and a first Google sign-in does the same with a GOOGLE
+auth. Register answers 202 for any address — a taken one gets a "you already have an account" email
+instead — so it doesn't reveal which emails are registered. The email column is on `User`, never on `Auth`. Password login starts from
 the `EMAIL` `Auth` row, matched through its user's email (`auth.findFirst({ where: { provider:
 EMAIL, user: { email } } })`), and answers every failure with the same 401 "Invalid email or
 password" — after a bcrypt comparison against a dummy hash when nothing matched, so neither the
-message nor the timing reveals whether an email is registered.
+message nor the timing reveals whether an email is registered. The right password on an
+unverified account (only ones registered before verification existed) is a 403; registering again
+sends a link that replaces that password. A signed-in user changes their password with
+`PATCH /auth/password` (`AuthService.changePassword`): wrong current password or no `EMAIL` row is
+a 400 (never 401, which the web reads as a dead session), and success stores the new hash only if
+the checked one is still there, revokes every refresh token in the same transaction, and emails the
+owner. `GET /users/me` returns `hasPassword` (`UserService.findProfile`) so the web knows whether to
+offer it. "Forgot password" (`POST /auth/forgot-password`, `@Public()`) answers 202 for any address
+and emails an account a `/reset-password?token=…` link backed by a `PasswordReset` row (token
+stored as `hashToken`, `PASSWORD_RESET_TTL_MINUTES` from `@taskforge/shared`, 3 links per account
+per 15 minutes); `POST /auth/reset-password` claims the row (`deleteMany` + `count === 1`, like
+`verifyEmail`), upserts the `EMAIL` auth (so a Google-only account gets a password), marks the email
+verified, revokes every refresh token in the same transaction, and doesn't sign in.
 
 ### Google sign-in
 
@@ -121,12 +160,16 @@ message nor the timing reveals whether an email is registered.
 `{ idToken }`; `GoogleTokenVerifier` verifies it with `google-auth-library` (signature, expiry,
 `audience = GOOGLE_CLIENT_ID`, `email_verified`) and `AuthService.googleSignIn` takes `sub`, `email`
 and `picture` from the verified payload. Accounts match on Google's `sub` first, then link by
-(case-insensitive) email. Registration does not verify email, so `User.emailVerifiedAt` records
-who has proven ownership (Google sign-ups; every account that predates the column was backfilled
-as verified). Linking Google to an account whose `emailVerifiedAt` is null deletes its `EMAIL` auth
-and sets the timestamp in one transaction — otherwise whoever pre-registered the address would
-keep password access to the owner's account. The auth routes are rate-limited by `@nestjs/throttler` (`AUTH_THROTTLE`:
+(case-insensitive) email. `User.emailVerifiedAt` records who has proven ownership (Google sign-ups
+and verified registrations; every account that predates the column was backfilled as verified, so
+only password accounts registered between that and email verification are null). Linking Google to
+an account whose `emailVerifiedAt` is null deletes its `EMAIL` auth, sets the timestamp and revokes
+its refresh tokens in one transaction — otherwise whoever pre-registered the address would keep
+access to the owner's account. The auth routes are rate-limited by `@nestjs/throttler` (`AUTH_THROTTLE`:
 10/min per client) — behind a reverse proxy, set Express `trust proxy` or every client shares one bucket.
+`refresh` and `logout` are `@SkipThrottle()`: the web app calls them from its server for every
+user. (So does `login`, through the Auth.js Credentials provider, which means today the whole web
+app shares one login bucket.)
 
 ## Multi-workspace isolation — CRITICAL
 
@@ -143,17 +186,68 @@ Correlated writes must re-verify ownership rather than trusting ids from the cli
 `remove` call `findOne(workspaceId, projectId, issueId)` first so the `prisma.*.update({ where: { id } })`
 that follows is already proven to be in-tenant.
 
+The **one deliberate exception** is the platform admin module (`src/modules/admin/`, below): it reads
+across tenants on purpose, behind `@RequirePlatformRole`. Cross-tenant reads go there and nowhere else.
+
 `User` and `Workspace` are the only models without a `workspaceId`. `UserController`
 (`/api/v1/users`) therefore has no tenant scope to lean on, so it is strictly self-only: `GET`/`PATCH`
-`/users/me` and `/users/:id` where `:id` must equal the JWT `sub` (anything else is 403). There is no
-list and no delete route — don't add one without a tenant-scoped design.
+`/users/me` and `/users/:id` where `:id` must equal the JWT `sub` (anything else is 403), plus
+`GET /users/me/export` and `DELETE /users/me` (`AccountService`, below). There is no list route and
+no delete-by-id — don't add one without a tenant-scoped design.
+
+## Account deletion and data export
+
+`src/modules/user/account.service.ts` (`spec/user-spec.md`). `DELETE /users/me` confirms with the
+password (an `EMAIL` auth) or, for a Google-only account, `confirmEmail`; a wrong one is a 400. It is
+a 409 (body `workspaces: [{ id, name }]`) while the caller owns a workspace with another member.
+Workspaces only they belong to are deleted the way `WorkspaceService.delete` does it —
+`cancelForDeletion` first, outside the transaction — then one transaction re-checks nobody joined
+them, deletes them, writes `member.left` into every other workspace's audit log and deletes the
+`User`. `Issue.reporterId` and `Comment.userId` are nullable with `onDelete: SetNull` (the
+`keep_deleted_users_issues_and_comments` migration), so shared work survives with a null reporter or
+author; code reading them must handle `null` (`issue:edit:own` never matches it, nobody is a
+null-author comment's author). After the commit: the avatar is deleted, a confirmation email is
+sent, and `syncSeats` runs for each workspace left. `GET /users/me/export` returns the profile,
+sign-in methods, memberships, and the issues and comments in workspaces they still belong to. Both
+routes are throttled per user by `UserThrottlerGuard` (the auth module's global `ThrottlerModule`,
+tracked by `req.user.sub` instead of the client address).
+
+## Platform admin
+
+`src/modules/admin/` (`spec/admin-spec.md`) serves `GET /admin/stats`, `/admin/workspaces`,
+`/admin/workspaces/:id`, `/admin/users` and `/admin/users/:id` (SUPPORT and ADMIN), and the ADMIN
+actions — `PATCH /admin/users/:id` and `/admin/workspaces/:id` (`{ suspended, reason }`),
+`POST /admin/users/:id/revoke-sessions`, `DELETE /admin/users/:id` and `/admin/workspaces/:id`
+(`{ reason }`), `GET /admin/audit-log` — across every workspace, with no `x-workspace-id` and no
+`WorkspaceGuard`. Actions live in `AdminActionsService`: an admin never acts on themselves or another
+ADMIN (403); each writes one `PlatformAuditLog` row in the transaction of the change; deletes reuse
+`AccountService.deleteAccountAsStaff` and `WorkspaceService.delete` (both take a hook that runs in
+their transaction for the audit row). **Suspension:** `User`/`Workspace.suspendedAt` +
+`suspendedReason` (a staff note — only /admin returns it; other routes pass rows through
+`withoutStaffNote`). A suspended account gets 403 `ACCOUNT_SUSPENDED`
+(`AccountSuspendedException`) from login (after the password check), Google, refresh and
+verify-email, and suspending revokes its refresh tokens; its access token lives out its 15 minutes.
+A suspended workspace gets 403 `WORKSPACE_SUSPENDED` from `resolveWorkspaceAccess` (every scoped
+route) and from invitation accept; `GET /workspaces` lists it with `suspended: true`. Plans are
+never changed here: that is Stripe's (coupons, trials). `User.platformRole` (`ADMIN` | `SUPPORT` | null) is
+the boundary. `@RequirePlatformRole(role)` applies `PlatformRoleGuard`
+(`src/common/guards/platform-role.guard.ts`), which reads the role **from the database on every
+request** (never from the JWT) and 403s without at least that role (ADMIN passes SUPPORT routes).
+No route writes `platformRole`: only `pnpm run set-platform-role <email> <ADMIN|SUPPORT|none>`
+(`scripts/set-platform-role.ts` → `setPlatformRole`), which records each change in
+`PlatformAuditLog` (`recordPlatformEvent`, `platform-audit.ts`) in the same transaction, with
+`actorId: null`. `PlatformAuditLog` is apart from `AuditLog`, which needs a `workspaceId`. Admin
+queries list their columns with `select`, so no hash or token can leak. The `?plan=` filter is
+`effectivePlanWhere`, which must stay equal to `effectivePlan` (its spec checks every plan ×
+status). The workspace detail's `stripeMode` comes from `StripeService.mode()` (the key's
+`sk_test_`/`sk_live_` prefix), which is why `BillingModule` exports `StripeService`.
 
 ## API response shape
 
 Controllers return `sendResponse()` from `src/common/utils/send-response.ts`:
 
 ```ts
-{ success: true, statusCode: number, message: string, metaData?: IPaginationMeta, data: T }
+{ success: true, statusCode: number, message: string, metaData?: PaginationMeta, data: T }
 ```
 
 Errors are shaped by the global `HttpExceptionFilter` (`src/lib/http-exception.filter.ts`), which
@@ -181,20 +275,32 @@ const { data, metaData } = await qb.execute(this.prisma.issue);
 ```
 
 `.execute()` runs `findMany` + `count` in parallel and returns `{ data, metaData }`; pass `metaData`
-straight into `sendResponse`. Defaults: page 1, limit 10, maxLimit 100.
+straight into `sendResponse`. Defaults: page 1, limit 10, maxLimit 100. The sort always ends with
+`id` in the same direction, so rows tied on the sort field can't repeat or vanish across pages.
+
+Besides issues, the projects, sprints, memberships, invitations and workspaces lists are paginated
+this way; labels, roles, comments and activity still return everything. `GET /workspaces` is
+scoped by `memberships: { some: { userId } }`, since `Workspace` has no `workspaceId`. Those five take only `PaginationQueryDto` (`src/common/dto/`: `page`,
+`limit`, default 20, max 100) and never call `.filter()`; `QueryIssuesDto` extends it. Without
+`?page`/`?limit` a list answers its first 20 rows — a client that needs the whole list must walk
+`metaData.hasNextPage`, as the web does.
 
 Two sharp edges: `.filter()` turns **every** unrecognized query param into a Prisma `where` clause
 (reserved keys are only `search`, `page`, `limit`, `sort`), so list DTOs must be tight — the global
-`ValidationPipe` has `whitelist: true`, which is what actually stops arbitrary column filtering.
+`ValidationPipe` has `whitelist: true` (and `forbidNonWhitelisted`, so an undeclared key is a 400),
+which is what actually stops arbitrary column filtering.
 And `.withDefaultFilter()` is the only thing scoping the query to a tenant, so never omit it.
 
 ## Conventions
 
 - Controllers are thin: guards + decorators + service call + `sendResponse`. No business logic.
-- DTOs use class-validator/class-transformer. Global `ValidationPipe({ whitelist: true, transform: true })`.
+- DTOs use class-validator/class-transformer. Global `ValidationPipe(VALIDATION_PIPE_OPTIONS)`
+  (`app.setup.ts`: `whitelist`, `forbidNonWhitelisted`, `transform`): a body or query key the DTO
+  doesn't declare is a 400, not silently dropped. Controller specs build their pipe from the same
+  options.
 - Services throw Nest HTTP exceptions (`NotFoundException`, `ForbiddenException`, `ConflictException`).
-- Prisma only, no raw SQL. Multi-step writes use `this.prisma.$transaction` (see `AuthService.register`,
-  which creates user + workspace + OWNER membership atomically).
+- Prisma only, no raw SQL. Multi-step writes use `this.prisma.$transaction` (see `AuthService.verifyEmail`,
+  which creates user + workspace + OWNER membership atomically through `createAccount`).
 - New feature modules go in `src/modules/<name>/` as `<name>.module.ts`, `.controller.ts`, `.service.ts`, `dto/`.
   Cross-cutting pieces go in `src/common/` (`decorators/`, `guards/`, `strategies/`, `types/`, `utils/`).
 - Read before editing: `src/common/decorators/`, `src/common/guards/`, `src/common/strategies/`, `prisma/schema.prisma`.
@@ -210,22 +316,77 @@ asset nor another user's pending upload can be destroyed through it. `User` stor
 `avatarUrl` and `avatarPublicId`; `avatarUrl` is never taken from the client (it is the promoted
 asset's URL, Google's picture, or `null` after `avatarPublicId: null` removes the avatar).
 
+## Email
+
+`src/modules/mail/`: an email is a builder returning `Email` (`{ subject, text, html }`, from
+`email-layout.ts`) next to the module that sends it (`auth-emails.ts`, `invitation-emails.ts`),
+rendered with `emailLayout()`. The layout escapes only the `url`; escape user-controlled text in
+the HTML part yourself with `escapeHtml` (`src/helper`), and leave the subject and text part plain.
+Send with `MailService.sendInBackground({ to, ...email })` — it doesn't await SMTP and logs a
+failure — and build links with `appUrl(this.config, path)` from `src/helper`. Specs mock
+`sendInBackground`.
+
+## Health check
+
+`GET /health` (`src/modules/health/`, `spec/health-spec.md`) is `@Public()` and unthrottled, for
+hosting platforms and uptime monitors: it runs `SELECT 1` and answers 200 with
+`{ status: "ok", db: "ok", uptime }`, or 503 when the database fails or takes longer than
+`HEALTH_DB_TIMEOUT_MS` (3 s). The error is logged, never sent. `GET /` still says hello.
+
+## Scheduled cleanup
+
+`src/modules/maintenance/` (`spec/maintenance-spec.md`). `CleanupService.run()` deletes expired
+`PendingRegistration`/`PasswordReset` rows, refresh tokens expired/revoked/replaced over 30 days ago
+and Stripe event ids over 90 days old, and marks expired `PENDING` invitations `EXPIRED` — each task
+in its own try/catch, all idempotent, under a `pg_try_advisory_xact_lock` held by a transaction
+that stays open for the run (the tasks run outside it, so one failure can't abort the others). It
+runs from `@Cron` (03:17 UTC, `ScheduleModule.forRoot()` in `app.module.ts`), from
+`POST /maintenance/cleanup` with `Authorization: Bearer <CRON_SECRET>` (for hosts that sleep; the
+repo's `.github/workflows/cleanup.yml` calls it), and from `pnpm run cleanup`. A new table that
+grows without bound gets a task there. `@nestjs/schedule` is pinned to 6.x: 12.x is ESM-only,
+which Jest here can't load.
+
+## Workflows
+
+`src/modules/workflows/` serves `/projects/:projectId/workflow` (`spec/workflow-spec.md`). A
+project's statuses are `WorkflowStatus` rows (name, hex color, `category`, a fractional `position`,
+one `isDefault`) and its allowed moves are `WorkflowTransition` rows; `Issue.statusId` points at one
+of its own project's statuses. **Never test a status by name** — read its `category`: completing
+needs `issue:status:done`, `committedStatus` moves a `BACKLOG`-category issue joining a sprint to the
+first `UNSTARTED` status (skipping the transition check), and `endSprint` releases everything not
+`COMPLETED`. `ProjectService.create` seeds `DEFAULT_WORKFLOW_STATUSES` (`seedDefaultWorkflow`) or,
+with `workflowFromProjectId` on Pro, copies another project's (`copyWorkflow`), in the project's
+transaction. `WorkflowService` writes need `project:manage` and `assertCanCustomizeWorkflow` (402 on
+Free; a workflow customized on Pro keeps working after a downgrade, read-only), hold a per-project
+advisory lock (`workflow:<projectId>`), and refuse (409) leaving no `UNSTARTED` or `COMPLETED`
+status or deleting the default. Deleting a status with issues requires `?moveTo=`; they are appended
+to that lane under its lock, each with a history row. `Issue.status` is `onDelete: NoAction` (not
+Restrict, so project and workspace cascades work). The `custom_workflows` migration gave every
+existing project the eight statuses and moves it had.
+
 ## Issue board ordering
 
 `Issue.rank` is a nullable fractional index (base-62 string) for ordering cards within a
-`(project, status)` lane, backed by the `@@index([projectId, status, rank])`. Keys come from
-`fractional-indexing` — the same library the frontend uses, so both sides generate compatible keys.
+`(project, statusId)` lane, backed by the `@@index([projectId, statusId, rank])`. Keys come from
+`@taskforge/shared`'s `rankBetween`/`isValidRank` (`fractional-indexing`) — the same helpers the
+frontend uses, so both sides generate compatible keys.
 
 `IssueService` owns rank on writes:
 
 - **create** ignores any client-supplied rank and appends: `appendRank()` reads the lane's current
-  max rank (filtering `rank: null`, because Postgres sorts NULLs *first* on `DESC`) and generates a
-  key after it. The lane is `dto.status ?? BACKLOG`, mirroring the schema default.
-- **update** persists `dto.rank` verbatim — the board computes it on drop from the neighbors the user
-  actually sees, so it is authoritative. `validateRank` rejects a key the library can't build on with
-  a 400 rather than storing junk that would break the next insert.
+  max rank (`lastRankInLane` in `issue-lane.ts`, filtering `rank: null`, because Postgres sorts NULLs
+  *first* on `DESC`) and generates a key after it. The lane is `dto.statusId`, else the project's
+  default status.
+- **update** persists `dto.rank` as sent — the board computes it on drop from the neighbors the user
+  actually sees, so it is authoritative — unless another issue in the target lane already holds that
+  exact key (two people dropping into the same gap): `freeRank()` then stores a key between that
+  issue and the next one. `validateRank` rejects a key the library can't build on with a 400 rather
+  than storing junk that would break the next insert.
 - **update without a rank but with a new status** (the frontend's fallback when it can't compute a
   key) appends to the *target* lane, so a card can't carry a stale rank from the lane it left.
+- **Every rank write takes the lane's lock** (`inLockedLane` → `lockIssueLane`: `pg_advisory_xact_lock`
+  on `issue-lane:<projectId>:<statusId>`, released at commit), so concurrent appends and drops into one
+  lane queue and each sees the keys the others committed. A new rank write must go through it too.
 - `rank` is *not* in `update`'s MEMBER-restricted field list: a member allowed to re-status an issue
   is allowed to position it.
 
@@ -236,20 +397,124 @@ Rows created before rank existed are `NULL`. `pnpm run backfill:issue-rank`
 (`scripts/backfill-issue-rank.ts`) assigns spaced keys per lane in `createdAt` order — idempotent,
 only touches `rank IS NULL`. Keep the column nullable until it's been run everywhere.
 
+## Issue keys
+
+Issues are shown as `<Project.key>-<Issue.number>` (e.g. `WA-12`). `Project.key` is derived from
+the name on create by `deriveProjectKey` (`src/modules/projects/project-key.ts`: initials of up to 4
+words, or the first 3 characters of one word; `2`, `3`, ... appended until unique in the workspace)
+and is never changed afterwards. `Issue.number` comes from `Project.issueCounter`, incremented inside
+the create transaction — the row lock on the project serializes concurrent creates, and
+`@@unique([projectId, number])` backs it. The `project_keys_and_issue_numbers` migration backfilled
+existing rows with the same key rule, so change both together.
+
+## Sprint commitment
+
+"Backlog" means *not in a sprint*. `committedStatus` in `IssueService` moves an issue in a
+`BACKLOG`-category status to the project's first `UNSTARTED` status when it joins a sprint — on
+create (including a sub-issue inheriting its parent's sprint) and on a PATCH that sets `sprintId`
+without a `statusId` — because the web board shows the active sprint and has no backlog lanes. The
+implied status goes through `assertCanUpdateIssue` like a sent one but not the transition check (a
+workflow without that move mustn't block sprint planning), and appends to that lane. Leaving a sprint keeps the status.
+The `sprint_issues_leave_backlog_status` migration converted existing rows (rank cleared).
+
+## Sub-issues
+
+`POST /projects/:projectId/issues` with `parentIssueId` creates a sub-issue. `validateParent`
+requires the parent in the same workspace *and* project (else 403) and refuses a parent that is
+itself a sub-issue (400) — nesting is one level deep. The child is typed `SUBTASK` and, without a
+`sprintId`, takes the parent's sprint. `SUBTASK` comes only from this: the DTOs accept `type` as
+`EPIC`/`STORY`/`TASK`/`BUG`, sending one with `parentIssueId` is a 400, and so is changing a
+sub-issue's type. (`timeEstimate` holds story points, 0–100 or `null`, despite its name.) The parent can't be changed after create (`UpdateIssueDto` has
+no `parentIssueId`). The list route embeds `parentIssue { id, number, title }`; the single-issue route
+(`findDetail`, kept apart from the `findOne` that writes start with) also embeds `subIssues`.
+Deleting a parent cascades to its sub-issues.
+
+## Comments
+
+`src/modules/comments/` serves `/projects/:projectId/issues/:issueId/comments` (`spec/comment-spec.md`).
+`Comment` has no `workspaceId`, so every query reaches the tenant through its issue
+(`issue: { workspaceId, projectId }`); a comment elsewhere is a 404. Posting and editing need
+`comment:create`; only the author edits; deleting is the author (while they still hold
+`comment:create`) or `comment:delete:any`. `content` is the editor's HTML, stored as sent, and must
+have text once tags are stripped. The issue list embeds `_count.comments` for board cards.
+
+## Labels
+
+`src/modules/labels/` serves the workspace's labels at `/labels` (`spec/label-spec.md`): any member
+lists them, `label:manage` creates, edits and deletes. Names are trimmed and unique per workspace
+*ignoring case* (`assertNameFree`; the DB index alone is case-sensitive). Issues take `labelIds` on
+create and update — a content field in `issue-access.ts`; `validateLabels` refuses one from another
+workspace (403); on update the list replaces the set (`deleteMany` + `create`). Issue reads include
+`LABELS_INCLUDE` and return `labels: [{ id, name, color }]` via `flattenLabels`, not the join rows.
+
+## Issue history (AuditLog)
+
+`src/modules/activity/` (`spec/activity-spec.md`). Issue history is `AuditLog` rows with
+`entityType` "ISSUE" and `entityId` the issue; `GET /projects/:projectId/issues/:issueId/activity`
+reads them for any member. They are written **in the same transaction as the change** with
+`recordIssueActivity(tx, ...)`, never afterwards: `IssueService.create` records `issue.created`;
+`update` diffs the stored issue against what was sent (`issueChanges`, a pure function) and, if
+anything tracked changed, records one `issue.updated` row with `{ changes }` — so every `update`
+path runs in a transaction now, and a rank-only reorder records nothing. `CommentService.remove`
+records `comment.deleted` only when a moderator removes someone else's comment. The validators
+(`validateAssignee`, `validateSprint`, `validateLabels`) return the `{ id, name }` they checked, and
+those names are copied into the row so history survives renames and deletes. Adding a tracked field
+means extending `IssueSnapshot`/`issueChanges` and the web's `describeChange` together.
+
+## Workspace audit log
+
+`spec/activity-spec.md`. Changes to members, invitations, roles, the workspace and its
+subscription are `AuditLog` rows too, written with `recordWorkspaceEvent(tx, …)`
+(`src/modules/activity/workspace-activity.ts`) **in the transaction of the change** — which is why
+`updateRole`, `removeMember`, `leave`, `revokeInvitation`, the role writes and
+`WorkspaceService.update` now run in one. Actions, entity types and each action's `metadata` shape
+live in `@taskforge/shared` (`audit.ts`), shared with the web's summaries; names are copied in.
+`GET /audit-log` (`audit:read`) reads them, never the ISSUE rows. A new audited action needs an
+entry in `AUDIT_ACTION_ENTITY` and `AuditMetadata`, the call in its service, and a summary in the
+web's `describe-audit-event.ts`.
+
+## Billing and plan limits
+
+`src/modules/billing/` (`spec/billing-spec.md`). The workspace is the customer; Pro is per seat
+through Stripe Checkout and the Customer Portal. `GET /billing` is open to any member;
+`POST /billing/checkout` and `/portal` need `billing:manage` (owner-only) and return a Stripe URL.
+**The plan changes only through the webhook** (`POST /billing/webhook`, `@Public()`, signature
+checked against `req.rawBody` — hence `rawBody: true` in `main.ts` and the e2e app). Each event id is
+stored in `StripeEvent` in the same transaction it is applied, and the subscription is re-read from
+Stripe rather than taken from the event, so duplicates and out-of-order delivery are harmless. Every
+Stripe call goes through `StripeService` (mock it in tests, not the SDK).
+
+The plan in force is `effectivePlan(subscription)` from `@taskforge/shared` (`plans.ts`, which also
+holds `PLAN_LIMITS`, `FREE_OWNED_WORKSPACES`, `PRO_TRIAL_DAYS`); no row is FREE. Limits are checked
+by the writing service through `src/common/plans/plan-limits.ts` and refused with a **402**
+`{ code: "PLAN_LIMIT", limit }` (`PlanLimitException`) — `InvitationService.sendInvitation`
+(members + live invitations; `assertCanAddMember` takes the `workspace-seats:<id>` advisory lock, so
+call it in the transaction that writes the invitation), `RoleService.create` (custom roles),
+`WorkflowService` and `ProjectService.create` with `workflowFromProjectId` (custom workflows),
+`WorkspaceService.create` and `MembershipService.transferOwnership` of a Free workspace (owned Free
+workspaces, the new owner's for a transfer). A new limit goes there, not in a guard. `BillingService.syncSeats` runs after a
+membership is created or deleted (never throws); `WorkspaceService.delete` calls
+`cancelForDeletion` first and is refused (502/503) if a billing subscription can't be canceled.
+
 ## Tests
 
 `pnpm run test` runs Jest specs colocated with the code (`*.spec.ts`). They use a hand-rolled fake
 `PrismaService` (and `supertest` against a Nest app with mocked services for HTTP-level checks), so
 they need no database. Current coverage: `WorkspaceGuard`, `JwtAuthGuard`, `PermissionsGuard`, `IssueService`
 permission rules and tenant isolation, `MembershipService` role changes/removal, `UserController`/`UserService`,
-`InvitationService`/controller, register/login/Google sign-in (`AuthService`, `GoogleTokenVerifier`,
-throttling), `WorkspaceService` and `SprintService.endSprint`.
-`jest` maps `@/` and `generated/` in `package.json` and transforms the ESM-only `fractional-indexing`.
+`InvitationService`/controller, account deletion and data export (`AccountService` and its routes, throttling included), register/verify/login/Google sign-in/refresh/change, forgot and reset password (`AuthService`,
+`RefreshTokenService`, `GoogleTokenVerifier`, throttling), `WorkspaceService`, `BillingService` (with `StripeService` mocked) and the plan limits, `SprintService.endSprint`, `CommentService`, `LabelService`, `ActivityService`, `RoleService` and the role DTOs, `WorkflowService`, `issueChanges`, the history rows `IssueService` writes, the workspace audit rows (each action, inside its transaction) and `GET /audit-log`, the health check, the cleanup (`CleanupService` and its route), the platform admin (`PlatformRoleGuard`, `AdminController`/`AdminService`/`AdminActionsService`, `setPlatformRole`, suspension in auth, guards and invitations), and the issue, comment and label DTOs.
+`jest` maps `@/` and `generated/` in `package.json` and transforms the ESM-only `fractional-indexing` (a dependency of `@taskforge/shared`, which Jest loads as TypeScript source).
 
 `pnpm run test:e2e` (`test/*.e2e-spec.ts`) boots the real `AppModule` through `configureApp()` and
-drives it with supertest against Postgres: sign-up, cross-workspace isolation, the header/path-param
-check, invite → accept, and MEMBER limits. `MailService` is overridden; other boot-time secrets get
-placeholders in `test/setup-e2e.ts`. Rules:
+drives it with supertest against Postgres: sign-up through the emailed link (read from the
+mocked `MailService`), refresh-token rotation and sign-out, changing and resetting the password, exporting data and deleting an account (409 while owning a shared workspace, shared issues and comments kept), the platform admin console (403 without a role, the script granting and clearing one, no credentials in responses; suspend and lift a user and a workspace, revoke sessions, delete a workspace and an account, one audit row each), unknown body keys, cross-workspace isolation, the header/path-param
+check, invite → accept, MEMBER limits, comments (isolation, authorship, cascade on issue delete), labels (isolation, MEMBER limits, cascade on label delete), custom roles (create, assign by
+`roleId`, enforcement, built-ins locked, delete refused while in use), workflows (the default, Free's 402s, moves along custom transitions, copying, deleting a status with issues), an issue's history, and
+billing without Stripe (the three plan limits as 402s, Pro lifting them, checkout's 503, and a
+webhook signed with Stripe's test helper — which proves the raw body reaches the check). `MailService` is overridden; other boot-time secrets get
+placeholders in `test/setup-e2e.ts`, which also overrides the Stripe variables (placeholder key and
+webhook secret, no price) so a developer's `.env` keys are never used. Rules:
 
 - `DATABASE_URL` must point at a **migrated** database whose name has `e2e` or `test` as a whole word, e.g. `taskforge_e2e` (`latest` doesn't count)
   (`setup-e2e.ts` refuses anything else, so it can't touch a dev DB). Locally:
@@ -272,9 +537,14 @@ See `.env.example`. What the code actually does with each:
   `SMTP_PASS`, `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY` and `CLOUDINARY_API_SECRET` (read with
   `getOrThrow` in constructors — which is why `test/setup-e2e.ts` gives them placeholders).
 - **Optional, with defaults:** `PORT` (5001), `CORS_ORIGINS` (`localhost:3000`/`:3001`), `APP_URL`
-  (`http://localhost:3000`, used in invitation links), `MAIL_FROM` (falls back to `SMTP_USER`),
+  (`http://localhost:3000`, used in invitation, email-verification and password-reset links), `MAIL_FROM` (falls back to `SMTP_USER`),
   `SMTP_SECURE` (`"true"`, or implied by port 465).
 - `NODE_ENV` only switches `PrismaService` query logging on (`development`).
+- `STRIPE_SECRET_KEY`, `STRIPE_PRO_PRICE_ID` and `STRIPE_WEBHOOK_SECRET` are read lazily by
+  `StripeService`: the backend boots without them, the Free limits still apply, and checkout,
+  portal and webhook answer 503.
+- `CRON_SECRET` is read lazily, only by `POST /maintenance/cleanup` (unset: 503). The in-process
+  cron runs regardless.
 - `GOOGLE_CLIENT_ID` is read lazily, only by Google sign-in (the backend boots without it;
   `POST /auth/google` then answers 503) and must match the web app's `GOOGLE_CLIENT_ID`.
 

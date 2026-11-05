@@ -1,43 +1,34 @@
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@heroui/react";
+import { PLAN_LIMITS } from "@taskforge/shared";
 import type { Metadata } from "next";
 import { Suspense } from "react";
 
+import AuthPageHeader from "@/features/auth/components/auth-page-header";
 import AuthSwitchLink from "@/features/auth/components/auth-switch-link";
 import { RegisterForm } from "@/features/auth/components/register-form";
 
 export const metadata: Metadata = {
-  title: "Create account · TaskForge",
+	title: "Create account · TaskForge",
 };
 
 export default function RegisterPage() {
-  return (
-    <Card>
-      <CardHeader className="text-center">
-        <CardTitle className="text-2xl font-semibold">
-          Create your account
-        </CardTitle>
-        <CardDescription>Start managing work in TaskForge</CardDescription>
-      </CardHeader>
+	return (
+		<>
+			<AuthPageHeader
+				title="Create your account"
+				description={`Free for teams of up to ${PLAN_LIMITS.FREE.members}. No credit card needed.`}
+			/>
 
-      <CardContent className="flex flex-col gap-6">
-        {/* useSearchParams() in RegisterForm and AuthSwitchLink requires a Suspense boundary. */}
-        <Suspense fallback={null}>
-          <RegisterForm />
-        </Suspense>
+			{/* useSearchParams() in RegisterForm and AuthSwitchLink requires a Suspense boundary. */}
+			<Suspense fallback={null}>
+				<RegisterForm />
+			</Suspense>
 
-        <p className="text-center text-sm text-muted">
-          Already have an account?{" "}
-          <Suspense fallback={null}>
-            <AuthSwitchLink href="/login">Sign in</AuthSwitchLink>
-          </Suspense>
-        </p>
-      </CardContent>
-    </Card>
-  );
+			<p className="mt-8 text-center text-sm text-muted">
+				Already have an account?{" "}
+				<Suspense fallback={null}>
+					<AuthSwitchLink href="/login">Sign in</AuthSwitchLink>
+				</Suspense>
+			</p>
+		</>
+	);
 }

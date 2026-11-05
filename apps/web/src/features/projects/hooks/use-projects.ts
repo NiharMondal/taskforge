@@ -9,7 +9,7 @@ import {
   getProjects,
   updateProject,
 } from "../api/project-api";
-import type { Project } from "../types/project-types";
+import type { CreateProjectDto, Project } from "../types/project-types";
 import type { TProjectFormValues } from "../schema/project-schema";
 
 /** Centralized query keys for the projects feature. */
@@ -37,7 +37,7 @@ export function useCreateProject(workspaceId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (dto: TProjectFormValues) => createProject(workspaceId, dto),
+    mutationFn: (dto: CreateProjectDto) => createProject(workspaceId, dto),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: projectKeys.list(workspaceId) });
     },

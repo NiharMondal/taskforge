@@ -2,15 +2,27 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
   getMemberships,
+  getMyMembership,
+  leaveWorkspace,
   removeMembership,
+  transferOwnership,
   updateMembership,
 } from "../api/membership-api";
 import type { Member } from "../types/membership-types";
-import type { WorkspaceRole } from "@/features/workspace/types/workspace-types";
+import { billingKeys } from "@/features/billing/hooks/use-billing";
+import { roleKeys } from "@/features/roles/hooks/use-roles";
+import type { RoleSummary } from "@/features/roles/types/role-types";
+import { workspaceKeys } from "@/features/workspace/hooks/use-workspaces";
+import type { Workspace } from "@/features/workspace/types/workspace-types";
 
-/** Centralized query keys for the memberships feature. */
+/**
+ * Centralized query keys for the memberships feature. `me` sits under the
+ * roster's key, so invalidating the roster refreshes the viewer's own
+ * permissions too.
+ */
 export const membershipKeys = {
   list: (workspaceId: string) => ["memberships", workspaceId] as const,
+  me: (workspaceId: string) => ["memberships", workspaceId, "me"] as const,
 };
 
 /**
@@ -27,9 +39,23 @@ export function useMemberships(workspaceId: string) {
   });
 }
 
+/**
+ * The viewer's own role and permissions in a workspace (`GET /memberships/me`),
+ * which `useWorkspacePermissions` turns into flags.
+ */
+export function useMyMembership(workspaceId: string) {
+  return useQuery({
+    queryKey: membershipKeys.me(workspaceId),
+    queryFn: async () => (await getMyMembership(workspaceId)).data,
+    enabled: !!workspaceId,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
 interface UpdateRoleVars {
   userId: string;
-  role: WorkspaceRole;
+  /** The role to give, as shown in the roster until the server answers. */
+  role: RoleSummary;
 }
 
 /**
@@ -44,14 +70,16 @@ export function useUpdateMembershipRole(workspaceId: string) {
 
   return useMutation({
     mutationFn: ({ userId, role }: UpdateRoleVars) =>
-      updateMembership(workspaceId, userId, { role }),
+      updateMembership(workspaceId, userId, { roleId: role.id }),
 
     onMutate: async ({ userId, role }) => {
       await queryClient.cancelQueries({ queryKey: key });
       const previous = queryClient.getQueryData<Member[]>(key);
 
       queryClient.setQueryData<Member[]>(key, (old) =>
-        old?.map((m) => (m.userId === userId ? { ...m, role } : m)),
+        old?.map((m) =>
+          m.userId === userId ? { ...m, assignedRole: role } : m,
+        ),
       );
 
       return { previous };
@@ -65,6 +93,8 @@ export function useUpdateMembershipRole(workspaceId: string) {
 
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: key });
+      // Each role's member count changed.
+      queryClient.invalidateQueries({ queryKey: roleKeys.list(workspaceId) });
     },
   });
 }
@@ -72,7 +102,7 @@ export function useUpdateMembershipRole(workspaceId: string) {
 /**
  * Remove a member from the active workspace with an optimistic cache write: the
  * row disappears immediately, is restored if the DELETE fails, and the roster
- * refetches on settle.
+ * (and the seat count on billing) refetches on settle.
  */
 export function useRemoveMembership(workspaceId: string) {
   const queryClient = useQueryClient();
@@ -100,6 +130,47 @@ export function useRemoveMembership(workspaceId: string) {
 
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: key });
+      queryClient.invalidateQueries({ queryKey: billingKeys.detail(workspaceId) });
+    },
+  });
+}
+
+/**
+ * Hand the workspace to another member. Two roles change at once (theirs and
+ * the caller's), so the roster refetches rather than being patched in place;
+ * the permission flags follow it.
+ */
+export function useTransferOwnership(workspaceId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (userId: string) => transferOwnership(workspaceId, userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: membershipKeys.list(workspaceId),
+      });
+    },
+  });
+}
+
+/**
+ * Leave a workspace. Like deleting one (`useDeleteWorkspace`), it is dropped
+ * from the cached list so `WorkspaceProvider` falls back to another, and every
+ * query keyed by its id is removed — their requests would now 403.
+ */
+export function useLeaveWorkspace() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (workspaceId: string) => leaveWorkspace(workspaceId),
+    onSuccess: (_res, workspaceId) => {
+      queryClient.setQueryData<Workspace[]>(workspaceKeys.all, (old) =>
+        old?.filter((workspace) => workspace.id !== workspaceId),
+      );
+      queryClient.removeQueries({
+        predicate: (query) => query.queryKey.includes(workspaceId),
+      });
+      queryClient.invalidateQueries({ queryKey: workspaceKeys.all });
     },
   });
 }

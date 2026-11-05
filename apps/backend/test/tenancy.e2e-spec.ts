@@ -1,11 +1,14 @@
 import { AppModule } from "@/app.module";
 import { configureApp } from "@/app.setup";
 import { MailService } from "@/modules/mail/mail.service";
+import { setPlatformRole } from "@/modules/admin/set-platform-role";
+import { RefreshTokenService } from "@/modules/auth/refresh-token.service";
 import { PrismaService } from "@/prisma/prisma.service";
 import { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { Prisma } from "generated/prisma/client";
 import { randomUUID } from "crypto";
+import Stripe from "stripe";
 import request, { Response } from "supertest";
 import { App } from "supertest/types";
 
@@ -36,12 +39,59 @@ describe("Tenancy (e2e)", () => {
     password: "secret123",
   };
 
+  /** Signs up in the billing tests only, to own workspaces from scratch. */
+  const erin = {
+    name: "Erin",
+    email: `erin-${run}@e2e.test`,
+    password: "secret123",
+  };
+
+  /** Signs up in the sign-up and session tests only. */
+  const dave = {
+    name: "Dave",
+    email: `dave-${run}@e2e.test`,
+    password: "secret123",
+  };
+
+  /** Sign up in the account deletion tests only. */
+  const gina = {
+    name: "Gina",
+    email: `gina-${run}@e2e.test`,
+    password: "secret123",
+  };
+  const hank = {
+    name: "Hank",
+    email: `hank-${run}@e2e.test`,
+    password: "secret123",
+  };
+
+  /** Platform staff in the platform admin tests only. */
+  const ivy = {
+    name: "Ivy",
+    email: `ivy-${run}@e2e.test`,
+    password: "secret123",
+  };
+
+  /** The target of the platform admin actions. */
+  const jack = {
+    name: "Jack",
+    email: `jack-${run}@e2e.test`,
+    password: "secret123",
+  };
+
+  /** A Google-only account, created directly, for the password reset tests. */
+  const frank = { name: "Frank", email: `frank-${run}@e2e.test` };
+
   let aliceToken: string;
   let bobToken: string;
   let aliceWs: string;
   let bobWs: string;
   let projectId: string;
+  /** Apollo's workflow statuses (the default workflow), by name. */
+  let statusIds: Record<string, string>;
   let issueId: string;
+  /** Alice's comment on `issueId`. */
+  let commentId: string;
 
   const api = () => request(app.getHttpServer());
   /** The payload inside the `sendResponse()` envelope. */
@@ -54,29 +104,85 @@ describe("Tenancy (e2e)", () => {
     return headers;
   };
 
+  const mail = { sendInBackground: jest.fn() };
+  /** Every workspace a sign-up created, for cleanup. */
+  const createdWorkspaces: string[] = [];
+
+  /** The token in the last verification link emailed to `email`. */
+  const verificationToken = (email: string) => {
+    const sent = (
+      mail.sendInBackground.mock.calls as [{ to: string; text: string }][]
+    )
+      .map(([m]) => m)
+      .filter((m) => m.to === email)
+      .pop();
+    const token = /verify-email\?token=([0-9a-f]{64})/.exec(sent?.text ?? "");
+    if (!token) throw new Error(`No verification link was sent to ${email}`);
+    return token[1];
+  };
+
+  /** The token in the last password reset link emailed to `email`. */
+  const resetToken = (email: string) => {
+    const token = (
+      mail.sendInBackground.mock.calls as [{ to: string; text: string }][]
+    )
+      .map(([m]) => m)
+      .filter((m) => m.to === email)
+      .map((m) => /reset-password\?token=([0-9a-f]{64})/.exec(m.text)?.[1])
+      .filter(Boolean)
+      .pop();
+    if (!token) throw new Error(`No reset link was sent to ${email}`);
+    return token;
+  };
+
+  type Workflow = {
+    statuses: { id: string; name: string; isDefault: boolean }[];
+    transitions: { fromStatusId: string; toStatusId: string }[];
+  };
+  /** A project's workflow, as Alice reads it. */
+  const workflowOf = async (id: string) =>
+    data<Workflow>(
+      await api()
+        .get(`/api/v1/projects/${id}/workflow`)
+        .set(as(aliceToken, aliceWs))
+        .expect(200),
+    );
+  /** A project's status ids by name. */
+  const statusIdsOf = async (id: string) =>
+    Object.fromEntries(
+      (await workflowOf(id)).statuses.map((s) => [s.name, s.id]),
+    );
+
+  /** Register, follow the emailed link, and find the new workspace. */
   const signUp = async (user: typeof alice) => {
-    const registered = await api()
-      .post("/api/v1/auth/register")
-      .send(user)
-      .expect(201);
-    const loggedIn = await api()
-      .post("/api/v1/auth/login")
-      .send({ email: user.email, password: user.password })
+    await api().post("/api/v1/auth/register").send(user).expect(202);
+    const verified = await api()
+      .post("/api/v1/auth/verify-email")
+      .send({ token: verificationToken(user.email) })
       .expect(200);
-    return {
-      token: data<{ accessToken: string }>(loggedIn).accessToken,
-      workspaceId: data<{ workspace: { id: string } }>(registered).workspace.id,
-    };
+    const { accessToken, refreshToken } = data<{
+      accessToken: string;
+      refreshToken: string;
+    }>(verified);
+    const workspaces = await api()
+      .get("/api/v1/workspaces")
+      .set(as(accessToken))
+      .expect(200);
+    const workspaceId = data<{ id: string }[]>(workspaces)[0].id;
+    createdWorkspaces.push(workspaceId);
+    return { token: accessToken, refreshToken, workspaceId };
   };
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(MailService)
-      .useValue({ sendMail: jest.fn().mockResolvedValue(undefined) })
+      .useValue(mail)
       .compile();
 
     app = configureApp(
-      moduleRef.createNestApplication<INestApplication<App>>(),
+      moduleRef.createNestApplication<INestApplication<App>>({
+        rawBody: true,
+      }),
     );
     await app.init();
     prisma = app.get(PrismaService);
@@ -90,23 +196,44 @@ describe("Tenancy (e2e)", () => {
       .send({ name: "Apollo" })
       .expect(201);
     projectId = data<{ id: string }>(project).id;
+    statusIds = await statusIdsOf(projectId);
 
     const issue = await api()
       .post(`/api/v1/projects/${projectId}/issues`)
       .set(as(aliceToken, aliceWs))
-      .send({ title: "Launch", status: "TODO" })
+      .send({ title: "Launch", statusId: statusIds["To Do"] })
       .expect(201);
     issueId = data<{ id: string }>(issue).id;
+
+    const comment = await api()
+      .post(`/api/v1/projects/${projectId}/issues/${issueId}/comments`)
+      .set(as(aliceToken, aliceWs))
+      .send({ content: "<p>Kick-off is Monday</p>" })
+      .expect(201);
+    commentId = data<{ id: string }>(comment).id;
   });
 
   afterAll(async () => {
     // Workspaces cascade to projects, issues, memberships and invitations;
     // users cascade to their Auth rows.
     await prisma.workspace.deleteMany({
-      where: { id: { in: [aliceWs, bobWs] } },
+      where: { id: { in: createdWorkspaces } },
     });
-    await prisma.user.deleteMany({
-      where: { email: { in: [alice.email, bob.email, carol.email] } },
+    const emails = [
+      alice.email,
+      bob.email,
+      carol.email,
+      dave.email,
+      erin.email,
+      frank.email,
+      gina.email,
+      hank.email,
+      ivy.email,
+      jack.email,
+    ];
+    await prisma.user.deleteMany({ where: { email: { in: emails } } });
+    await prisma.pendingRegistration.deleteMany({
+      where: { email: { in: emails } },
     });
     await app.close();
   });
@@ -120,6 +247,211 @@ describe("Tenancy (e2e)", () => {
       .get("/api/v1/projects")
       .set("x-workspace-id", aliceWs)
       .expect(401);
+  });
+
+  describe("signing up and sessions", () => {
+    it("creates nothing until the emailed link is followed", async () => {
+      await api().post("/api/v1/auth/register").send(dave).expect(202);
+
+      await expect(
+        prisma.user.count({ where: { email: dave.email } }),
+      ).resolves.toBe(0);
+      await expect(
+        prisma.pendingRegistration.count({ where: { email: dave.email } }),
+      ).resolves.toBe(1);
+      // Not even the password works before the address is confirmed.
+      await api()
+        .post("/api/v1/auth/login")
+        .send({ email: dave.email, password: dave.password })
+        .expect(401);
+    });
+
+    it("answers a taken address exactly like a new one", async () => {
+      const res = await api()
+        .post("/api/v1/auth/register")
+        .send({ ...alice, password: "different1" })
+        .expect(202);
+
+      expect(data(res)).toEqual({ email: alice.email });
+      await expect(
+        prisma.pendingRegistration.count({ where: { email: alice.email } }),
+      ).resolves.toBe(0);
+      // Alice's password is untouched.
+      await api()
+        .post("/api/v1/auth/login")
+        .send({ email: alice.email, password: alice.password })
+        .expect(200);
+    });
+
+    it("signs in from the link once, then by password", async () => {
+      const token = verificationToken(dave.email);
+      await api().post("/api/v1/auth/verify-email").send({ token }).expect(200);
+      await api().post("/api/v1/auth/verify-email").send({ token }).expect(400);
+
+      const user = await prisma.user.findUniqueOrThrow({
+        where: { email: dave.email },
+        include: { memberships: true },
+      });
+      expect(user.emailVerifiedAt).not.toBeNull();
+      createdWorkspaces.push(...user.memberships.map((m) => m.workspaceId));
+
+      await api()
+        .post("/api/v1/auth/login")
+        .send({ email: dave.email, password: dave.password })
+        .expect(200);
+    });
+
+    it("rotates refresh tokens, and sign-out ends the session", async () => {
+      const login = await api()
+        .post("/api/v1/auth/login")
+        .send({ email: dave.email, password: dave.password })
+        .expect(200);
+      const first = data<{ refreshToken: string }>(login).refreshToken;
+
+      const refreshed = await api()
+        .post("/api/v1/auth/refresh")
+        .send({ refreshToken: first })
+        .expect(200);
+      const second = data<{ accessToken: string; refreshToken: string }>(
+        refreshed,
+      );
+      expect(second.refreshToken).not.toBe(first);
+      await api()
+        .get("/api/v1/workspaces")
+        .set(as(second.accessToken))
+        .expect(200);
+
+      await api()
+        .post("/api/v1/auth/logout")
+        .send({ refreshToken: second.refreshToken })
+        .expect(200);
+      // The whole family is gone, including the token it was rotated from.
+      await api()
+        .post("/api/v1/auth/refresh")
+        .send({ refreshToken: second.refreshToken })
+        .expect(401);
+      await api()
+        .post("/api/v1/auth/refresh")
+        .send({ refreshToken: first })
+        .expect(401);
+    });
+
+    it("changing the password ends every session and replaces the old one", async () => {
+      const login = await api()
+        .post("/api/v1/auth/login")
+        .send({ email: dave.email, password: dave.password })
+        .expect(200);
+      const session = data<{ accessToken: string; refreshToken: string }>(
+        login,
+      );
+      const me = await api()
+        .get("/api/v1/users/me")
+        .set(as(session.accessToken))
+        .expect(200);
+      expect(data(me)).toMatchObject({ hasPassword: true });
+
+      const change = (currentPassword: string) =>
+        api()
+          .patch("/api/v1/auth/password")
+          .set(as(session.accessToken))
+          .send({ currentPassword, newPassword: "changed123" });
+      await api()
+        .patch("/api/v1/auth/password")
+        .send({ currentPassword: dave.password, newPassword: "changed123" })
+        .expect(401);
+      await change("wrong-pass1").expect(400);
+      await change(dave.password).expect(200);
+
+      await api()
+        .post("/api/v1/auth/refresh")
+        .send({ refreshToken: session.refreshToken })
+        .expect(401);
+      await api()
+        .post("/api/v1/auth/login")
+        .send({ email: dave.email, password: dave.password })
+        .expect(401);
+      await api()
+        .post("/api/v1/auth/login")
+        .send({ email: dave.email, password: "changed123" })
+        .expect(200);
+    });
+
+    it("resets a forgotten password from the emailed link, once", async () => {
+      const login = await api()
+        .post("/api/v1/auth/login")
+        .send({ email: dave.email, password: "changed123" })
+        .expect(200);
+      const { refreshToken } = data<{ refreshToken: string }>(login);
+
+      // Same answer for an unknown address, which gets nothing.
+      await api()
+        .post("/api/v1/auth/forgot-password")
+        .send({ email: `nobody-${run}@e2e.test` })
+        .expect(202);
+      await api()
+        .post("/api/v1/auth/forgot-password")
+        .send({ email: dave.email.toUpperCase() })
+        .expect(202);
+      const token = resetToken(dave.email);
+
+      const reset = () =>
+        api()
+          .post("/api/v1/auth/reset-password")
+          .send({ token, password: "reset1234" });
+      const statuses = (await Promise.all([reset(), reset()]))
+        .map((r) => r.status)
+        .sort();
+      expect(statuses).toEqual([200, 400]);
+      await expect(
+        prisma.passwordReset.count({ where: { user: { email: dave.email } } }),
+      ).resolves.toBe(0);
+
+      await api()
+        .post("/api/v1/auth/refresh")
+        .send({ refreshToken })
+        .expect(401);
+      await api()
+        .post("/api/v1/auth/login")
+        .send({ email: dave.email, password: "reset1234" })
+        .expect(200);
+    });
+
+    it("gives a Google-only account a password through a reset link", async () => {
+      await prisma.user.create({
+        data: {
+          ...frank,
+          emailVerifiedAt: new Date(),
+          auths: {
+            create: { provider: "GOOGLE", providerId: `google-${run}` },
+          },
+        },
+      });
+
+      await api()
+        .post("/api/v1/auth/forgot-password")
+        .send({ email: frank.email })
+        .expect(202);
+      await api()
+        .post("/api/v1/auth/reset-password")
+        .send({ token: resetToken(frank.email), password: "frank1234" })
+        .expect(200);
+
+      const auths = await prisma.auth.findMany({
+        where: { user: { email: frank.email } },
+        orderBy: { provider: "asc" },
+      });
+      expect(auths.map((a) => a.provider).sort()).toEqual(["EMAIL", "GOOGLE"]);
+    });
+
+    it("rejects a body key the route doesn't declare", async () => {
+      const res = await api()
+        .post("/api/v1/projects")
+        .set(as(aliceToken, aliceWs))
+        .send({ name: "Gemini", key: "GEM" })
+        .expect(400);
+
+      expect(res.body).toMatchObject({ success: false, statusCode: 400 });
+    });
   });
 
   it("registering creates the user, an EMAIL sign-in and an OWNER membership", async () => {
@@ -163,10 +495,47 @@ describe("Tenancy (e2e)", () => {
     });
   });
 
+  describe("list pagination", () => {
+    it("pages a list and says how much there is", async () => {
+      const total = await prisma.project.count({
+        where: { workspaceId: aliceWs },
+      });
+
+      const res = await api()
+        .get("/api/v1/projects?page=1&limit=1")
+        .set(as(aliceToken, aliceWs))
+        .expect(200);
+
+      expect(data<unknown[]>(res)).toHaveLength(1);
+      expect((res.body as { metaData: unknown }).metaData).toEqual({
+        currentPage: 1,
+        totalPages: total,
+        totalData: total,
+        pageSize: 1,
+        hasNextPage: total > 1,
+        hasPreviousPage: false,
+      });
+    });
+
+    it.each(["limit=101", "page=0", "workspaceId=x"])(
+      "refuses ?%s",
+      async (query) => {
+        await api()
+          .get(`/api/v1/memberships?${query}`)
+          .set(as(aliceToken, aliceWs))
+          .expect(400);
+      },
+    );
+  });
+
   describe("before Bob is invited", () => {
     it("rejects Bob sending Alice's workspace header", async () => {
       await api()
         .get("/api/v1/projects")
+        .set(as(bobToken, aliceWs))
+        .expect(403);
+      await api()
+        .get(`/api/v1/workspaces/${aliceWs}`)
         .set(as(bobToken, aliceWs))
         .expect(403);
     });
@@ -196,6 +565,30 @@ describe("Tenancy (e2e)", () => {
         prisma.workspace.findUnique({ where: { id: aliceWs } }),
       ).resolves.not.toBeNull();
     });
+
+    it("keeps Alice's comments out of Bob's own workspace", async () => {
+      const comments = `/api/v1/projects/${projectId}/issues/${issueId}/comments`;
+
+      await api().get(comments).set(as(bobToken, bobWs)).expect(404);
+      await api()
+        .post(comments)
+        .set(as(bobToken, bobWs))
+        .send({ content: "<p>Injected</p>" })
+        .expect(404);
+      await api()
+        .patch(`${comments}/${commentId}`)
+        .set(as(bobToken, bobWs))
+        .send({ content: "<p>Hijacked</p>" })
+        .expect(404);
+      await api()
+        .delete(`${comments}/${commentId}`)
+        .set(as(bobToken, bobWs))
+        .expect(404);
+
+      await expect(
+        prisma.comment.findUniqueOrThrow({ where: { id: commentId } }),
+      ).resolves.toMatchObject({ content: "<p>Kick-off is Monday</p>" });
+    });
   });
 
   describe("after Bob accepts an invitation as MEMBER", () => {
@@ -218,6 +611,37 @@ describe("Tenancy (e2e)", () => {
         .expect(201);
     });
 
+    it("logs the invitation for Alice's audit log, and only there", async () => {
+      type Row = {
+        action: string;
+        entityType: string;
+        user: { id: string; name: string } | null;
+        metadata: { email?: string };
+      };
+      const res = await api()
+        .get("/api/v1/audit-log?entityType=INVITATION")
+        .set(as(aliceToken, aliceWs))
+        .expect(200);
+      const rows = data<Row[]>(res);
+      // Newest first: Bob accepting, then Alice sending.
+      expect(rows.map((r) => [r.action, r.user?.name])).toEqual([
+        ["invitation.accepted", bob.name],
+        ["invitation.sent", alice.name],
+      ]);
+      expect(rows[1].metadata.email).toBe(bob.email);
+
+      // A MEMBER can't read it, and Bob's own workspace has none of it.
+      await api()
+        .get("/api/v1/audit-log")
+        .set(as(bobToken, aliceWs))
+        .expect(403);
+      const bobs = await api()
+        .get("/api/v1/audit-log")
+        .set(as(bobToken, bobWs))
+        .expect(200);
+      expect(data<Row[]>(bobs)).toEqual([]);
+    });
+
     it("lets Bob read Alice's workspace", async () => {
       const res = await api()
         .get("/api/v1/projects")
@@ -233,12 +657,26 @@ describe("Tenancy (e2e)", () => {
       await api()
         .patch(issueUrl)
         .set(as(bobToken, aliceWs))
-        .send({ status: "IN_PROGRESS" })
+        .send({ statusId: statusIds["In Progress"] })
         .expect(200);
       await api()
         .patch(issueUrl)
         .set(as(bobToken, aliceWs))
         .send({ title: "Hijacked" })
+        .expect(403);
+    });
+
+    it("lets Bob read the workspace but not edit it", async () => {
+      const res = await api()
+        .get(`/api/v1/workspaces/${aliceWs}`)
+        .set(as(bobToken, aliceWs))
+        .expect(200);
+
+      expect(data<{ id: string }>(res).id).toBe(aliceWs);
+      await api()
+        .patch(`/api/v1/workspaces/${aliceWs}`)
+        .set(as(bobToken, aliceWs))
+        .send({ name: "Bob's now" })
         .expect(403);
     });
 
@@ -269,6 +707,7 @@ describe("Tenancy (e2e)", () => {
         assignedRole: { name: "Member", systemKey: "MEMBER" },
       });
       expect(data<{ permissions: string[] }>(me).permissions.sort()).toEqual([
+        "comment:create",
         "issue:create",
         "issue:edit:own",
         "issue:status",
@@ -287,7 +726,7 @@ describe("Tenancy (e2e)", () => {
       const created = await api()
         .post(`/api/v1/projects/${projectId}/issues`)
         .set(as(bobToken, aliceWs))
-        .send({ title: "Bob's task", status: "TODO" })
+        .send({ title: "Bob's task", statusId: statusIds["To Do"] })
         .expect(201);
       const url = `/api/v1/projects/${projectId}/issues/${data<{ id: string }>(created).id}`;
 
@@ -299,9 +738,218 @@ describe("Tenancy (e2e)", () => {
       await api()
         .patch(url)
         .set(as(bobToken, aliceWs))
-        .send({ status: "DONE" })
+        .send({ statusId: statusIds.Done })
         .expect(403);
     });
+
+    it("lets Bob comment and edit his own comment, but not touch Alice's", async () => {
+      const comments = `/api/v1/projects/${projectId}/issues/${issueId}/comments`;
+
+      const created = await api()
+        .post(comments)
+        .set(as(bobToken, aliceWs))
+        .send({ content: "<p>On it</p>" })
+        .expect(201);
+      const bobCommentId = data<{ id: string }>(created).id;
+
+      await api()
+        .patch(`${comments}/${bobCommentId}`)
+        .set(as(bobToken, aliceWs))
+        .send({ content: "<p>On it, done by Friday</p>" })
+        .expect(200);
+      await api()
+        .patch(`${comments}/${commentId}`)
+        .set(as(bobToken, aliceWs))
+        .send({ content: "<p>Hijacked</p>" })
+        .expect(403);
+      await api()
+        .delete(`${comments}/${commentId}`)
+        .set(as(bobToken, aliceWs))
+        .expect(403);
+
+      const thread = await api()
+        .get(comments)
+        .set(as(bobToken, aliceWs))
+        .expect(200);
+      expect(
+        data<{ id: string; content: string; user: { name: string } }[]>(
+          thread,
+        ).map((c) => [c.user.name, c.content]),
+      ).toEqual([
+        ["Alice", "<p>Kick-off is Monday</p>"],
+        ["Bob", "<p>On it, done by Friday</p>"],
+      ]);
+
+      // The owner moderates: she may delete Bob's comment.
+      await api()
+        .delete(`${comments}/${bobCommentId}`)
+        .set(as(aliceToken, aliceWs))
+        .expect(200);
+    });
+  });
+
+  describe("labels", () => {
+    let bugId: string;
+    const issues = () => `/api/v1/projects/${projectId}/issues`;
+    type Labelled = { id: string; labels: { id: string; name: string }[] };
+    const labelsOf = async (id: string) => {
+      const res = await api().get(issues()).set(as(aliceToken, aliceWs));
+      return data<Labelled[]>(res).find((i) => i.id === id)?.labels;
+    };
+
+    beforeAll(async () => {
+      const bug = await api()
+        .post("/api/v1/labels")
+        .set(as(aliceToken, aliceWs))
+        .send({ name: " Bug ", color: "#ef4444" })
+        .expect(201);
+      bugId = data<{ id: string }>(bug).id;
+    });
+
+    it("keeps label names unique in the workspace, ignoring case", async () => {
+      await api()
+        .post("/api/v1/labels")
+        .set(as(aliceToken, aliceWs))
+        .send({ name: "BUG", color: "#000000" })
+        .expect(409);
+    });
+
+    it("lets a MEMBER read labels but not manage them", async () => {
+      const res = await api()
+        .get("/api/v1/labels")
+        .set(as(bobToken, aliceWs))
+        .expect(200);
+      expect(data<{ name: string }[]>(res).map((l) => l.name)).toEqual(["Bug"]);
+
+      await api()
+        .post("/api/v1/labels")
+        .set(as(bobToken, aliceWs))
+        .send({ name: "Mine", color: "#000000" })
+        .expect(403);
+      await api()
+        .delete(`/api/v1/labels/${bugId}`)
+        .set(as(bobToken, aliceWs))
+        .expect(403);
+    });
+
+    it("lets a MEMBER label their own issue, not someone else's", async () => {
+      const created = await api()
+        .post(issues())
+        .set(as(bobToken, aliceWs))
+        .send({ title: "Bob's bug", labelIds: [bugId] })
+        .expect(201);
+
+      await expect(labelsOf(data<{ id: string }>(created).id)).resolves.toEqual(
+        [expect.objectContaining({ id: bugId, name: "Bug" })],
+      );
+      await api()
+        .patch(`${issues()}/${issueId}`)
+        .set(as(bobToken, aliceWs))
+        .send({ labelIds: [bugId] })
+        .expect(403);
+    });
+
+    it("refuses a label from another workspace", async () => {
+      // Bob owns his own workspace, so he can make a label there.
+      const foreign = await api()
+        .post("/api/v1/labels")
+        .set(as(bobToken, bobWs))
+        .send({ name: "Bob's", color: "#22c55e" })
+        .expect(201);
+
+      await api()
+        .patch(`${issues()}/${issueId}`)
+        .set(as(aliceToken, aliceWs))
+        .send({ labelIds: [bugId, data<{ id: string }>(foreign).id] })
+        .expect(403);
+      await expect(labelsOf(issueId)).resolves.toEqual([]);
+      await api()
+        .delete(`/api/v1/labels/${data<{ id: string }>(foreign).id}`)
+        .set(as(aliceToken, aliceWs))
+        .expect(404);
+    });
+
+    it("takes a deleted label off every issue", async () => {
+      await api()
+        .patch(`${issues()}/${issueId}`)
+        .set(as(aliceToken, aliceWs))
+        .send({ labelIds: [bugId] })
+        .expect(200);
+      await expect(labelsOf(issueId)).resolves.toHaveLength(1);
+
+      await api()
+        .delete(`/api/v1/labels/${bugId}`)
+        .set(as(aliceToken, aliceWs))
+        .expect(200);
+      await expect(labelsOf(issueId)).resolves.toEqual([]);
+    });
+  });
+
+  it("keeps an issue's history: created, changes, moderated comments", async () => {
+    const issues = `/api/v1/projects/${projectId}/issues`;
+    const created = await api()
+      .post(issues)
+      .set(as(aliceToken, aliceWs))
+      .send({ title: "Tracked", statusId: statusIds["To Do"] })
+      .expect(201);
+    const trackedId = data<{ id: string }>(created).id;
+    const activity = `${issues}/${trackedId}/activity`;
+
+    await api()
+      .patch(`${issues}/${trackedId}`)
+      .set(as(aliceToken, aliceWs))
+      .send({ statusId: statusIds["In Progress"], priority: "HIGH" })
+      .expect(200);
+    // A reorder within the lane isn't history.
+    await api()
+      .patch(`${issues}/${trackedId}`)
+      .set(as(aliceToken, aliceWs))
+      .send({ statusId: statusIds["In Progress"], rank: "a1" })
+      .expect(200);
+
+    // Bob's comment, removed by Alice as a moderator.
+    const comment = await api()
+      .post(`${issues}/${trackedId}/comments`)
+      .set(as(bobToken, aliceWs))
+      .send({ content: "<p>Off-topic</p>" })
+      .expect(201);
+    await api()
+      .delete(
+        `${issues}/${trackedId}/comments/${data<{ id: string }>(comment).id}`,
+      )
+      .set(as(aliceToken, aliceWs))
+      .expect(200);
+
+    // Any member reads it; Bob is a MEMBER here.
+    const res = await api()
+      .get(activity)
+      .set(as(bobToken, aliceWs))
+      .expect(200);
+    type Row = { action: string; user: { name: string }; metadata: unknown };
+    expect(
+      data<Row[]>(res).map((r) => [r.action, r.user.name, r.metadata]),
+    ).toEqual([
+      ["issue.created", "Alice", null],
+      [
+        "issue.updated",
+        "Alice",
+        {
+          changes: [
+            // By name, so history survives renames and deletes.
+            { field: "status", from: "To Do", to: "In Progress" },
+            { field: "priority", from: "MEDIUM", to: "HIGH" },
+          ],
+        },
+      ],
+      [
+        "comment.deleted",
+        "Alice",
+        { author: { id: expect.any(String) as unknown, name: "Bob" } },
+      ],
+    ]);
+
+    // Not from Bob's own workspace.
+    await api().get(activity).set(as(bobToken, bobWs)).expect(404);
   });
 
   it("appends a new card after the lane's last card in byte order (H6)", async () => {
@@ -309,12 +957,12 @@ describe("Tenancy (e2e)", () => {
     // before "a0" in byte order). A locale collation sorts "Zz" *after* "a0",
     // so the server took "Zz" for the last card and handed the new one "a0"
     // again — a duplicate the board can't place anything between.
-    const lane = "IN_REVIEW";
+    const lane = statusIds["In Review"];
     const create = (title: string) =>
       api()
         .post(`/api/v1/projects/${projectId}/issues`)
         .set(as(aliceToken, aliceWs))
-        .send({ title, status: lane })
+        .send({ title, statusId: lane })
         .expect(201);
 
     const first = data<{ id: string }>(await create("Upper")).id;
@@ -328,19 +976,199 @@ describe("Tenancy (e2e)", () => {
   });
 
   it("gives cards created at the same moment in one lane distinct ranks (H7)", async () => {
-    const lane = "QA_REQUESTED";
+    const lane = statusIds["In Progress"];
     const created = await Promise.all(
       Array.from({ length: 8 }, (_, i) =>
         api()
           .post(`/api/v1/projects/${projectId}/issues`)
           .set(as(aliceToken, aliceWs))
-          .send({ title: `Parallel ${i}`, status: lane })
+          .send({ title: `Parallel ${i}`, statusId: lane })
           .expect(201),
       ),
     );
 
     const ranks = created.map((res) => data<{ rank: string }>(res).rank);
     expect(new Set(ranks).size).toBe(ranks.length);
+  });
+
+  it("keeps two cards dropped into the same gap at once apart (H7)", async () => {
+    const lane = statusIds.Done;
+    const create = async (title: string, rank: string) => {
+      const res = await api()
+        .post(`/api/v1/projects/${projectId}/issues`)
+        .set(as(aliceToken, aliceWs))
+        .send({ title, statusId: lane })
+        .expect(201);
+      const { id } = data<{ id: string }>(res);
+      await prisma.issue.update({ where: { id }, data: { rank } });
+      return id;
+    };
+    await create("Above the gap", "a0");
+    await create("Below the gap", "a2");
+    const movers = [
+      await create("Mover 1", "a5"),
+      await create("Mover 2", "a6"),
+    ];
+
+    // Both boards computed the same key for the gap between a0 and a2.
+    const dropped = await Promise.all(
+      movers.map((id) =>
+        api()
+          .patch(`/api/v1/projects/${projectId}/issues/${id}`)
+          .set(as(aliceToken, aliceWs))
+          .send({ rank: "a1" })
+          .expect(200),
+      ),
+    );
+
+    const ranks = dropped.map((res) => data<{ rank: string }>(res).rank);
+    expect(ranks).toContain("a1");
+    expect(new Set(ranks).size).toBe(2);
+    for (const rank of ranks) expect(rank > "a0" && rank < "a2").toBe(true);
+  });
+
+  it("keys projects from their name and numbers issues per project, even in parallel", async () => {
+    const create = (name: string) =>
+      api()
+        .post("/api/v1/projects")
+        .set(as(aliceToken, aliceWs))
+        .send({ name })
+        .expect(201);
+    const first = data<{ id: string; key: string }>(await create("Key Test"));
+    const second = data<{ key: string }>(await create("Kilo Tango"));
+    expect([first.key, second.key]).toEqual(["KT", "KT2"]);
+    const toDo = (await statusIdsOf(first.id))["To Do"];
+
+    const created = await Promise.all(
+      Array.from({ length: 6 }, (_, i) =>
+        api()
+          .post(`/api/v1/projects/${first.id}/issues`)
+          .set(as(aliceToken, aliceWs))
+          .send({ title: `Numbered ${i}`, ...(i % 2 && { statusId: toDo }) })
+          .expect(201),
+      ),
+    );
+
+    const numbers = created
+      .map((res) => data<{ number: number }>(res).number)
+      .sort((a, b) => a - b);
+    expect(numbers).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+
+  it("creates sub-issues one level deep and returns them with the parent", async () => {
+    const issues = `/api/v1/projects/${projectId}/issues`;
+    const child = data<{ id: string; type: string; parentIssueId: string }>(
+      await api()
+        .post(issues)
+        .set(as(aliceToken, aliceWs))
+        .send({ title: "Write launch notes", parentIssueId: issueId })
+        .expect(201),
+    );
+    expect(child).toMatchObject({ type: "SUBTASK", parentIssueId: issueId });
+
+    const parent = data<{ subIssues: { id: string }[] }>(
+      await api()
+        .get(`${issues}/${issueId}`)
+        .set(as(aliceToken, aliceWs))
+        .expect(200),
+    );
+    expect(parent.subIssues.map((s) => s.id)).toEqual([child.id]);
+
+    const childDetail = data<{ parentIssue: { id: string } }>(
+      await api()
+        .get(`${issues}/${child.id}`)
+        .set(as(aliceToken, aliceWs))
+        .expect(200),
+    );
+    expect(childDetail.parentIssue.id).toBe(issueId);
+
+    // No grandchildren.
+    await api()
+      .post(issues)
+      .set(as(aliceToken, aliceWs))
+      .send({ title: "Too deep", parentIssueId: child.id })
+      .expect(400);
+
+    // A parent must be in the same project.
+    const other = data<{ id: string }>(
+      await api()
+        .post("/api/v1/projects")
+        .set(as(aliceToken, aliceWs))
+        .send({ name: "Other" })
+        .expect(201),
+    );
+    await api()
+      .post(`/api/v1/projects/${other.id}/issues`)
+      .set(as(aliceToken, aliceWs))
+      .send({ title: "Cross-project", parentIssueId: issueId })
+      .expect(403);
+  });
+
+  it("commits a backlog issue to the first unstarted status when it joins a sprint, and leaves it alone going back", async () => {
+    const issues = `/api/v1/projects/${projectId}/issues`;
+    const sprint = data<{ id: string }>(
+      await api()
+        .post(`/api/v1/projects/${projectId}/sprints`)
+        .set(as(aliceToken, aliceWs))
+        .send({ name: "Commitment" })
+        .expect(201),
+    );
+    type Issue = { id: string; statusId: string; status: { name: string } };
+    const issue = data<Issue>(
+      await api()
+        .post(issues)
+        .set(as(aliceToken, aliceWs))
+        .send({ title: "Groomed" })
+        .expect(201),
+    );
+    // The project's default status, embedded in the response.
+    expect(issue.statusId).toBe(statusIds.Backlog);
+    expect(issue.status.name).toBe("Backlog");
+
+    const planned = data<{ statusId: string; rank: string }>(
+      await api()
+        .patch(`${issues}/${issue.id}`)
+        .set(as(aliceToken, aliceWs))
+        .send({ sprintId: sprint.id })
+        .expect(200),
+    );
+    expect(planned.statusId).toBe(statusIds["To Do"]);
+    expect(planned.rank).toBeTruthy();
+
+    const unplanned = data<{ statusId: string; sprintId: string | null }>(
+      await api()
+        .patch(`${issues}/${issue.id}`)
+        .set(as(aliceToken, aliceWs))
+        .send({ sprintId: null })
+        .expect(200),
+    );
+    expect(unplanned).toMatchObject({
+      statusId: statusIds["To Do"],
+      sprintId: null,
+    });
+  });
+
+  it("deletes an issue's comments with the issue", async () => {
+    const issue = await api()
+      .post(`/api/v1/projects/${projectId}/issues`)
+      .set(as(aliceToken, aliceWs))
+      .send({ title: "Short-lived" })
+      .expect(201);
+    const doomedId = data<{ id: string }>(issue).id;
+    await api()
+      .post(`/api/v1/projects/${projectId}/issues/${doomedId}/comments`)
+      .set(as(aliceToken, aliceWs))
+      .send({ content: "<p>Soon gone</p>" })
+      .expect(201);
+
+    await api()
+      .delete(`/api/v1/projects/${projectId}/issues/${doomedId}`)
+      .set(as(aliceToken, aliceWs))
+      .expect(200);
+
+    await expect(
+      prisma.comment.count({ where: { issueId: doomedId } }),
+    ).resolves.toBe(0);
   });
 
   describe("errors keep the envelope", () => {
@@ -396,5 +1224,1199 @@ describe("Tenancy (e2e)", () => {
         where: { workspaceId: aliceWs, user: { email: carol.email } },
       }),
     ).resolves.toBe(1);
+  });
+
+  describe("custom roles", () => {
+    type Role = {
+      id: string;
+      name: string;
+      systemKey: string | null;
+      memberCount: number;
+    };
+    const roles = async () =>
+      data<Role[]>(
+        await api().get("/api/v1/roles").set(as(bobToken, aliceWs)).expect(200),
+      );
+    const bobsPermissions = async () =>
+      data<{ permissions: string[] }>(
+        await api()
+          .get("/api/v1/memberships/me")
+          .set(as(bobToken, aliceWs))
+          .expect(200),
+      ).permissions.sort();
+    const setBobsRole = (roleId: string) =>
+      api()
+        .patch(`/api/v1/memberships/${bobUserId}`)
+        .set(as(aliceToken, aliceWs))
+        .send({ roleId });
+    let bobUserId: string;
+    let triageId: string;
+
+    beforeAll(async () => {
+      bobUserId = (
+        await prisma.user.findUniqueOrThrow({ where: { email: bob.email } })
+      ).id;
+      // Custom roles are a Pro feature (the "billing" block checks Free).
+      await prisma.subscription.upsert({
+        where: { workspaceId: aliceWs },
+        create: { workspaceId: aliceWs, plan: "PRO", status: "ACTIVE" },
+        update: { plan: "PRO", status: "ACTIVE" },
+      });
+    });
+
+    afterAll(async () => {
+      await prisma.subscription.deleteMany({ where: { workspaceId: aliceWs } });
+    });
+
+    it("lets any member list the roles, built-ins first", async () => {
+      const list = await roles();
+      expect(list.map((r) => r.systemKey)).toEqual([
+        "OWNER",
+        "ADMIN",
+        "MEMBER",
+        "VIEWER",
+      ]);
+    });
+
+    it("lets only role:manage create one", async () => {
+      await api()
+        .post("/api/v1/roles")
+        .set(as(bobToken, aliceWs))
+        .send({ name: "Triage", permissions: ["issue:status"] })
+        .expect(403);
+
+      const created = await api()
+        .post("/api/v1/roles")
+        .set(as(aliceToken, aliceWs))
+        .send({
+          name: "Triage",
+          permissions: ["issue:status", "comment:create"],
+        })
+        .expect(201);
+      triageId = data<{ id: string }>(created).id;
+
+      await api()
+        .post("/api/v1/roles")
+        .set(as(aliceToken, aliceWs))
+        .send({ name: "triage", permissions: [] })
+        .expect(409);
+    });
+
+    it("keeps one workspace's roles out of another", async () => {
+      // Bob's own workspace has only its built-ins.
+      const own = data<Role[]>(
+        await api().get("/api/v1/roles").set(as(bobToken, bobWs)).expect(200),
+      );
+      expect(own.map((r) => r.name)).not.toContain("Triage");
+
+      await api()
+        .patch(`/api/v1/roles/${triageId}`)
+        .set(as(bobToken, bobWs))
+        .send({ name: "Mine now" })
+        .expect(404);
+    });
+
+    it("gives a member exactly the custom role's permissions", async () => {
+      await setBobsRole(triageId).expect(200);
+
+      expect(await bobsPermissions()).toEqual([
+        "comment:create",
+        "issue:status",
+      ]);
+      // Triage can't create issues, which Member could.
+      await api()
+        .post(`/api/v1/projects/${projectId}/issues`)
+        .set(as(bobToken, aliceWs))
+        .send({ title: "Not allowed" })
+        .expect(403);
+
+      // Editing the role changes what its holders may do at once.
+      await api()
+        .patch(`/api/v1/roles/${triageId}`)
+        .set(as(aliceToken, aliceWs))
+        .send({
+          permissions: ["issue:status", "comment:create", "issue:create"],
+        })
+        .expect(200);
+      expect(await bobsPermissions()).toContain("issue:create");
+    });
+
+    it("leaves the built-in roles alone", async () => {
+      const viewer = (await roles()).find((r) => r.systemKey === "VIEWER")!;
+      await api()
+        .patch(`/api/v1/roles/${viewer.id}`)
+        .set(as(aliceToken, aliceWs))
+        .send({ permissions: ["issue:create"] })
+        .expect(403);
+    });
+
+    it("refuses to delete a role while someone has it", async () => {
+      await api()
+        .delete(`/api/v1/roles/${triageId}`)
+        .set(as(aliceToken, aliceWs))
+        .expect(409);
+
+      const member = (await roles()).find((r) => r.systemKey === "MEMBER")!;
+      await setBobsRole(member.id).expect(200);
+      await api()
+        .delete(`/api/v1/roles/${triageId}`)
+        .set(as(aliceToken, aliceWs))
+        .expect(200);
+      expect((await roles()).map((r) => r.name)).not.toContain("Triage");
+    });
+  });
+
+  describe("ownership transfer and leaving", () => {
+    const transfer = "/api/v1/memberships/transfer-ownership";
+    const me = "/api/v1/memberships/me";
+    const idOf = async (email: string) =>
+      (await prisma.user.findUniqueOrThrow({ where: { email } })).id;
+    const roleIn = async (token: string) =>
+      data<{ role: string }>(
+        await api().get(me).set(as(token, aliceWs)).expect(200),
+      ).role;
+
+    it("lets only the owner hand the workspace over, swapping OWNER and ADMIN", async () => {
+      const aliceId = await idOf(alice.email);
+      const bobId = await idOf(bob.email);
+
+      // Bob isn't the owner, so he can't give it to himself.
+      await api()
+        .post(transfer)
+        .set(as(bobToken, aliceWs))
+        .send({ userId: bobId })
+        .expect(403);
+
+      await api()
+        .post(transfer)
+        .set(as(aliceToken, aliceWs))
+        .send({ userId: bobId })
+        .expect(200);
+      await expect(roleIn(bobToken)).resolves.toBe("OWNER");
+      await expect(roleIn(aliceToken)).resolves.toBe("ADMIN");
+      await expect(
+        prisma.membership.count({
+          where: { workspaceId: aliceWs, role: "OWNER" },
+        }),
+      ).resolves.toBe(1);
+
+      // Alice is an ADMIN now: she can't take it back herself.
+      await api()
+        .post(transfer)
+        .set(as(aliceToken, aliceWs))
+        .send({ userId: aliceId })
+        .expect(403);
+
+      // Bob hands it back, and is left an ADMIN.
+      await api()
+        .post(transfer)
+        .set(as(bobToken, aliceWs))
+        .send({ userId: aliceId })
+        .expect(200);
+      await expect(roleIn(aliceToken)).resolves.toBe("OWNER");
+      await expect(roleIn(bobToken)).resolves.toBe("ADMIN");
+    });
+
+    it("refuses a transfer to someone outside the workspace", async () => {
+      const outsider = await prisma.user.create({
+        data: { name: "Outsider", email: `outsider-${run}@e2e.test` },
+      });
+      try {
+        await api()
+          .post(transfer)
+          .set(as(aliceToken, aliceWs))
+          .send({ userId: outsider.id })
+          .expect(404);
+        // The failed transfer didn't demote Alice.
+        await expect(roleIn(aliceToken)).resolves.toBe("OWNER");
+      } finally {
+        await prisma.user.delete({ where: { id: outsider.id } });
+      }
+    });
+
+    it("lets a member leave, but not the owner", async () => {
+      await api().delete(me).set(as(aliceToken, aliceWs)).expect(403);
+
+      await api().delete(me).set(as(bobToken, aliceWs)).expect(200);
+      await api()
+        .get("/api/v1/projects")
+        .set(as(bobToken, aliceWs))
+        .expect(403);
+    });
+  });
+
+  describe("billing and plan limits (no Stripe keys)", () => {
+    type Billing = {
+      plan: string;
+      billingEnabled: boolean;
+      limits: { members: number | null; customRoles: boolean };
+      usage: { members: number; pendingInvitations: number };
+    };
+    const billing = async () =>
+      data<Billing>(
+        await api().get("/api/v1/billing").set(as(bobToken, bobWs)).expect(200),
+      );
+    const invite = (email: string) =>
+      api()
+        .post("/api/v1/invitations")
+        .set(as(bobToken, bobWs))
+        .send({ email, role: "MEMBER" });
+    const makePro = (workspaceId: string) =>
+      prisma.subscription.upsert({
+        where: { workspaceId },
+        create: { workspaceId, plan: "PRO", status: "ACTIVE" },
+        update: { plan: "PRO", status: "ACTIVE" },
+      });
+
+    afterAll(async () => {
+      await prisma.subscription.deleteMany({ where: { workspaceId: bobWs } });
+    });
+
+    it("shows any member the plan, its limits and the usage", async () => {
+      await expect(billing()).resolves.toMatchObject({
+        plan: "FREE",
+        billingEnabled: false,
+        limits: { members: 5, customRoles: false },
+      });
+    });
+
+    it("402s an invitation past the Free plan's 5 seats", async () => {
+      const { usage } = await billing();
+      const free = 5 - usage.members - usage.pendingInvitations;
+      expect(free).toBeGreaterThan(0);
+      // Fill all but the last seat.
+      for (let i = 0; i < free - 1; i++) {
+        await invite(`seat-${i}-${run}@e2e.test`).expect(201);
+      }
+
+      // Two invitations race for the last seat: exactly one gets it.
+      const racing = await Promise.all([
+        invite(`race-a-${run}@e2e.test`),
+        invite(`race-b-${run}@e2e.test`),
+      ]);
+      expect(racing.map((res) => res.status).sort()).toEqual([201, 402]);
+      // The loser wrote nothing: the seats are exactly full.
+      const after = await billing();
+      expect(after.usage.members + after.usage.pendingInvitations).toBe(5);
+
+      const res = await invite(`one-too-many-${run}@e2e.test`).expect(402);
+      expect(res.body).toMatchObject({
+        success: false,
+        statusCode: 402,
+        code: "PLAN_LIMIT",
+        limit: "members",
+      });
+    });
+
+    it("402s a custom role on Free", async () => {
+      const res = await api()
+        .post("/api/v1/roles")
+        .set(as(bobToken, bobWs))
+        .send({ name: "Triage", permissions: [] })
+        .expect(402);
+      expect(res.body).toMatchObject({
+        code: "PLAN_LIMIT",
+        limit: "customRoles",
+      });
+    });
+
+    it("lifts both limits on Pro, and lists the workspace as Pro", async () => {
+      await makePro(bobWs);
+
+      await invite(`one-too-many-${run}@e2e.test`).expect(201);
+      await api()
+        .post("/api/v1/roles")
+        .set(as(bobToken, bobWs))
+        .send({ name: "Triage", permissions: [] })
+        .expect(201);
+
+      const workspaces = data<{ id: string; plan: string }[]>(
+        await api().get("/api/v1/workspaces").set(as(bobToken)).expect(200),
+      );
+      expect(workspaces.find((w) => w.id === bobWs)?.plan).toBe("PRO");
+    });
+
+    it("caps the Free workspaces one person owns at 2; Pro ones don't count", async () => {
+      const { token, workspaceId: first } = await signUp(erin);
+      const create = (name: string) =>
+        api().post("/api/v1/workspaces").set(as(token)).send({ name });
+
+      const second = data<{ id: string }>(await create("Erin Two").expect(201));
+      createdWorkspaces.push(second.id);
+
+      const res = await create("Erin Three").expect(402);
+      expect(res.body).toMatchObject({
+        code: "PLAN_LIMIT",
+        limit: "ownedWorkspaces",
+      });
+
+      await makePro(first);
+      const third = data<{ id: string }>(
+        await create("Erin Three").expect(201),
+      );
+      createdWorkspaces.push(third.id);
+    });
+
+    it("answers checkout with a 503 when Stripe isn't configured", async () => {
+      await api()
+        .post("/api/v1/billing/checkout")
+        .set(as(bobToken, bobWs))
+        .expect(503);
+    });
+
+    it("keeps the webhook public but refuses an unsigned body", async () => {
+      await api()
+        .post("/api/v1/billing/webhook")
+        .send({ type: "customer.subscription.deleted" })
+        .expect(400);
+    });
+
+    it("checks the signature against the raw body, and applies an event once", async () => {
+      const id = `evt_e2e_${run}`;
+      const payload = JSON.stringify({
+        id,
+        object: "event",
+        type: "customer.created",
+        data: { object: { id: "cus_e2e", object: "customer" } },
+      });
+      const signature = new Stripe(
+        "sk_test_unused",
+      ).webhooks.generateTestHeaderString({
+        payload,
+        secret: process.env.STRIPE_WEBHOOK_SECRET!,
+      });
+      const post = (body: string) =>
+        api()
+          .post("/api/v1/billing/webhook")
+          .set("content-type", "application/json")
+          .set("stripe-signature", signature)
+          .send(body);
+
+      try {
+        // Re-serialized JSON (here, extra whitespace) no longer matches.
+        await post(payload.replace(":", ": ")).expect(400);
+
+        await post(payload).expect(200);
+        const again = await post(payload).expect(200);
+        expect(data(again)).toEqual({ received: true, duplicate: true });
+        await expect(prisma.stripeEvent.count({ where: { id } })).resolves.toBe(
+          1,
+        );
+      } finally {
+        await prisma.stripeEvent.deleteMany({ where: { id } });
+      }
+    });
+  });
+
+  describe("workflows", () => {
+    const workflow = (id: string) => `/api/v1/projects/${id}/workflow`;
+    const createProject = (body: object) =>
+      api().post("/api/v1/projects").set(as(aliceToken, aliceWs)).send(body);
+    const addStatus = (id: string, body: object) =>
+      api()
+        .post(`${workflow(id)}/statuses`)
+        .set(as(aliceToken, aliceWs))
+        .send({ color: "#ef4444", category: "STARTED", ...body });
+    const setTransitions = (id: string, moves: [string, string][]) =>
+      api()
+        .patch(`${workflow(id)}/transitions`)
+        .set(as(aliceToken, aliceWs))
+        .send({
+          transitions: moves.map(([fromStatusId, toStatusId]) => ({
+            fromStatusId,
+            toStatusId,
+          })),
+        });
+
+    afterAll(async () => {
+      await prisma.subscription.deleteMany({ where: { workspaceId: aliceWs } });
+    });
+
+    it("gives a new project the default workflow, every move allowed", async () => {
+      const { statuses, transitions } = await workflowOf(projectId);
+
+      expect(statuses.map((s) => s.name)).toEqual([
+        "Backlog",
+        "To Do",
+        "In Progress",
+        "In Review",
+        "Done",
+      ]);
+      expect(statuses.filter((s) => s.isDefault).map((s) => s.name)).toEqual([
+        "Backlog",
+      ]);
+      expect(transitions).toHaveLength(5 * 4);
+    });
+
+    it("402s every edit on Free, and copying a workflow into a new project", async () => {
+      const refusals = [
+        await addStatus(projectId, { name: "QA" }),
+        await setTransitions(projectId, []),
+        await api()
+          .patch(`${workflow(projectId)}/statuses/${statusIds.Backlog}`)
+          .set(as(aliceToken, aliceWs))
+          .send({ name: "Inbox" }),
+        await createProject({
+          name: "Copycat",
+          workflowFromProjectId: projectId,
+        }),
+      ];
+
+      for (const res of refusals) {
+        expect(res.status).toBe(402);
+        expect(res.body).toMatchObject({
+          code: "PLAN_LIMIT",
+          limit: "customWorkflows",
+        });
+      }
+      expect((await workflowOf(projectId)).statuses).toHaveLength(5);
+    });
+
+    it("keeps a project's workflow out of other workspaces", async () => {
+      await api().get(workflow(projectId)).set(as(bobToken, bobWs)).expect(404);
+    });
+
+    it("on Pro, moves issues only along the project's own transitions", async () => {
+      await prisma.subscription.upsert({
+        where: { workspaceId: aliceWs },
+        create: { workspaceId: aliceWs, plan: "PRO", status: "ACTIVE" },
+        update: { plan: "PRO", status: "ACTIVE" },
+      });
+      const lab = data<{ id: string }>(
+        await createProject({ name: "Workflow Lab" }).expect(201),
+      ).id;
+      const ids = await statusIdsOf(lab);
+      const qa = data<{ id: string }>(
+        await addStatus(lab, { name: "QA" }).expect(201),
+      ).id;
+      await addStatus(lab, { name: "qa" }).expect(409);
+
+      // To Do → QA → Done, and nothing else.
+      await setTransitions(lab, [
+        [ids["To Do"], qa],
+        [qa, ids.Done],
+      ]).expect(200);
+
+      const issues = `/api/v1/projects/${lab}/issues`;
+      const issue = data<{ id: string }>(
+        await api()
+          .post(issues)
+          .set(as(aliceToken, aliceWs))
+          .send({ title: "Gated", statusId: ids["To Do"] })
+          .expect(201),
+      ).id;
+      const move = (statusId: string) =>
+        api()
+          .patch(`${issues}/${issue}`)
+          .set(as(aliceToken, aliceWs))
+          .send({ statusId });
+
+      await move(ids["In Progress"]).expect(400);
+      await move(qa).expect(200);
+      await move(ids.Done).expect(200);
+      // Another project's status is never this project's.
+      await move(statusIds.Done).expect(400);
+
+      // A new project can start from this workflow.
+      const copy = data<{ id: string }>(
+        await createProject({
+          name: "Workflow Copy",
+          workflowFromProjectId: lab,
+        }).expect(201),
+      ).id;
+      const copied = await workflowOf(copy);
+      expect(copied.statuses.map((s) => s.name)).toEqual(
+        (await workflowOf(lab)).statuses.map((s) => s.name),
+      );
+      expect(copied.transitions).toHaveLength(2);
+      expect(copied.statuses.map((s) => s.id)).not.toContain(qa);
+    });
+
+    it("on Pro, deletes a status only once its issues have somewhere to go", async () => {
+      const lab = data<{ id: string }>(
+        await createProject({ name: "Deletion Lab" }).expect(201),
+      ).id;
+      const ids = await statusIdsOf(lab);
+      const issues = `/api/v1/projects/${lab}/issues`;
+      const created = await Promise.all(
+        ["First", "Second"].map(async (title) =>
+          data<{ id: string }>(
+            await api()
+              .post(issues)
+              .set(as(aliceToken, aliceWs))
+              .send({ title, statusId: ids["In Review"] })
+              .expect(201),
+          ),
+        ),
+      );
+      const statusUrl = `${workflow(lab)}/statuses/${ids["In Review"]}`;
+
+      await api().delete(statusUrl).set(as(aliceToken, aliceWs)).expect(409);
+      await api()
+        .delete(`${statusUrl}?moveTo=${ids["In Progress"]}`)
+        .set(as(aliceToken, aliceWs))
+        .expect(200);
+
+      for (const { id } of created) {
+        const moved = data<{ statusId: string }>(
+          await api()
+            .get(`${issues}/${id}`)
+            .set(as(aliceToken, aliceWs))
+            .expect(200),
+        );
+        expect(moved.statusId).toBe(ids["In Progress"]);
+      }
+      const history = data<{ metadata: unknown }[]>(
+        await api()
+          .get(`${issues}/${created[0].id}/activity`)
+          .set(as(aliceToken, aliceWs))
+          .expect(200),
+      );
+      expect(history.map((r) => r.metadata)).toContainEqual({
+        changes: [{ field: "status", from: "In Review", to: "In Progress" }],
+      });
+      expect((await workflowOf(lab)).statuses.map((s) => s.name)).not.toContain(
+        "In Review",
+      );
+
+      // The default and the last completed status can't go.
+      await api()
+        .delete(`${workflow(lab)}/statuses/${ids.Backlog}`)
+        .set(as(aliceToken, aliceWs))
+        .expect(409);
+      await api()
+        .delete(`${workflow(lab)}/statuses/${ids.Done}`)
+        .set(as(aliceToken, aliceWs))
+        .expect(409);
+    });
+  });
+
+  describe("deleting an account", () => {
+    let ginaToken: string;
+    let ginaWs: string;
+    let hankToken: string;
+    let hankWs: string;
+    let hankId: string;
+    let sharedIssue: string;
+    let hankComment: string;
+
+    beforeAll(async () => {
+      ({ token: ginaToken, workspaceId: ginaWs } = await signUp(gina));
+      ({ token: hankToken, workspaceId: hankWs } = await signUp(hank));
+      hankId = (
+        await prisma.user.findUniqueOrThrow({ where: { email: hank.email } })
+      ).id;
+
+      await api()
+        .post("/api/v1/invitations")
+        .set(as(ginaToken, ginaWs))
+        .send({ email: hank.email, role: "MEMBER" })
+        .expect(201);
+      const { token } = await prisma.invitation.findFirstOrThrow({
+        where: { workspaceId: ginaWs, email: hank.email },
+      });
+      await api()
+        .post("/api/v1/invitations/accept")
+        .set(as(hankToken))
+        .send({ token })
+        .expect(201);
+
+      const project = data<{ id: string }>(
+        await api()
+          .post("/api/v1/projects")
+          .set(as(ginaToken, ginaWs))
+          .send({ name: "Shared" })
+          .expect(201),
+      );
+      sharedIssue = data<{ id: string }>(
+        await api()
+          .post(`/api/v1/projects/${project.id}/issues`)
+          .set(as(hankToken, ginaWs))
+          .send({ title: "Hank's report" })
+          .expect(201),
+      ).id;
+      hankComment = data<{ id: string }>(
+        await api()
+          .post(`/api/v1/projects/${project.id}/issues/${sharedIssue}/comments`)
+          .set(as(hankToken, ginaWs))
+          .send({ content: "<p>Found it on Tuesday</p>" })
+          .expect(201),
+      ).id;
+    });
+
+    it("exports the caller's profile, memberships, issues and comments", async () => {
+      type Export = {
+        profile: { email: string; signInMethods: { provider: string }[] };
+        memberships: { workspace: { id: string } }[];
+        issues: { id: string; reportedByYou: boolean }[];
+        comments: { id: string }[];
+      };
+      const exported = data<Export>(
+        await api()
+          .get("/api/v1/users/me/export")
+          .set(as(hankToken))
+          .expect(200),
+      );
+
+      expect(exported.profile.email).toBe(hank.email);
+      expect(exported.profile.signInMethods).toEqual([
+        expect.objectContaining({ provider: "EMAIL" }),
+      ]);
+      expect(JSON.stringify(exported)).not.toContain("$2"); // no bcrypt hash
+      expect(exported.memberships.map((m) => m.workspace.id).sort()).toEqual(
+        [ginaWs, hankWs].sort(),
+      );
+      expect(exported.issues).toEqual([
+        expect.objectContaining({ id: sharedIssue, reportedByYou: true }),
+      ]);
+      expect(exported.comments.map((c) => c.id)).toEqual([hankComment]);
+    });
+
+    it("refuses an owner whose workspace has other members (409), naming it", async () => {
+      const res = await api()
+        .delete("/api/v1/users/me")
+        .set(as(ginaToken))
+        .send({ password: gina.password })
+        .expect(409);
+
+      expect(res.body).toMatchObject({
+        success: false,
+        workspaces: [{ id: ginaWs }],
+      });
+      await expect(
+        prisma.user.count({ where: { email: gina.email } }),
+      ).resolves.toBe(1);
+    });
+
+    it("refuses a wrong password with 400", async () => {
+      await api()
+        .delete("/api/v1/users/me")
+        .set(as(hankToken))
+        .send({ password: "not-my-password" })
+        .expect(400);
+      await expect(prisma.user.count({ where: { id: hankId } })).resolves.toBe(
+        1,
+      );
+    });
+
+    it("deletes the account and its solo workspace, keeping shared issues and comments", async () => {
+      await api()
+        .delete("/api/v1/users/me")
+        .set(as(hankToken))
+        .send({ password: hank.password })
+        .expect(200);
+
+      await expect(prisma.user.count({ where: { id: hankId } })).resolves.toBe(
+        0,
+      );
+      await expect(
+        prisma.workspace.count({ where: { id: hankWs } }),
+      ).resolves.toBe(0);
+      await expect(
+        prisma.membership.count({ where: { userId: hankId } }),
+      ).resolves.toBe(0);
+
+      const issue = await prisma.issue.findUniqueOrThrow({
+        where: { id: sharedIssue },
+      });
+      expect(issue.reporterId).toBeNull();
+      const comment = await prisma.comment.findUniqueOrThrow({
+        where: { id: hankComment },
+      });
+      expect(comment.userId).toBeNull();
+
+      // Gina's audit log says Hank left, though his account is gone.
+      type Row = {
+        action: string;
+        user: unknown;
+        metadata: { member?: { name: string } };
+      };
+      const rows = data<Row[]>(
+        await api()
+          .get("/api/v1/audit-log?entityType=MEMBER")
+          .set(as(ginaToken, ginaWs))
+          .expect(200),
+      );
+      expect(rows[0]).toMatchObject({
+        action: "member.left",
+        user: null,
+        metadata: { member: { name: hank.name } },
+      });
+
+      // His still-unexpired access token reaches nothing.
+      await api().get("/api/v1/users/me").set(as(hankToken)).expect(404);
+      await api()
+        .get("/api/v1/projects")
+        .set(as(hankToken, ginaWs))
+        .expect(403);
+    });
+
+    it("lets the owner delete once nobody else is left", async () => {
+      await api()
+        .delete("/api/v1/users/me")
+        .set(as(ginaToken))
+        .send({ password: gina.password })
+        .expect(200);
+
+      await expect(
+        prisma.workspace.count({ where: { id: ginaWs } }),
+      ).resolves.toBe(0);
+      // The shared issue went with Gina's workspace.
+      await expect(
+        prisma.issue.count({ where: { id: sharedIssue } }),
+      ).resolves.toBe(0);
+    });
+  });
+
+  describe("platform admin", () => {
+    let ivyToken: string;
+    let ivyId: string;
+    let bobId: string;
+
+    beforeAll(async () => {
+      ({ token: ivyToken } = await signUp(ivy));
+      ivyId = (
+        await prisma.user.findUniqueOrThrow({ where: { email: ivy.email } })
+      ).id;
+      bobId = (
+        await prisma.user.findUniqueOrThrow({ where: { email: bob.email } })
+      ).id;
+    });
+
+    afterAll(async () => {
+      // The script's rows have no actor, so they don't go with Ivy's account.
+      await prisma.platformAuditLog.deleteMany({
+        where: { OR: [{ targetId: ivyId }, { actorId: ivyId }] },
+      });
+    });
+
+    const routes = () => [
+      "/api/v1/admin/stats",
+      "/api/v1/admin/workspaces",
+      `/api/v1/admin/workspaces/${aliceWs}`,
+      "/api/v1/admin/users",
+      `/api/v1/admin/users/${bobId}`,
+    ];
+
+    it("403s every admin route for anyone without a platform role, even a workspace owner", async () => {
+      for (const route of routes()) {
+        await api().get(route).set(as(aliceToken, aliceWs)).expect(403);
+        await api().get(route).set(as(ivyToken)).expect(403);
+      }
+      const me = data<{ platformRole: string | null }>(
+        await api().get("/api/v1/users/me").set(as(ivyToken)).expect(200),
+      );
+      expect(me.platformRole).toBeNull();
+    });
+
+    it("never takes a platform role from the API", async () => {
+      await api()
+        .patch("/api/v1/users/me")
+        .set(as(ivyToken))
+        .send({ platformRole: "ADMIN" })
+        .expect(400);
+      await expect(
+        prisma.user.findUniqueOrThrow({ where: { id: ivyId } }),
+      ).resolves.toMatchObject({ platformRole: null });
+    });
+
+    it("lets SUPPORT read across workspaces without secrets, and the script grants and clears it", async () => {
+      await expect(
+        setPlatformRole(prisma, ivy.email.toUpperCase(), "SUPPORT"),
+      ).resolves.toMatchObject({ from: null, to: "SUPPORT", changed: true });
+
+      // Her existing token works at once: the role is read per request.
+      const me = data<{ platformRole: string | null }>(
+        await api().get("/api/v1/users/me").set(as(ivyToken)).expect(200),
+      );
+      expect(me.platformRole).toBe("SUPPORT");
+
+      const responses: Response[] = [];
+      const read = async (route: string) => {
+        const res = await api().get(route).set(as(ivyToken)).expect(200);
+        responses.push(res);
+        return res;
+      };
+
+      type Stats = {
+        users: { total: number };
+        workspaces: { total: number; byPlan: Record<string, number> };
+      };
+      const stats = data<Stats>(await read("/api/v1/admin/stats"));
+      expect(stats.users.total).toBeGreaterThanOrEqual(3);
+      const { FREE, PRO, ENTERPRISE } = stats.workspaces.byPlan;
+      expect(FREE + PRO + ENTERPRISE).toBe(stats.workspaces.total);
+
+      // Alice's workspace, found by its owner's email, as the database has it.
+      const owner = await prisma.membership.findFirstOrThrow({
+        where: { workspaceId: aliceWs, role: "OWNER" },
+        include: { user: true },
+      });
+      const memberCount = await prisma.membership.count({
+        where: { workspaceId: aliceWs },
+      });
+      type Row = {
+        id: string;
+        plan: string;
+        memberCount: number;
+        owner: { email: string } | null;
+      };
+      const search = encodeURIComponent(owner.user.email);
+      const rows = data<Row[]>(
+        await read(`/api/v1/admin/workspaces?search=${search}&limit=100`),
+      );
+      const row = rows.find((r) => r.id === aliceWs);
+      expect(row).toMatchObject({
+        memberCount,
+        owner: { email: owner.user.email },
+      });
+      // The plan filter agrees with the plan each row reports.
+      for (const plan of ["FREE", "PRO"]) {
+        const filtered = data<Row[]>(
+          await read(
+            `/api/v1/admin/workspaces?search=${search}&plan=${plan}&limit=100`,
+          ),
+        );
+        expect(filtered.some((r) => r.id === aliceWs)).toBe(row!.plan === plan);
+      }
+
+      type Detail = {
+        counts: { members: number; issues: number };
+        members: { user: { id: string } }[];
+        projects: { id: string; issueCount: number }[];
+      };
+      const detail = data<Detail>(
+        await read(`/api/v1/admin/workspaces/${aliceWs}`),
+      );
+      expect(detail.counts.members).toBe(memberCount);
+      const memberIds = (
+        await prisma.membership.findMany({ where: { workspaceId: aliceWs } })
+      ).map((m) => m.userId);
+      expect(detail.members.map((m) => m.user.id).sort()).toEqual(
+        memberIds.sort(),
+      );
+      expect(detail.projects.find((p) => p.id === projectId)).toMatchObject({
+        issueCount: await prisma.issue.count({ where: { projectId } }),
+      });
+
+      const users = data<{ id: string }[]>(
+        await read(
+          `/api/v1/admin/users?search=${encodeURIComponent(bob.email)}`,
+        ),
+      );
+      expect(users.map((u) => u.id)).toEqual([bobId]);
+
+      type UserDetail = {
+        signInMethods: { provider: string }[];
+        memberships: { workspace: { id: string } }[];
+        counts: { activeSessions: number };
+      };
+      const bobDetail = data<UserDetail>(
+        await read(`/api/v1/admin/users/${bobId}`),
+      );
+      expect(bobDetail.signInMethods).toEqual([
+        expect.objectContaining({ provider: "EMAIL" }),
+      ]);
+      const bobsWorkspaces = (
+        await prisma.membership.findMany({ where: { userId: bobId } })
+      ).map((m) => m.workspaceId);
+      expect(bobsWorkspaces).toContain(bobWs);
+      expect(bobDetail.memberships.map((m) => m.workspace.id).sort()).toEqual(
+        bobsWorkspaces.sort(),
+      );
+      expect(bobDetail.counts.activeSessions).toBeGreaterThanOrEqual(1);
+
+      // Nothing read contains a credential.
+      const body = JSON.stringify(responses.map((r) => r.body as unknown));
+      expect(body).not.toContain("$2"); // a bcrypt hash
+      expect(body).not.toMatch(
+        /"(password|passwordHash|tokenHash|token|refreshToken|providerId)"/,
+      );
+
+      await api()
+        .get("/api/v1/admin/workspaces/no-such-workspace")
+        .set(as(ivyToken))
+        .expect(404);
+
+      // Recorded with no actor, then cleared — and the same token is out again.
+      await expect(
+        prisma.platformAuditLog.findFirst({
+          where: { targetId: ivyId, action: "platform_role.changed" },
+        }),
+      ).resolves.toMatchObject({
+        actorId: null,
+        targetType: "USER",
+        metadata: { email: ivy.email, from: null, to: "SUPPORT" },
+      });
+      await expect(
+        setPlatformRole(prisma, ivy.email, null),
+      ).resolves.toMatchObject({ from: "SUPPORT", to: null, changed: true });
+      for (const route of routes()) {
+        await api().get(route).set(as(ivyToken)).expect(403);
+      }
+      await expect(
+        prisma.platformAuditLog.count({ where: { targetId: ivyId } }),
+      ).resolves.toBe(2);
+    });
+
+    it("lets ADMIN read too", async () => {
+      await setPlatformRole(prisma, ivy.email, "ADMIN");
+      for (const route of routes()) {
+        await api().get(route).set(as(ivyToken)).expect(200);
+      }
+      await setPlatformRole(prisma, ivy.email, null);
+    });
+
+    describe("actions", () => {
+      let jackId: string;
+      let jackToken: string;
+      let jackRefresh: string;
+      let jackWs: string;
+      const reason = { reason: "e2e: chargeback investigation" };
+
+      /** Platform audit rows about `targetId`, oldest first. */
+      const auditOf = (targetId: string) =>
+        prisma.platformAuditLog.findMany({
+          where: { targetId, actorId: ivyId },
+          orderBy: { createdAt: "asc" },
+        });
+
+      beforeAll(async () => {
+        await setPlatformRole(prisma, ivy.email, "ADMIN");
+        ({
+          token: jackToken,
+          refreshToken: jackRefresh,
+          workspaceId: jackWs,
+        } = await signUp(jack));
+        jackId = (
+          await prisma.user.findUniqueOrThrow({ where: { email: jack.email } })
+        ).id;
+      });
+
+      afterAll(() => setPlatformRole(prisma, ivy.email, null));
+
+      it("refuses SUPPORT, yourself and other admins", async () => {
+        await setPlatformRole(prisma, ivy.email, "SUPPORT");
+        await api()
+          .patch(`/api/v1/admin/users/${jackId}`)
+          .set(as(ivyToken))
+          .send({ suspended: true, ...reason })
+          .expect(403);
+        await api()
+          .get("/api/v1/admin/audit-log")
+          .set(as(ivyToken))
+          .expect(403);
+        await setPlatformRole(prisma, ivy.email, "ADMIN");
+
+        await api()
+          .patch(`/api/v1/admin/users/${ivyId}`)
+          .set(as(ivyToken))
+          .send({ suspended: true, ...reason })
+          .expect(403);
+
+        await setPlatformRole(prisma, carol.email, "ADMIN");
+        const carolId = (
+          await prisma.user.findUniqueOrThrow({ where: { email: carol.email } })
+        ).id;
+        await api()
+          .delete(`/api/v1/admin/users/${carolId}`)
+          .set(as(ivyToken))
+          .send(reason)
+          .expect(403);
+        await setPlatformRole(prisma, carol.email, null);
+        await prisma.platformAuditLog.deleteMany({
+          where: { targetId: carolId },
+        });
+
+        await expect(auditOf(jackId)).resolves.toEqual([]);
+        await api()
+          .delete(`/api/v1/admin/users/${jackId}`)
+          .set(as(ivyToken))
+          .send({})
+          .expect(400); // a reason is required
+      });
+
+      it("suspends an account: no sign-in or refresh, then lifts it", async () => {
+        const suspended = data<{ suspendedReason: string | null }>(
+          await api()
+            .patch(`/api/v1/admin/users/${jackId}`)
+            .set(as(ivyToken))
+            .send({ suspended: true, ...reason })
+            .expect(200),
+        );
+        expect(suspended.suspendedReason).toBe(reason.reason);
+
+        const refused = await api()
+          .post("/api/v1/auth/login")
+          .send({ email: jack.email, password: jack.password })
+          .expect(403);
+        expect(refused.body).toMatchObject({
+          success: false,
+          code: "ACCOUNT_SUSPENDED",
+        });
+        expect(JSON.stringify(refused.body)).not.toContain(reason.reason);
+        // (A wrong password still gets the usual 401: unit-tested, since the
+        // auth routes' throttle is nearly spent by this point of the suite.)
+        // Suspending ended every session.
+        await api()
+          .post("/api/v1/auth/refresh")
+          .send({ refreshToken: jackRefresh })
+          .expect(401);
+        // A session that somehow survived it can't be refreshed either.
+        // (Minted directly: the refresh route isn't throttled, login is.)
+        const sessions = app.get(RefreshTokenService);
+        const survivor = await api()
+          .post("/api/v1/auth/refresh")
+          .send({ refreshToken: await sessions.issue(jackId) })
+          .expect(403);
+        expect(survivor.body).toMatchObject({ code: "ACCOUNT_SUSPENDED" });
+        // Suspending twice is a conflict.
+        await api()
+          .patch(`/api/v1/admin/users/${jackId}`)
+          .set(as(ivyToken))
+          .send({ suspended: true, ...reason })
+          .expect(409);
+
+        await api()
+          .patch(`/api/v1/admin/users/${jackId}`)
+          .set(as(ivyToken))
+          .send({ suspended: false, reason: "e2e: resolved" })
+          .expect(200);
+        const refreshed = await api()
+          .post("/api/v1/auth/refresh")
+          .send({ refreshToken: await sessions.issue(jackId) })
+          .expect(200);
+        ({ accessToken: jackToken, refreshToken: jackRefresh } = data<{
+          accessToken: string;
+          refreshToken: string;
+        }>(refreshed));
+
+        const rows = await auditOf(jackId);
+        expect(rows.map((r) => r.action)).toEqual([
+          "user.suspended",
+          "user.unsuspended",
+        ]);
+        expect(rows[0].metadata).toMatchObject({
+          email: jack.email,
+          reason: reason.reason,
+        });
+      });
+
+      it("suspends a workspace: every scoped route 403s, it stays listed, then it's lifted", async () => {
+        await api()
+          .patch(`/api/v1/admin/workspaces/${jackWs}`)
+          .set(as(ivyToken))
+          .send({ suspended: true, ...reason })
+          .expect(200);
+
+        for (const route of ["/projects", "/labels", "/billing", "/roles"]) {
+          const res = await api()
+            .get(`/api/v1${route}`)
+            .set(as(jackToken, jackWs))
+            .expect(403);
+          expect(res.body).toMatchObject({ code: "WORKSPACE_SUSPENDED" });
+        }
+        type Listed = {
+          id: string;
+          suspended: boolean;
+          suspendedReason?: unknown;
+        };
+        const listed = data<Listed[]>(
+          await api().get("/api/v1/workspaces").set(as(jackToken)).expect(200),
+        ).find((w) => w.id === jackWs);
+        expect(listed).toMatchObject({ suspended: true });
+        expect(listed).not.toHaveProperty("suspendedReason");
+
+        await api()
+          .patch(`/api/v1/admin/workspaces/${jackWs}`)
+          .set(as(ivyToken))
+          .send({ suspended: false, reason: "e2e: resolved" })
+          .expect(200);
+        await api()
+          .get("/api/v1/projects")
+          .set(as(jackToken, jackWs))
+          .expect(200);
+
+        await expect(
+          auditOf(jackWs).then((rows) => rows.map((r) => r.action)),
+        ).resolves.toEqual(["workspace.suspended", "workspace.unsuspended"]);
+      });
+
+      it("revokes every session", async () => {
+        const res = await api()
+          .post(`/api/v1/admin/users/${jackId}/revoke-sessions`)
+          .set(as(ivyToken))
+          .send(reason)
+          .expect(200);
+        expect(data<{ revoked: number }>(res).revoked).toBeGreaterThanOrEqual(
+          1,
+        );
+        await api()
+          .post("/api/v1/auth/refresh")
+          .send({ refreshToken: jackRefresh })
+          .expect(401);
+      });
+
+      it("deletes a workspace, recording its owner, and then the account", async () => {
+        const second = data<{ id: string }>(
+          await api()
+            .post("/api/v1/workspaces")
+            .set(as(jackToken))
+            .send({ name: "Jack's second" })
+            .expect(201),
+        ).id;
+        createdWorkspaces.push(second);
+
+        await api()
+          .delete(`/api/v1/admin/workspaces/${second}`)
+          .set(as(ivyToken))
+          .send(reason)
+          .expect(200);
+        await expect(
+          prisma.workspace.count({ where: { id: second } }),
+        ).resolves.toBe(0);
+        const [deleted] = await auditOf(second);
+        expect(deleted).toMatchObject({
+          action: "workspace.deleted",
+          metadata: {
+            name: "Jack's second",
+            owner: { id: jackId, email: jack.email },
+            memberCount: 1,
+          },
+        });
+
+        await api()
+          .delete(`/api/v1/admin/users/${jackId}`)
+          .set(as(ivyToken))
+          .send(reason)
+          .expect(200);
+        await expect(
+          prisma.user.count({ where: { id: jackId } }),
+        ).resolves.toBe(0);
+        // His only other workspace went with him.
+        await expect(
+          prisma.workspace.count({ where: { id: jackWs } }),
+        ).resolves.toBe(0);
+
+        // One row per action, readable through the API.
+        type Row = { action: string; actor: { id: string } | null };
+        const rows = data<Row[]>(
+          await api()
+            .get(`/api/v1/admin/audit-log?targetType=USER&targetId=${jackId}`)
+            .set(as(ivyToken))
+            .expect(200),
+        );
+        expect(rows.map((r) => r.action)).toEqual([
+          "user.deleted",
+          "user.sessions_revoked",
+          "user.unsuspended",
+          "user.suspended",
+        ]);
+        expect(rows.every((r) => r.actor?.id === ivyId)).toBe(true);
+        expect((await auditOf(jackId)).at(-1)?.metadata).toMatchObject({
+          deletedWorkspaces: [{ id: jackWs }],
+        });
+      });
+    });
   });
 });

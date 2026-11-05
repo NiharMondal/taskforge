@@ -1,4 +1,9 @@
 import {
+  MAX_DESCRIPTION_LENGTH,
+  MAX_NAME_LENGTH,
+  MIN_WORKSPACE_NAME_LENGTH,
+} from "@taskforge/shared";
+import {
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -9,12 +14,12 @@ import {
 export class CreateWorkspaceDto {
   @IsString()
   @IsNotEmpty()
-  @MinLength(3)
-  @MaxLength(100)
+  @MinLength(MIN_WORKSPACE_NAME_LENGTH)
+  @MaxLength(MAX_NAME_LENGTH)
   name!: string;
 
   @IsOptional()
   @IsString()
-  @MaxLength(500)
+  @MaxLength(MAX_DESCRIPTION_LENGTH)
   description?: string;
 }

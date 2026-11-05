@@ -20,7 +20,9 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json --runInBand",
     "studio": "prisma studio",
-    "backfill:issue-rank": "tsx scripts/backfill-issue-rank.ts"
+    "backfill:issue-rank": "tsx scripts/backfill-issue-rank.ts",
+    "cleanup": "tsx scripts/cleanup.ts",
+    "set-platform-role": "tsx scripts/set-platform-role.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
@@ -29,22 +31,24 @@
     "@nestjs/jwt": "^11.0.2",
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.0.1",
+    "@nestjs/schedule": "^6.1.3",
     "@nestjs/throttler": "^6.7.1",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
+    "@taskforge/shared": "workspace:*",
     "bcryptjs": "^3.0.3",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
     "cloudinary": "^2.10.0",
     "dotenv": "^17.4.2",
-    "fractional-indexing": "3.2.0",
     "google-auth-library": "^11.2.0",
     "helmet": "^8.3.0",
     "nodemailer": "^9.0.0",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "stripe": "^23.0.1"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
@@ -74,7 +78,8 @@
     "tsconfig-paths": "^4.2.0",
     "tsx": "^4.23.1",
     "typescript": "^5.7.3",
-    "typescript-eslint": "^8.20.0"
+    "typescript-eslint": "^8.20.0",
+    "webpack-node-externals": "3.0.0"
   },
   "jest": {
     "moduleFileExtensions": [

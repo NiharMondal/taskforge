@@ -1,3 +1,4 @@
+import { WorkspaceSuspendedException } from "@/common/exceptions/suspended.exception";
 import { accessAs } from "@/common/permissions/test-access";
 import { PrismaService } from "@/prisma/prisma.service";
 import {
@@ -7,7 +8,9 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { PlanLimitException } from "@/common/plans/plan-limits";
 import { InvitationStatus, WorkspaceRole } from "generated/prisma/enums";
+import { BillingService } from "../billing/billing.service";
 import { MailService } from "../mail/mail.service";
 import { InvitationService } from "./invitation.service";
 
@@ -28,21 +31,26 @@ describe("InvitationService", () => {
   const invitee = { userId: "user-77" };
 
   let prisma: {
-    membership: { findUnique: jest.Mock; create: jest.Mock };
+    membership: { findUnique: jest.Mock; create: jest.Mock; count: jest.Mock };
     invitation: {
       findFirst: jest.Mock;
       findUnique: jest.Mock;
       findMany: jest.Mock;
+      count: jest.Mock;
       upsert: jest.Mock;
       update: jest.Mock;
       updateMany: jest.Mock;
     };
     workspace: { findUnique: jest.Mock };
     user: { findFirst: jest.Mock; findUnique: jest.Mock };
-    role: { findFirst: jest.Mock };
+    role: { findFirst: jest.Mock; findUnique: jest.Mock };
+    subscription: { findUnique: jest.Mock };
+    auditLog: { create: jest.Mock };
+    $executeRaw: jest.Mock;
     $transaction: jest.Mock;
   };
-  let mail: { sendMail: jest.Mock };
+  let mail: { sendInBackground: jest.Mock };
+  let billing: { syncSeats: jest.Mock };
   let service: InvitationService;
 
   beforeEach(() => {
@@ -50,11 +58,13 @@ describe("InvitationService", () => {
       membership: {
         findUnique: jest.fn(),
         create: jest.fn().mockResolvedValue({ id: "m-1" }),
+        count: jest.fn().mockResolvedValue(1),
       },
       invitation: {
         findFirst: jest.fn().mockResolvedValue(null),
         findUnique: jest.fn(),
         findMany: jest.fn().mockResolvedValue([]),
+        count: jest.fn().mockResolvedValue(0),
         upsert: jest.fn().mockResolvedValue({ id: "inv-1" }),
         update: jest.fn().mockResolvedValue({}),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
@@ -67,7 +77,16 @@ describe("InvitationService", () => {
         findUnique: jest.fn().mockResolvedValue({ name: "Alice" }),
       },
       // No Role rows by default: the enum's default permissions apply.
-      role: { findFirst: jest.fn().mockResolvedValue(null) },
+      role: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findUnique: jest.fn(({ where }: { where: { id: string } }) =>
+          Promise.resolve({ id: where.id, name: `Role ${where.id}` }),
+        ),
+      },
+      // No Subscription row: the Free plan.
+      subscription: { findUnique: jest.fn().mockResolvedValue(null) },
+      auditLog: { create: jest.fn().mockResolvedValue({}) },
+      $executeRaw: jest.fn().mockResolvedValue(1),
       $transaction: jest.fn(),
     };
     // The actor is an ADMIN unless a test says otherwise; everyone else is not
@@ -84,17 +103,119 @@ describe("InvitationService", () => {
       cb(prisma),
     );
 
-    mail = { sendMail: jest.fn().mockResolvedValue({}) };
+    mail = { sendInBackground: jest.fn() };
+    billing = { syncSeats: jest.fn().mockResolvedValue(undefined) };
     service = new InvitationService(
       prisma as unknown as PrismaService,
       mail as unknown as MailService,
       { get: () => "http://localhost:3000" } as unknown as ConfigService,
+      billing as unknown as BillingService,
     );
   });
 
   describe("sendInvitation", () => {
-    const send = (dto: { email: string; role?: WorkspaceRole }) =>
-      service.sendInvitation(workspaceId, adminAccess, dto);
+    const send = (dto: {
+      email: string;
+      role?: WorkspaceRole;
+      roleId?: string;
+    }) => service.sendInvitation(workspaceId, adminAccess, dto);
+
+    describe("the plan's member limit", () => {
+      it("402s on Free when members and live invitations fill the 5 seats", async () => {
+        prisma.membership.count.mockResolvedValue(3);
+        prisma.invitation.count.mockResolvedValue(2);
+
+        const error = await send({ email: "bob@example.com" }).catch(
+          (e: unknown) => e,
+        );
+
+        expect(error).toBeInstanceOf(PlanLimitException);
+        expect((error as PlanLimitException).getResponse()).toMatchObject({
+          statusCode: 402,
+          code: "PLAN_LIMIT",
+          limit: "members",
+        });
+        expect(prisma.invitation.upsert).not.toHaveBeenCalled();
+        // Only live invitations hold a seat, and only this workspace's.
+        expect(prisma.invitation.count).toHaveBeenCalledWith({
+          where: {
+            workspaceId,
+            status: InvitationStatus.PENDING,
+            expiresAt: { gt: expect.any(Date) as Date },
+          },
+        });
+      });
+
+      it("counts the seats under the workspace's lock, in the transaction that writes the invitation", async () => {
+        const order: string[] = [];
+        const tx = {
+          ...prisma,
+          $executeRaw: jest.fn(
+            (strings: TemplateStringsArray, lock: string) => {
+              order.push(`lock ${strings.join("?")} ${lock}`);
+              return Promise.resolve(1);
+            },
+          ),
+          membership: {
+            ...prisma.membership,
+            count: jest.fn(() => {
+              order.push("count");
+              return Promise.resolve(1);
+            }),
+          },
+          invitation: {
+            ...prisma.invitation,
+            upsert: jest.fn(() => {
+              order.push("upsert");
+              return Promise.resolve({ id: "inv-1" });
+            }),
+          },
+        };
+        prisma.$transaction.mockImplementation((cb: (tx: unknown) => unknown) =>
+          cb(tx),
+        );
+
+        await send({ email: "bob@example.com" });
+
+        expect(order[0]).toMatch(/pg_advisory_xact_lock/);
+        expect(order[0]).toContain(`workspace-seats:${workspaceId}`);
+        expect(order.slice(1)).toEqual(["count", "upsert"]);
+        expect(prisma.invitation.upsert).not.toHaveBeenCalled();
+      });
+
+      it("invites the fifth seat on Free", async () => {
+        prisma.membership.count.mockResolvedValue(3);
+        prisma.invitation.count.mockResolvedValue(1);
+
+        await send({ email: "bob@example.com" });
+
+        expect(prisma.invitation.upsert).toHaveBeenCalled();
+      });
+
+      it("has no limit on Pro", async () => {
+        prisma.subscription.findUnique.mockResolvedValue({
+          plan: "PRO",
+          status: "ACTIVE",
+        });
+        prisma.membership.count.mockResolvedValue(40);
+
+        await send({ email: "bob@example.com" });
+
+        expect(prisma.invitation.upsert).toHaveBeenCalled();
+      });
+
+      it("applies the Free limit once a Pro subscription has lapsed", async () => {
+        prisma.subscription.findUnique.mockResolvedValue({
+          plan: "PRO",
+          status: "CANCELED",
+        });
+        prisma.membership.count.mockResolvedValue(5);
+
+        await expect(send({ email: "bob@example.com" })).rejects.toBeInstanceOf(
+          PlanLimitException,
+        );
+      });
+    });
 
     it("checks membership for the user who owns that email", async () => {
       prisma.user.findFirst.mockResolvedValue({
@@ -160,7 +281,7 @@ describe("InvitationService", () => {
 
       expect(prisma.role.findFirst).toHaveBeenCalledWith({
         where: { workspaceId, systemKey: WorkspaceRole.VIEWER },
-        select: { id: true, permissions: true },
+        select: { id: true, name: true, permissions: true },
       });
       const create: unknown = expect.objectContaining({
         role: WorkspaceRole.VIEWER,
@@ -169,6 +290,35 @@ describe("InvitationService", () => {
       expect(prisma.invitation.upsert).toHaveBeenCalledWith(
         expect.objectContaining({ create }),
       );
+    });
+
+    it("invites to a custom role by roleId, scoped to this workspace", async () => {
+      prisma.role.findFirst.mockResolvedValue({
+        id: "role-triage",
+        systemKey: null,
+        permissions: ["issue:status"],
+      });
+
+      await send({ email: "bob@example.com", roleId: "role-triage" });
+
+      expect(prisma.role.findFirst).toHaveBeenCalledWith({
+        where: { id: "role-triage", workspaceId },
+        select: { id: true, name: true, systemKey: true, permissions: true },
+      });
+      const create: unknown = expect.objectContaining({
+        role: WorkspaceRole.MEMBER,
+        roleId: "role-triage",
+      });
+      expect(prisma.invitation.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ create }),
+      );
+    });
+
+    it("404s a roleId that isn't one of this workspace's roles", async () => {
+      await expect(
+        send({ email: "bob@example.com", roleId: "role-of-B" }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.invitation.upsert).not.toHaveBeenCalled();
     });
 
     it("stores and emails the lowercase address", async () => {
@@ -180,7 +330,7 @@ describe("InvitationService", () => {
       expect(prisma.invitation.upsert).toHaveBeenCalledWith(
         expect.objectContaining({ create }),
       );
-      expect(mail.sendMail).toHaveBeenCalledWith(
+      expect(mail.sendInBackground).toHaveBeenCalledWith(
         expect.objectContaining({ to: "bob@example.com" }),
       );
     });
@@ -269,7 +419,7 @@ describe("InvitationService", () => {
         create: { token: string };
       }>(prisma.invitation.upsert);
       expect(create.token).toMatch(/^[0-9a-f]{64}$/);
-      const mailed = firstCallArg<{ text: string }>(mail.sendMail);
+      const mailed = firstCallArg<{ text: string }>(mail.sendInBackground);
       expect(mailed.text).toContain(create.token);
     });
 
@@ -287,7 +437,7 @@ describe("InvitationService", () => {
         html: string;
         text: string;
         subject: string;
-      }>(mail.sendMail);
+      }>(mail.sendInBackground);
       expect(mailed.html).not.toContain("<script>");
       expect(mailed.html).not.toContain("<img");
       expect(mailed.html).toContain("&lt;script&gt;");
@@ -299,7 +449,7 @@ describe("InvitationService", () => {
 
   describe("listInvitations", () => {
     it("does not select the token", async () => {
-      await service.listInvitations(workspaceId);
+      await service.listInvitations(workspaceId, {});
 
       const args = firstCallArg<{
         where: unknown;
@@ -320,6 +470,7 @@ describe("InvitationService", () => {
       role: WorkspaceRole.MEMBER,
       status: InvitationStatus.PENDING,
       expiresAt: new Date(Date.now() + DAY),
+      workspace: { suspendedAt: null },
       ...overrides,
     });
 
@@ -329,6 +480,15 @@ describe("InvitationService", () => {
         id: invitee.userId,
         email: "bob@example.com",
       });
+    });
+
+    it("bills the new seat after the membership is committed", async () => {
+      await service.acceptInvitation(token, invitee.userId);
+
+      expect(billing.syncSeats).toHaveBeenCalledWith(workspaceId);
+      expect(prisma.membership.create.mock.invocationCallOrder[0]).toBeLessThan(
+        billing.syncSeats.mock.invocationCallOrder[0],
+      );
     });
 
     it("finds the caller by User.id (the JWT subject)", async () => {
@@ -412,7 +572,7 @@ describe("InvitationService", () => {
 
       expect(prisma.role.findFirst).toHaveBeenCalledWith({
         where: { workspaceId, systemKey: WorkspaceRole.MEMBER },
-        select: { id: true, permissions: true },
+        select: { id: true, name: true, permissions: true },
       });
       const data: unknown = expect.objectContaining({ roleId: "role-member" });
       expect(prisma.membership.create).toHaveBeenCalledWith({ data });
@@ -458,6 +618,17 @@ describe("InvitationService", () => {
       expect(prisma.membership.create).not.toHaveBeenCalled();
     });
 
+    it("refuses to join a suspended workspace, writing nothing", async () => {
+      prisma.invitation.findUnique.mockResolvedValue(
+        pendingInvite({ workspace: { suspendedAt: new Date() } }),
+      );
+
+      await expect(
+        service.acceptInvitation(token, invitee.userId),
+      ).rejects.toBeInstanceOf(WorkspaceSuspendedException);
+      expect(prisma.membership.create).not.toHaveBeenCalled();
+    });
+
     it("expires and refuses an out-of-date invitation", async () => {
       prisma.invitation.findUnique.mockResolvedValue(
         pendingInvite({ expiresAt: new Date(Date.now() - DAY) }),
@@ -470,6 +641,107 @@ describe("InvitationService", () => {
         where: { id: "inv-1" },
         data: { status: InvitationStatus.EXPIRED },
       });
+    });
+  });
+
+  describe("audit log", () => {
+    const auditRows = () =>
+      (
+        prisma.auditLog.create.mock.calls as [
+          { data: Record<string, unknown> },
+        ][]
+      ).map(([arg]) => arg.data);
+
+    it("records invitation.sent once, in the invitation's transaction", async () => {
+      await service.sendInvitation(workspaceId, adminAccess, {
+        email: "Dan@Example.com",
+        role: WorkspaceRole.VIEWER,
+      });
+
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(auditRows()).toEqual([
+        {
+          workspaceId,
+          userId: actorUserId,
+          action: "invitation.sent",
+          entityType: "INVITATION",
+          entityId: "inv-1",
+          metadata: {
+            email: "dan@example.com",
+            role: { id: null, name: "Viewer" },
+          },
+        },
+      ]);
+    });
+
+    it("records invitation.accepted once, by the new member", async () => {
+      prisma.invitation.findUnique.mockResolvedValue({
+        id: "inv-1",
+        email: "bob@example.com",
+        workspaceId,
+        role: WorkspaceRole.MEMBER,
+        roleId: "role-triage",
+        status: InvitationStatus.PENDING,
+        expiresAt: new Date(Date.now() + DAY),
+        workspace: { suspendedAt: null },
+      });
+      prisma.user.findUnique.mockResolvedValue({
+        id: invitee.userId,
+        email: "bob@example.com",
+      });
+
+      await service.acceptInvitation("tok", invitee.userId);
+
+      expect(auditRows()).toEqual([
+        {
+          workspaceId,
+          userId: invitee.userId,
+          action: "invitation.accepted",
+          entityType: "INVITATION",
+          entityId: "inv-1",
+          metadata: {
+            email: "bob@example.com",
+            role: { id: "role-triage", name: "Role role-triage" },
+          },
+        },
+      ]);
+    });
+
+    it("records invitation.revoked once, with the address", async () => {
+      prisma.invitation.findFirst.mockResolvedValue({
+        id: "inv-9",
+        email: "eve@example.com",
+        workspaceId,
+        status: InvitationStatus.PENDING,
+      });
+
+      await service.revokeInvitation(workspaceId, "inv-9", actorUserId);
+
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(auditRows()).toEqual([
+        {
+          workspaceId,
+          userId: actorUserId,
+          action: "invitation.revoked",
+          entityType: "INVITATION",
+          entityId: "inv-9",
+          metadata: { email: "eve@example.com" },
+        },
+      ]);
+    });
+
+    it("records nothing for an invitation it refuses to revoke", async () => {
+      prisma.invitation.findFirst.mockResolvedValue({
+        id: "inv-9",
+        email: "eve@example.com",
+        workspaceId,
+        status: InvitationStatus.ACCEPTED,
+      });
+
+      await expect(
+        service.revokeInvitation(workspaceId, "inv-9", actorUserId),
+      ).rejects.toThrow();
+      expect(prisma.auditLog.create).not.toHaveBeenCalled();
     });
   });
 });

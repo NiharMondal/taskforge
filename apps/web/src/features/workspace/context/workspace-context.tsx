@@ -1,12 +1,23 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 import { usePathname, useRouter } from "next/navigation";
 
-import { setActiveWorkspaceId as setWorkspaceHeader } from "@/lib/active-workspace";
+import { useQueryClient } from "@tanstack/react-query";
+import { WORKSPACE_SUSPENDED_ERROR_CODE } from "@taskforge/shared";
 
-import { useWorkspaces } from "../hooks/use-workspaces";
+import { setActiveWorkspaceId as setWorkspaceHeader } from "@/lib/active-workspace";
+import { apiErrorCode } from "@/lib/api-error";
+
+import { useWorkspaces, workspaceKeys } from "../hooks/use-workspaces";
 import type { Workspace } from "../types/workspace-types";
 
 /**
@@ -35,6 +46,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const { data: workspaces = [], isLoading, isError } = useWorkspaces();
+  useRefetchWhenSuspended();
 
   // The user's explicit choice, lazy-initialized from localStorage
   // (client-only; SSR renders with null).
@@ -102,6 +114,42 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       {children}
     </WorkspaceContext.Provider>
   );
+}
+
+/**
+ * A workspace suspended while it is open: its next request is a 403
+ * `WORKSPACE_SUSPENDED`. Refetch the workspace list then, so the workspace
+ * shows as suspended and the dashboard swaps its pages for the notice
+ * (`SuspendedWorkspaceGate`) instead of a page of failed requests. Lifting
+ * the suspension shows up on the list's next refetch.
+ */
+function useRefetchWhenSuspended() {
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    const refetchList = (error: unknown) => {
+      if (apiErrorCode(error) === WORKSPACE_SUSPENDED_ERROR_CODE) {
+        void queryClient.invalidateQueries({ queryKey: workspaceKeys.all });
+      }
+    };
+    const unsubscribeQueries = queryClient
+      .getQueryCache()
+      .subscribe((event) => {
+        if (event.type === "updated" && event.action.type === "error") {
+          refetchList(event.action.error);
+        }
+      });
+    const unsubscribeMutations = queryClient
+      .getMutationCache()
+      .subscribe((event) => {
+        if (event.type === "updated" && event.action.type === "error") {
+          refetchList(event.action.error);
+        }
+      });
+    return () => {
+      unsubscribeQueries();
+      unsubscribeMutations();
+    };
+  }, [queryClient]);
 }
 
 /** Read the active workspace. Throws if used outside {@link WorkspaceProvider}. */

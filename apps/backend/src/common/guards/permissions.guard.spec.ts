@@ -2,7 +2,7 @@ import { PrismaService } from "@/prisma/prisma.service";
 import { ExecutionContext, ForbiddenException } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import { WorkspaceRole } from "generated/prisma/enums";
-import { Permission } from "../permissions/permissions";
+import { Permission } from "@taskforge/shared";
 import { accessAs } from "../permissions/test-access";
 import { WorkspaceAccess } from "../permissions/workspace-access";
 import { PermissionsGuard } from "./permissions.guard";
@@ -33,6 +33,7 @@ describe("PermissionsGuard", () => {
       role: WorkspaceRole.MEMBER,
       roleId: null,
       assignedRole: null,
+      workspace: { suspendedAt: null },
     });
     guard = new PermissionsGuard(
       { getAllAndOverride: () => required } as unknown as Reflector,

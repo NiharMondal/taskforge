@@ -1,3 +1,5 @@
+import type { PlatformRole } from "@taskforge/shared";
+
 /**
  * User profile contract types.
  *
@@ -12,9 +14,25 @@ export interface User {
 	avatarUrl: string | null;
 	avatarPublicId: string | null;
 	emailVerifiedAt: string | null;
+	/**
+	 * Platform staff only (ADMIN or SUPPORT); `null` for everyone else. Shows
+	 * the "Admin" link — the backend checks it on every `/admin` request.
+	 */
+	platformRole: PlatformRole | null;
 	createdAt: string;
 	updatedAt: string;
+	/**
+	 * Whether the account has a password (an EMAIL sign-in method); `false` for
+	 * Google-only accounts. Only `GET /users/me` (and `/users/:id`) include it.
+	 */
+	hasPassword?: boolean;
 }
+
+/**
+ * `DELETE /users/me`: an account with a password confirms with it; a
+ * Google-only one (`hasPassword: false`) with its email.
+ */
+export type DeleteAccountDto = { password: string } | { confirmEmail: string };
 
 /**
  * Editable fields for `PATCH /users/:id`. Sending `avatarPublicId` (a temp

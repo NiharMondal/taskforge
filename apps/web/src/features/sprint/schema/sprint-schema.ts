@@ -1,15 +1,19 @@
+import { MAX_DESCRIPTION_LENGTH, MAX_NAME_LENGTH } from "@taskforge/shared";
 import { z } from "zod";
 import type { DateValue } from "@internationalized/date";
 export const sprintSchema = z
 	.object({
-		// Limits mirror the backend's CreateSprintDto / UpdateSprintDto.
+		// Limits are the backend's CreateSprintDto / UpdateSprintDto ones.
 		name: z
 			.string()
 			.min(1, "Name is required")
-			.max(100, "Name must be at most 100 characters"),
+			.max(MAX_NAME_LENGTH, `Name must be at most ${MAX_NAME_LENGTH} characters`),
 		goal: z
 			.string()
-			.max(500, "Goal must be at most 500 characters")
+			.max(
+				MAX_DESCRIPTION_LENGTH,
+				`Goal must be at most ${MAX_DESCRIPTION_LENGTH} characters`,
+			)
 			.nullable()
 			.optional(),
 		startDate: z.custom<DateValue>().nullable().optional(),

@@ -3,12 +3,16 @@ import { api } from "@/lib/axios";
 import { ApiResponse } from "@/types/api";
 
 import type {
+  ChangePasswordRequest,
+  ForgotPasswordRequest,
   GoogleAuthRequest,
   GoogleAuthResponse,
   LoginRequest,
   LoginResponse,
   RegisterRequest,
   RegisterResponse,
+  ResetPasswordRequest,
+  VerifyEmailRequest,
 } from "../types/auth-types";
 
 /**
@@ -43,11 +47,52 @@ export async function login(
 }
 
 /**
- * Create a new account. Registration is owned entirely by the backend;
- * on success the UI redirects the user to /login (spec/auth.md).
+ * Start a sign-up. Nothing is created yet: the backend emails a link to
+ * `/verify-email`, and following it creates the account. The answer is the
+ * same for an address that already has an account.
  */
 export async function register(
   payload: RegisterRequest,
 ): Promise<ApiResponse<RegisterResponse>> {
   return api.post<RegisterResponse>("/auth/register", payload);
+}
+
+/**
+ * Finish a sign-up from the emailed link: creates the account and signs in.
+ * Called from the Auth.js `email-verification` provider (server side).
+ */
+export async function verifyEmail(
+  payload: VerifyEmailRequest,
+): Promise<ApiResponse<LoginResponse>> {
+  return api.post<LoginResponse>("/auth/verify-email", payload);
+}
+
+/**
+ * Change the signed-in user's password. The backend signs out every session,
+ * this one included, so the caller signs out afterwards.
+ */
+export async function changePassword(
+  payload: ChangePasswordRequest,
+): Promise<ApiResponse<null>> {
+  return api.patch<null>("/auth/password", payload);
+}
+
+/**
+ * Ask for a password reset link. The answer is the same whether or not the
+ * address has an account. Also how a Google-only account sets a password.
+ */
+export async function forgotPassword(
+  payload: ForgotPasswordRequest,
+): Promise<ApiResponse<null>> {
+  return api.post<null>("/auth/forgot-password", payload);
+}
+
+/**
+ * Set a new password from the emailed link. Ends every session and doesn't
+ * sign in, so the caller sends the user to `/login`.
+ */
+export async function resetPassword(
+  payload: ResetPasswordRequest,
+): Promise<ApiResponse<null>> {
+  return api.post<null>("/auth/reset-password", payload);
 }

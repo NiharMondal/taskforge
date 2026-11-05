@@ -1,8 +1,13 @@
 import { api, inWorkspace } from "@/lib/axios";
+import { getAllPages } from "@/lib/get-all-pages";
 
 import type { ApiResponse } from "@/types/api";
 
-import type { Member, UpdateMembershipDto } from "../types/membership-types";
+import type {
+	Member,
+	MyMembership,
+	UpdateMembershipDto,
+} from "../types/membership-types";
 
 /**
  * Membership API layer. All membership network calls belong here.
@@ -10,8 +15,8 @@ import type { Member, UpdateMembershipDto } from "../types/membership-types";
  * Every function returns the full `ApiResponse` envelope (via `api` in
  * `lib/axios`); hooks unwrap `.data` where only the payload matters.
  *
- * `GET /memberships` returns every member of the *active* workspace — the
- * workspace is resolved from the `x-workspace-id` header (AI_GUIDE → "Backend
+ * `GET /memberships` returns the members of the *active* workspace, a page at
+ * a time; `getMemberships` reads every page. The workspace is resolved from the `x-workspace-id` header (AI_GUIDE → "Backend
  * endpoint": "@workspaceId from header"), so no id is passed in the route.
  * The per-member routes are keyed by `userId` (`/memberships/:userId`, see
  * apps/backend/src/modules/memberships/membership.controller.ts); the
@@ -20,10 +25,20 @@ import type { Member, UpdateMembershipDto } from "../types/membership-types";
 export async function getMemberships(
   workspaceId: string,
 ): Promise<ApiResponse<Member[]>> {
-  return api.get<Member[]>("/memberships", inWorkspace(workspaceId));
+  return getAllPages<Member>("/memberships", inWorkspace(workspaceId));
 }
 
-/** Change a member's role within the active workspace (`PATCH /memberships/:userId`). */
+/** The caller's own role and permissions in the workspace. */
+export async function getMyMembership(
+	workspaceId: string,
+): Promise<ApiResponse<MyMembership>> {
+	return api.get<MyMembership>("/memberships/me", inWorkspace(workspaceId));
+}
+
+/**
+ * Give a member another role (`PATCH /memberships/:userId`, `{ roleId }`),
+ * custom roles included.
+ */
 export async function updateMembership(
   workspaceId: string,
   userId: string,
@@ -42,4 +57,29 @@ export async function removeMembership(
   userId: string,
 ): Promise<ApiResponse<Member>> {
   return api.delete<Member>(`/memberships/${userId}`, inWorkspace(workspaceId));
+}
+
+/**
+ * Hand the workspace to another member (`POST /memberships/transfer-ownership`,
+ * OWNER only): they become OWNER and the caller becomes ADMIN.
+ */
+export async function transferOwnership(
+  workspaceId: string,
+  userId: string,
+): Promise<ApiResponse<Member>> {
+  return api.post<Member>(
+    "/memberships/transfer-ownership",
+    { userId },
+    inWorkspace(workspaceId),
+  );
+}
+
+/**
+ * Leave the workspace yourself (`DELETE /memberships/me`). Refused for the
+ * OWNER and for your only workspace.
+ */
+export async function leaveWorkspace(
+  workspaceId: string,
+): Promise<ApiResponse<Member>> {
+  return api.delete<Member>("/memberships/me", inWorkspace(workspaceId));
 }

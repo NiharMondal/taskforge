@@ -1,3 +1,4 @@
+import { withoutStaffNote } from "@/common/utils/staff-note";
 import { CloudinaryService } from "@/cloudinary/cloudinary.service";
 import { UpdateUserDto } from "@/modules/user/dto/update-user.dto";
 import { PrismaService } from "@/prisma/prisma.service";
@@ -7,6 +8,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { User } from "generated/prisma/client";
+import { AuthProvider } from "generated/prisma/enums";
 
 @Injectable()
 export class UserService {
@@ -27,13 +29,42 @@ export class UserService {
     return user;
   }
 
+  /**
+   * The user as `GET /users/me` returns them: the row plus `hasPassword`, so
+   * the web knows whether to offer "Change password" (a Google-only account
+   * has no EMAIL sign-in method).
+   */
+  async findProfile(id: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      include: {
+        auths: {
+          where: { provider: AuthProvider.EMAIL },
+          select: { id: true },
+        },
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException(`User ${id} not found`);
+    }
+
+    const { auths, ...profile } = user;
+    return { ...withoutStaffNote(profile), hasPassword: auths.length > 0 };
+  }
+
   async findByEmail(email: string) {
     return this.prisma.user.findUnique({
       where: { email },
     });
   }
 
+  /** Name and avatar; the saved row, without the staff's suspension note. */
   async update(id: string, dto: UpdateUserDto) {
+    return withoutStaffNote(await this.save(id, dto));
+  }
+
+  private async save(id: string, dto: UpdateUserDto) {
     const existing = await this.findOne(id);
 
     const { avatarPublicId } = dto;

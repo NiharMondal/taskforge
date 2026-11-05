@@ -14,7 +14,7 @@ export interface NavItem {
 
 /**
  * Primary dashboard navigation. Issues/boards are project-scoped
- * (`/projects/[id]/issues`), reached by drilling into a project — so they're
+ * (`/projects/[id]/list`), reached by drilling into a project — so they're
  * intentionally absent from the top-level rail rather than faked as global.
  */
 export const NAV_ITEMS: NavItem[] = [

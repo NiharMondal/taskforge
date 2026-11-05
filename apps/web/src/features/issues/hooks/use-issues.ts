@@ -3,13 +3,21 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	createIssue,
 	deleteIssue,
+	getAssignedIssues,
 	getIssues,
 	getSingleIssue,
 	updateIssue,
 } from "../api/issue-api";
-import type { Issue, UpdateIssueDto } from "../types/issue-types";
-import { TIssueFormValues } from "../schema/issue-schema";
+import type {
+	CreateIssueDto,
+	Issue,
+	UpdateIssueDto,
+} from "../types/issue-types";
+import { labelKeys } from "@/features/labels/hooks/use-labels";
+import type { Label } from "@/features/labels/types/label-types";
 import { projectKeys } from "@/features/projects/hooks/use-projects";
+import { workflowKeys } from "@/features/workflow/hooks/use-workflow";
+import type { Workflow } from "@/features/workflow/types/workflow-types";
 
 /**
  * Centralized query keys for the issues feature. Keyed by workspace AND project:
@@ -22,6 +30,16 @@ export const issueKeys = {
 		["issues", workspaceId, projectId] as const,
 	detail: (workspaceId: string, projectId: string, issueId: string) =>
 		["issues", workspaceId, projectId, issueId] as const,
+	/** Under `detail`, so whatever refreshes the issue refreshes its history. */
+	activity: (workspaceId: string, projectId: string, issueId: string) =>
+		["issues", workspaceId, projectId, issueId, "activity"] as const,
+	/**
+	 * The caller's open issues across projects (dashboard). Under
+	 * `["issues", workspaceId]`, so a workspace-wide issue invalidation (e.g. a
+	 * label edit) refreshes it too.
+	 */
+	assigned: (workspaceId: string, limit: number) =>
+		["issues", workspaceId, "assigned", { limit }] as const,
 };
 
 export function useIssues(workspaceId: string, projectId: string) {
@@ -38,6 +56,27 @@ export function useIssues(workspaceId: string, projectId: string) {
 		staleTime: 60_000,
 	});
 }
+/**
+ * The caller's open issues across the workspace (`GET /issues/assigned`):
+ * the first `limit` rows plus the total. Refetches on every mount
+ * (`staleTime: 0`) — issue mutations invalidate per-project keys only, so this
+ * is how an issue finished on the board drops off the dashboard.
+ */
+export function useAssignedIssues(workspaceId: string, limit: number) {
+	return useQuery({
+		queryKey: issueKeys.assigned(workspaceId, limit),
+		queryFn: async () => {
+			const res = await getAssignedIssues(workspaceId, limit);
+			return {
+				issues: res.data,
+				total: res.metaData?.totalData ?? res.data.length,
+			};
+		},
+		enabled: !!workspaceId,
+		staleTime: 0,
+	});
+}
+
 export function useSingleIssue(
 	workspaceId: string,
 	projectId: string,
@@ -60,8 +99,10 @@ export function useCreateIssue(workspaceId: string, projectId: string) {
 	const queryClient = useQueryClient();
 
 	return useMutation({
-		mutationFn: (dto: TIssueFormValues) =>
+		mutationFn: (dto: CreateIssueDto) =>
 			createIssue(workspaceId, projectId, dto),
+		// Invalidating the list key also refetches every detail entry under it
+		// (prefix match), so a parent's sub-issue list picks up a new child.
 		onSuccess: () => {
 			queryClient.invalidateQueries({
 				queryKey: issueKeys.list(workspaceId, projectId),
@@ -98,9 +139,34 @@ export function useUpdateIssue(workspaceId: string, projectId: string) {
 			await queryClient.cancelQueries({ queryKey: key });
 			const previous = queryClient.getQueryData<Issue[]>(key);
 
+			// `labelIds` alone can't render chips; resolve them from the cached
+			// workspace labels (skipped if those aren't loaded — the refetch on
+			// settle fills them in).
+			const { labelIds, ...fields } = dto;
+			const allLabels =
+				labelIds &&
+				queryClient.getQueryData<Label[]>(labelKeys.list(workspaceId));
+			const labels = allLabels
+				? allLabels.filter((l) => labelIds.includes(l.id))
+				: undefined;
+			// Likewise a new `statusId` needs its status's name and color, from the
+			// cached workflow.
+			const status =
+				fields.statusId &&
+				queryClient
+					.getQueryData<Workflow>(workflowKeys.detail(workspaceId, projectId))
+					?.statuses.find((s) => s.id === fields.statusId);
+
 			queryClient.setQueryData<Issue[]>(key, (old) =>
 				old?.map((issue) =>
-					issue.id === issueId ? { ...issue, ...dto } : issue,
+					issue.id === issueId
+						? {
+								...issue,
+								...fields,
+								...(labels && { labels }),
+								...(status && { status }),
+							}
+						: issue,
 				),
 			);
 

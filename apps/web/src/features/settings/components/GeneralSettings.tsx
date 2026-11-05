@@ -12,7 +12,6 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 
 import ErrorAlert from "@/components/ui/error-alert";
-import { useMemberships } from "@/features/memberships/hooks/use-memberships";
 import { useWorkspacePermissions } from "@/features/memberships/hooks/use-workspace-permissions";
 import WorkspaceForm from "@/features/workspace/components/WorkspaceForm";
 import { useWorkspace } from "@/features/workspace/context/workspace-context";
@@ -24,12 +23,14 @@ import type { TWorkspaceFormValues } from "@/features/workspace/schema/workspace
 import { getApiErrorMessage } from "@/lib/api-error";
 
 import DeleteWorkspaceCard from "./DeleteWorkspaceCard";
+import LeaveWorkspaceCard from "./LeaveWorkspaceCard";
+import TransferOwnershipCard from "./TransferOwnershipCard";
 
 /**
- * Settings → General. Lets OWNER/ADMIN rename / re-describe the active
- * workspace (`PATCH /workspaces/:id`), and the OWNER delete it. Both are gated
- * by the viewer's role derived from the roster; the backend enforces the real
- * boundary.
+ * Settings → General. Lets anyone with `workspace:manage` rename / re-describe
+ * the active workspace (`PATCH /workspaces/:id`); the OWNER transfer or delete
+ * it; anyone else leave it. All gated by the viewer's permissions
+ * (`GET /memberships/me`); the backend enforces the real boundary.
  */
 export default function GeneralSettings() {
 	const {
@@ -39,18 +40,16 @@ export default function GeneralSettings() {
 	} = useWorkspace();
 	const queryClient = useQueryClient();
 
-	const workspaceId = activeWorkspaceId ?? "";
+	// A failed permissions lookup fails open (every card shown, the backend
+	// enforces), so only the workspace itself can leave this page blank.
 	const {
+		canManageWorkspace: canManage,
+		canDeleteWorkspace,
+		canTransferOwnership,
+		canLeaveWorkspace,
+		userId,
 		isLoading,
-		isError: isMembersError,
-		refetch: refetchMembers,
-	} = useMemberships(workspaceId);
-	// Either failure leaves this page unable to tell what to show — and a failed
-	// roster would wrongly read as "you are not an admin".
-	const isError = isWorkspaceError || isMembersError;
-
-	const { isManager: canManage, canDeleteWorkspace } =
-		useWorkspacePermissions();
+	} = useWorkspacePermissions();
 
 	const { mutateAsync: updateWorkspace, isPending } = useUpdateWorkspace();
 
@@ -71,17 +70,16 @@ export default function GeneralSettings() {
 		}
 	};
 
-	if (isError) {
+	if (isWorkspaceError) {
 		return (
 			<ErrorAlert
 				title="Couldn’t load workspace settings"
 				description="Check your connection and try again."
-				onRetry={() => {
-					refetchMembers();
+				onRetry={() =>
 					queryClient.invalidateQueries({
 						queryKey: workspaceKeys.all,
-					});
-				}}
+					})
+				}
 			/>
 		);
 	}
@@ -94,7 +92,7 @@ export default function GeneralSettings() {
 					<CardDescription>
 						{canManage
 							? "Update your workspace name and description."
-							: "Only workspace admins can change these settings."}
+							: "Your role can't change these settings."}
 					</CardDescription>
 				</CardHeader>
 				<CardContent>
@@ -137,9 +135,26 @@ export default function GeneralSettings() {
 				</CardContent>
 			</Card>
 
+			{/* Each card is keyed by the workspace so it resets on a switch;
+			    the prefixes keep sibling keys unique. */}
+			{canTransferOwnership && !isLoading && activeWorkspace && (
+				<TransferOwnershipCard
+					key={`transfer-${activeWorkspace.id}`}
+					workspace={activeWorkspace}
+					currentUserId={userId}
+				/>
+			)}
+
 			{canDeleteWorkspace && !isLoading && activeWorkspace && (
 				<DeleteWorkspaceCard
-					key={activeWorkspace.id}
+					key={`delete-${activeWorkspace.id}`}
+					workspace={activeWorkspace}
+				/>
+			)}
+
+			{canLeaveWorkspace && !isLoading && activeWorkspace && (
+				<LeaveWorkspaceCard
+					key={`leave-${activeWorkspace.id}`}
 					workspace={activeWorkspace}
 				/>
 			)}

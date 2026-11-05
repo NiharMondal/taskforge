@@ -1,3 +1,4 @@
+import { PaginationQueryDto } from "@/common/dto/pagination-query.dto";
 import { RequirePermission } from "@/common/decorators/require-permission.decorator";
 import { WorkspaceId } from "@/common/decorators/workspaceId.decorator";
 import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
@@ -12,6 +13,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from "@nestjs/common";
 import { CreateSprintDto } from "./dto/create-sprint.dto";
@@ -42,13 +44,19 @@ export class SprintController {
   async findAll(
     @WorkspaceId() workspaceId: string,
     @Param("projectId") projectId: string,
+    @Query() query: PaginationQueryDto,
   ) {
-    const sprints = await this.sprintService.findAll(workspaceId, projectId);
+    const { data, metaData } = await this.sprintService.findAll(
+      workspaceId,
+      projectId,
+      query,
+    );
 
     return sendResponse({
       statusCode: HttpStatus.OK,
       message: "Sprints fetched successfully",
-      data: sprints,
+      data,
+      metaData,
     });
   }
 

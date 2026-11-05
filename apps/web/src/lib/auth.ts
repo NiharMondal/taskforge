@@ -1,13 +1,16 @@
+import { ACCOUNT_SUSPENDED_ERROR_CODE } from "@taskforge/shared";
 import NextAuth, { CredentialsSignin } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import GoogleProvider from "next-auth/providers/google";
 
-import { login } from "@/features/auth/api/auth-api";
+import { login, verifyEmail } from "@/features/auth/api/auth-api";
 import { loginSchema } from "@/features/auth/schemas/auth-schema";
-import { ApiError } from "@/lib/api-error";
+import type { LoginResponse } from "@/features/auth/types/auth-types";
+import { ApiError, apiErrorCode } from "@/lib/api-error";
 
 import { API_URL } from "./api-url";
 import { authConfig } from "./auth.config";
+import { revokeBackendSession } from "./backend-session";
 
 /**
  * Auth.js v5 entrypoint (Node runtime).
@@ -24,6 +27,46 @@ import { authConfig } from "./auth.config";
 /** Thrown by `authorize` so the login form can show a generic message. */
 class InvalidCredentials extends CredentialsSignin {
   code = "invalid_credentials";
+}
+
+/** The right password on an account whose email was never confirmed (403). */
+class EmailUnverified extends CredentialsSignin {
+  code = "email_unverified";
+}
+
+/** A verification link that is malformed, expired or already used. */
+class InvalidVerificationLink extends CredentialsSignin {
+  code = "invalid_link";
+}
+
+/** The address got an account (e.g. through Google) after the link was sent. */
+/** Platform staff suspended the account (403 `ACCOUNT_SUSPENDED`). */
+class AccountSuspended extends CredentialsSignin {
+  code = "account_suspended";
+}
+
+/** Where a suspended account lands; the login form explains. */
+const SUSPENDED_LOGIN_URL = "/login?suspended=1";
+
+class EmailTaken extends CredentialsSignin {
+  code = "email_taken";
+}
+
+/**
+ * What a sign-in hands Auth.js: the user, plus the backend token pair the
+ * `jwt` callback stores. `image` is seeded from the backend's `avatarUrl`
+ * (Auth.js copies it into `token.picture` -> `session.user.image`).
+ */
+function toAuthUser({ user, ...tokens }: LoginResponse) {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    image: user.avatarUrl ?? null,
+    accessToken: tokens.accessToken,
+    accessTokenExpiresAt: tokens.accessTokenExpiresAt,
+    refreshToken: tokens.refreshToken,
+  };
 }
 
 /**
@@ -43,20 +86,24 @@ async function googleProfile(idToken: string | undefined) {
     body: JSON.stringify({ idToken }),
   });
 
+  // A suspended account: the `signIn` callback below turns this away.
+  if (res.status === 403) {
+    const body = (await res.clone().json().catch(() => null)) as {
+      code?: unknown;
+    } | null;
+    if (body?.code === ACCOUNT_SUSPENDED_ERROR_CODE) {
+      return { id: "suspended", suspended: true };
+    }
+  }
+
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`Google auth failed: ${res.status} ${text}`);
   }
 
-  const { data } = (await res.json()) as { data: { user: { id: string; name: string; email: string; avatarUrl?: string | null }; accessToken: string } };
+  const { data } = (await res.json()) as { data: LoginResponse };
 
-  return {
-    id: data.user.id,
-    name: data.user.name,
-    email: data.user.email,
-    image: data.user.avatarUrl ?? null,
-    accessToken: data.accessToken,
-  };
+  return toAuthUser(data);
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
@@ -65,6 +112,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+
+      // Always show Google's account chooser. Without it, Google reuses the
+      // account last picked in this browser (even from an abandoned attempt)
+      // and skips the chooser, so the user can't switch accounts.
+      authorization: { params: { prompt: "select_account" } },
 
       // Auth.js passes the token set as the second argument.
       async profile(_profile, tokens) {
@@ -84,21 +136,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (!parsed.success) throw new InvalidCredentials();
 
         try {
-          const { user, accessToken } = (await login(parsed.data))
-            .data;
-
-          return {
-            id: user.id,
-            name: user.name,
-            email: user.email,
-            // Seed the avatar from the backend on sign-in. Auth.js copies
-            // `image` into `token.picture` -> `session.user.image`, so the
-            // header shows it on fresh login/reload (undefined until the
-            // backend includes `avatarUrl` in the login response).
-            image: user.avatarUrl ?? null,
-            accessToken,
-          };
+          return toAuthUser((await login(parsed.data)).data);
         } catch (error) {
+          // Only reachable with the right password, so saying why is safe.
+          if (apiErrorCode(error) === ACCOUNT_SUSPENDED_ERROR_CODE) {
+            throw new AccountSuspended();
+          }
+          if (error instanceof ApiError && error.status === 403) {
+            throw new EmailUnverified();
+          }
           // Map expected auth rejections to a single generic credentials error:
           //   401 bad email/password (the backend never says which) · 400
           //   validation. 404 is kept for older backends that reported an
@@ -115,6 +161,54 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         }
       },
     }),
+    // The link in a verification email: `/verify-email` posts its token here,
+    // the backend creates the account, and the person is signed in.
+    Credentials({
+      id: "email-verification",
+      name: "Email verification",
+      credentials: { token: {} },
+
+      async authorize(credentials) {
+        const token = credentials?.token;
+        if (typeof token !== "string" || !/^[0-9a-f]{64}$/.test(token)) {
+          throw new InvalidVerificationLink();
+        }
+
+        try {
+          return toAuthUser((await verifyEmail({ token })).data);
+        } catch (error) {
+          if (error instanceof ApiError && error.status === 400) {
+            throw new InvalidVerificationLink();
+          }
+          if (error instanceof ApiError && error.status === 409) {
+            throw new EmailTaken();
+          }
+          if (apiErrorCode(error) === ACCOUNT_SUSPENDED_ERROR_CODE) {
+            throw new AccountSuspended();
+          }
+          throw error;
+        }
+      },
+    }),
   ],
+  callbacks: {
+    ...authConfig.callbacks,
+    // Google can't throw a code the login form reads, so a suspended account
+    // comes back flagged from `profile` and is sent to the login notice.
+    signIn({ user }) {
+      return user.suspended ? SUSPENDED_LOGIN_URL : true;
+    },
+  },
+  events: {
+    // End the backend session too, so the refresh token can't outlive the
+    // cookie it was in.
+    async signOut(message) {
+      const refreshToken =
+        "token" in message ? message.token?.refreshToken : undefined;
+      if (typeof refreshToken === "string") {
+        await revokeBackendSession(refreshToken);
+      }
+    },
+  },
   secret: process.env.AUTH_SECRET,
 });

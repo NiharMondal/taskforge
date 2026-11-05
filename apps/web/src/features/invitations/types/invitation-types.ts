@@ -1,3 +1,5 @@
+import type { InvitationStatus } from "@taskforge/shared";
+import type { RoleSummary } from "@/features/roles/types/role-types";
 import type { WorkspaceRole } from "@/features/workspace/types/workspace-types";
 
 /**
@@ -8,14 +10,18 @@ import type { WorkspaceRole } from "@/features/workspace/types/workspace-types";
  * (it grants membership) and the accept flow receives it via the email link.
  */
 
-/** Mirrors the Prisma `InvitationStatus` enum. */
-export type InvitationStatus = "PENDING" | "ACCEPTED" | "EXPIRED" | "REVOKED";
+/** The Prisma `InvitationStatus` enum (via `@taskforge/shared`). */
+export type { InvitationStatus };
 
 export interface Invitation {
   id: string;
   email: string;
   workspaceId: string;
+  /** Legacy enum (MEMBER for a custom role); show `assignedRole`. */
   role: WorkspaceRole;
+  roleId: string | null;
+  /** The role it grants; null once a deleted role was unlinked. */
+  assignedRole: RoleSummary | null;
   status: InvitationStatus;
   expiresAt: string;
   createdAt: string;
@@ -45,5 +51,7 @@ export interface InvitationPreview {
   workspaceId: string;
   workspaceName: string;
   role: WorkspaceRole;
+  /** The role's display name (custom roles included). */
+  roleName: string;
   expiresAt: string;
 }

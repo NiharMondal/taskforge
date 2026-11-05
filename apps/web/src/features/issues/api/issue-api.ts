@@ -1,8 +1,10 @@
 import { api, inWorkspace } from "@/lib/axios";
+import { getAllPages } from "@/lib/get-all-pages";
 
 import type { ApiResponse } from "@/types/api";
 
 import type {
+	AssignedIssue,
 	CreateIssueDto,
 	Issue,
 	UpdateIssueDto,
@@ -21,16 +23,11 @@ import type {
  * tenant without touching these paths.
  */
 
-/** Backend's `QueryIssuesDto` maximum for `limit`. */
-const ISSUES_PAGE_SIZE = 100;
-
 /**
  * List ALL of a project's issues (`GET /projects/:projectId/issues`).
  *
  * The endpoint is paginated (default 20 per page), but the board and list both
- * render the whole project, so this walks the pages until the backend reports
- * there are no more. The returned envelope is the last page's, with `data`
- * replaced by the concatenation of every page.
+ * render the whole project, so this walks every page (`getAllPages`).
  *
  * Stop-gap: it makes one request per 100 issues, serially. The proper fix is
  * per-lane pagination on the board.
@@ -39,34 +36,26 @@ export async function getIssues(
 	workspaceId: string,
 	projectId: string,
 ): Promise<ApiResponse<Issue[]>> {
-	const seen = new Set<string>();
-	const issues: Issue[] = [];
-
-	let page = 1;
-	for (;;) {
-		const res = await api.get<Issue[]>(
-			`/projects/${projectId}/issues`,
-			inWorkspace(workspaceId, {
-				params: { page, limit: ISSUES_PAGE_SIZE },
-			}),
-		);
-
-		// A write landing between page fetches shifts rows across the boundary,
-		// so the same issue can show up twice — keep the first copy.
-		for (const issue of res.data) {
-			if (seen.has(issue.id)) continue;
-			seen.add(issue.id);
-			issues.push(issue);
-		}
-
-		// An empty page ends the walk even if `hasNextPage` lies, so a bad
-		// response can't loop forever.
-		if (!res.metaData?.hasNextPage || res.data.length === 0) {
-			return { ...res, data: issues };
-		}
-		page += 1;
-	}
+	return getAllPages<Issue>(
+		`/projects/${projectId}/issues`,
+		inWorkspace(workspaceId),
+	);
 }
+/**
+ * The caller's open issues across the workspace's projects
+ * (`GET /issues/assigned`), most urgent first. One page only: the dashboard
+ * shows the top few and reads the total from `metaData.totalData`.
+ */
+export async function getAssignedIssues(
+	workspaceId: string,
+	limit: number,
+): Promise<ApiResponse<AssignedIssue[]>> {
+	return api.get<AssignedIssue[]>(
+		"/issues/assigned",
+		inWorkspace(workspaceId, { params: { limit } }),
+	);
+}
+
 export async function getSingleIssue(
 	workspaceId: string,
 	projectId: string,

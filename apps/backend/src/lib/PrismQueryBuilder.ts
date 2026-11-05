@@ -2,17 +2,8 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
-/* eslint-disable no-unused-vars */
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
-interface IPaginationMeta {
-  currentPage: number;
-  totalPages: number;
-  totalData: number;
-  pageSize: number;
-  hasNextPage: boolean;
-  hasPreviousPage: boolean;
-}
+import type { PaginationMeta } from "@taskforge/shared";
 
 interface IPaginationConfig {
   page?: number;
@@ -59,7 +50,7 @@ class PrismaQueryBuilder<TWhereInput = any, TModel = any> {
 
   private orderByCondition: Record<string, "asc" | "desc"> = {};
   private includeFields: Record<string, any> = {};
-  private selectFields: Record<string, boolean> = {};
+  private selectFields: Record<string, any> = {};
 
   constructor(
     private readonly query: Record<string, any>,
@@ -117,10 +108,10 @@ class PrismaQueryBuilder<TWhereInput = any, TModel = any> {
   }
 
   /**
-   * Merge select fields
-   * @example select({ id: true, name: true })
+   * Merge select fields (nested relation selects included)
+   * @example select({ id: true, user: { select: { name: true } } })
    */
-  select(fields: Record<string, boolean>): this {
+  select(fields: Record<string, any>): this {
     this.selectFields = { ...this.selectFields, ...fields };
     return this;
   }
@@ -301,7 +292,14 @@ class PrismaQueryBuilder<TWhereInput = any, TModel = any> {
     };
 
     if (Object.keys(this.orderByCondition).length > 0) {
-      args.orderBy = this.orderByCondition;
+      // Rows tied on the sort field come back in any order, so a page
+      // boundary between them could repeat one row and skip another. `id`
+      // makes the order total.
+      const [[field, order]] = Object.entries(this.orderByCondition);
+      args.orderBy =
+        field === "id"
+          ? this.orderByCondition
+          : [this.orderByCondition, { id: order }];
     }
 
     if (Object.keys(this.includeFields).length > 0) {
@@ -336,7 +334,7 @@ class PrismaQueryBuilder<TWhereInput = any, TModel = any> {
    */
   async getMeta(prismaModel: {
     count: (args: any) => Promise<number>;
-  }): Promise<IPaginationMeta> {
+  }): Promise<PaginationMeta> {
     this.applyDefaultFilter();
 
     const totalData = await prismaModel.count({
@@ -363,7 +361,7 @@ class PrismaQueryBuilder<TWhereInput = any, TModel = any> {
   async execute(prismaModel: {
     findMany: (args: any) => Promise<TModel[]>;
     count: (args: any) => Promise<number>;
-  }): Promise<{ data: TModel[]; metaData: IPaginationMeta }> {
+  }): Promise<{ data: TModel[]; metaData: PaginationMeta }> {
     const [data, metaData] = await Promise.all([
       prismaModel.findMany(this.build()),
       this.getMeta(prismaModel),
@@ -470,9 +468,4 @@ class PrismaQueryBuilder<TWhereInput = any, TModel = any> {
 }
 
 export default PrismaQueryBuilder;
-export type {
-  IPaginationConfig,
-  IPaginationMeta,
-  IQueryBuilderResult,
-  ISortConfig,
-};
+export type { IPaginationConfig, IQueryBuilderResult, ISortConfig };

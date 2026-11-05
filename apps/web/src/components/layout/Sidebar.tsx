@@ -1,15 +1,18 @@
 import { cn } from "@heroui/react";
 
-import CreateWorkspaceButton from "@/features/workspace/components/CreateWorkspaceButton";
+import BrandLink from "@/components/ui/brand-link";
+import AdminNavLink from "@/features/admin/components/AdminNavLink";
 
 import { NAV_ITEMS } from "./nav-items";
 import SidebarItem from "./SidebarItem";
-import WorkspaceSwitcher from "./WorkspaceSwitcher";
+import WorkspaceMenu from "./WorkspaceMenu";
 
 /**
- * The sidebar shell: workspace switcher on top, primary navigation below.
- * Purely presentational so it can be reused for both the fixed desktop rail
- * and the mobile drawer (see AppLayout / MobileSidebar).
+ * The sidebar shell: the brand on top (as tall as the header, so their
+ * borders line up), primary navigation, and the workspace menu pinned to the
+ * bottom — switch or create a workspace, sign out. Purely presentational so it
+ * can be reused for both the fixed desktop rail and the mobile drawer (see
+ * AppLayout / MobileSidebar).
  */
 export default function Sidebar({ className }: { className?: string }) {
   return (
@@ -19,16 +22,21 @@ export default function Sidebar({ className }: { className?: string }) {
         className,
       )}
     >
-      <div className="space-y-2 border-b border-border p-4">
-        <WorkspaceSwitcher />
-        <CreateWorkspaceButton />
+      <div className="flex h-14 shrink-0 items-center border-b border-border px-4">
+        <BrandLink href="/dashboard" />
       </div>
 
       <nav className="flex-1 space-y-1 overflow-y-auto p-2">
         {NAV_ITEMS.map((item) => (
           <SidebarItem key={item.href} {...item} />
         ))}
+        {/* Platform staff only. */}
+        <AdminNavLink />
       </nav>
+
+      <div className="shrink-0 border-t border-border p-2">
+        <WorkspaceMenu />
+      </div>
     </aside>
   );
 }

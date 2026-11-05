@@ -1,3 +1,5 @@
+import { PaginationQueryDto } from "@/common/dto/pagination-query.dto";
+import PrismaQueryBuilder from "@/lib/PrismQueryBuilder";
 import { PrismaService } from "@/prisma/prisma.service";
 import {
   BadRequestException,
@@ -6,6 +8,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import type { Prisma } from "generated/prisma/client";
+import { StatusCategory } from "generated/prisma/enums";
 import { CreateSprintDto } from "./dto/create-sprint.dto";
 import { UpdateSprintDto } from "./dto/update-sprint.dto";
 
@@ -43,11 +46,19 @@ export class SprintService {
   }
 
   // GET ALL
-  async findAll(workspaceId: string, projectId: string) {
-    return this.prisma.sprint.findMany({
-      where: { workspaceId, projectId },
-      orderBy: { createdAt: "desc" },
-    });
+  async findAll(
+    workspaceId: string,
+    projectId: string,
+    query: PaginationQueryDto,
+  ) {
+    return new PrismaQueryBuilder(query, {
+      defaultField: "createdAt",
+      defaultOrder: "desc",
+    })
+      .withDefaultFilter({ workspaceId, projectId })
+      .paginate()
+      .sort()
+      .execute(this.prisma.sprint);
   }
 
   // Update sprint
@@ -131,12 +142,13 @@ export class SprintService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      // Move unfinished issues back to backlog
+      // Unfinished issues (any status not in the COMPLETED category) go back
+      // to the backlog; their status is kept.
       await tx.issue.updateMany({
         where: {
           sprintId,
           workspaceId,
-          status: { not: "DONE" },
+          status: { category: { not: StatusCategory.COMPLETED } },
         },
         data: {
           sprintId: null,

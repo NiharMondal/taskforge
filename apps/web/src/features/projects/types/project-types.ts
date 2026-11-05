@@ -11,3 +11,11 @@ export interface Project {
     sprints: number;
   };
 }
+
+/** `POST /projects`. */
+export interface CreateProjectDto {
+  name: string;
+  description?: string | null;
+  /** Start with a copy of this project's workflow (Pro; a 402 on Free). */
+  workflowFromProjectId?: string;
+}

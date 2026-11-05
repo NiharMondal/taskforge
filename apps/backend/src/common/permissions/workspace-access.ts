@@ -1,13 +1,14 @@
 import { PrismaService } from "@/prisma/prisma.service";
 import { ForbiddenException } from "@nestjs/common";
 import { WorkspaceRole } from "generated/prisma/enums";
+import { WorkspaceSuspendedException } from "../exceptions/suspended.exception";
 import { AuthenticatedRequest } from "../types/authenticated-request.interface";
 import {
   ALL_PERMISSIONS,
   DEFAULT_ROLE_PERMISSIONS,
   isGrantablePermission,
   Permission,
-} from "./permissions";
+} from "@taskforge/shared";
 
 /** Who the caller is inside the workspace named by the request. */
 export interface WorkspaceAccess {
@@ -101,11 +102,18 @@ export async function resolveWorkspaceAccess(
 
   const membership = await prisma.membership.findUnique({
     where: { userId_workspaceId: { userId: user.sub, workspaceId } },
-    include: ASSIGNED_ROLE_INCLUDE,
+    include: {
+      ...ASSIGNED_ROLE_INCLUDE,
+      workspace: { select: { suspendedAt: true } },
+    },
   });
 
   if (!membership) {
     throw new ForbiddenException("No access to this workspace");
+  }
+  // Checked after membership, so only members learn a workspace is suspended.
+  if (membership.workspace.suspendedAt) {
+    throw new WorkspaceSuspendedException();
   }
 
   const access = accessFromMembership(membership, {
@@ -132,5 +140,27 @@ export function assertActorHolds(
     if (!held.has(permission)) {
       throw new ForbiddenException(`You cannot ${action} than your own`);
     }
+  }
+}
+
+/**
+ * Refuse unless the actor holds every one of the target member's
+ * `permissions` and at least one more. Changing or removing a member takes
+ * strictly more access than theirs, so peers (two Admins, or two holders of
+ * the same custom role) can't demote or remove each other; the OWNER, who
+ * alone holds the owner-only keys, outranks everyone.
+ */
+export function assertActorOutranks(
+  actor: WorkspaceAccess,
+  permissions: Iterable<string>,
+) {
+  const held: ReadonlySet<string> = actor.permissions;
+  const target = new Set(permissions);
+  const holdsAll = [...target].every((permission) => held.has(permission));
+  // With every target key held, "one more" is just a larger set.
+  if (!holdsAll || held.size <= target.size) {
+    throw new ForbiddenException(
+      "You can only change or remove a member with less access than your own",
+    );
   }
 }

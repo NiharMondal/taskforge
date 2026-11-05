@@ -1,34 +1,66 @@
-import { IsOptionalNonNull } from "@/common/decorators/is-optional-non-null.decorator";
-import { IssueStatus, IssuePriority } from "generated/prisma/enums";
 import {
+  MAX_ISSUE_DESCRIPTION_LENGTH,
+  MAX_ISSUE_LABELS,
+  MAX_ISSUE_TITLE_LENGTH,
+  MAX_STORY_POINTS,
+  MIN_ISSUE_TITLE_LENGTH,
+  SELECTABLE_ISSUE_TYPES,
+} from "@taskforge/shared";
+import { IsOptionalNonNull } from "@/common/decorators/is-optional-non-null.decorator";
+import { IssuePriority, IssueType } from "generated/prisma/enums";
+import {
+  ArrayMaxSize,
+  ArrayUnique,
+  IsArray,
   IsEnum,
+  IsIn,
+  IsInt,
   IsOptional,
   IsString,
   IsUUID,
   Matches,
+  Max,
   MaxLength,
+  Min,
   MinLength,
 } from "class-validator";
+import { ISSUE_TYPE_MESSAGE } from "./create-issue.dto";
 
 export class UpdateIssueDto {
   @IsOptionalNonNull()
   @IsString()
-  @MinLength(2)
-  @MaxLength(255)
+  @MinLength(MIN_ISSUE_TITLE_LENGTH)
+  @MaxLength(MAX_ISSUE_TITLE_LENGTH)
   title?: string;
 
   @IsOptional()
   @IsString()
-  @MaxLength(2000)
+  @MaxLength(MAX_ISSUE_DESCRIPTION_LENGTH)
   description?: string;
 
+  /**
+   * A status of this project's workflow (`GET /projects/:projectId/workflow`).
+   * Left out on create, the project's default.
+   */
   @IsOptionalNonNull()
-  @IsEnum(IssueStatus)
-  status?: IssueStatus;
+  @IsUUID()
+  statusId?: string;
 
   @IsOptionalNonNull()
   @IsEnum(IssuePriority)
   priority?: IssuePriority;
+
+  /** A sub-issue's type (SUBTASK) can't be changed; the service refuses it. */
+  @IsOptionalNonNull()
+  @IsIn(SELECTABLE_ISSUE_TYPES, { message: ISSUE_TYPE_MESSAGE })
+  type?: IssueType;
+
+  /** Story points; `null` clears the estimate. */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(MAX_STORY_POINTS)
+  timeEstimate?: number | null;
 
   @IsOptional()
   @IsUUID()
@@ -38,10 +70,18 @@ export class UpdateIssueDto {
   @IsUUID()
   assigneeId?: string;
 
+  /** Replaces the issue's labels; `[]` removes them all. */
+  @IsOptionalNonNull()
+  @IsArray()
+  @ArrayMaxSize(MAX_ISSUE_LABELS)
+  @ArrayUnique()
+  @IsUUID("all", { each: true })
+  labelIds?: string[];
+
   /**
    * Board position within the target `(project, status)` lane: a base-62
    * fractional index computed by the client on drop (see `Issue.rank`). Sent
-   * together with `status`; the charset check only rejects obvious junk — the
+   * together with `statusId`; the charset check only rejects obvious junk — the
    * service validates that it is a usable key.
    */
   @IsOptional()

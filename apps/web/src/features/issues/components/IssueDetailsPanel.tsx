@@ -4,14 +4,22 @@ import { Button } from "@heroui/react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 
-import { FormSelect, FormWrapper } from "@/components/form-element";
+import {
+	FormSelect,
+	FormTextField,
+	FormWrapper,
+} from "@/components/form-element";
+import FormLabelSelect from "@/features/labels/components/FormLabelSelect";
+import type { Label } from "@/features/labels/types/label-types";
 import { Member } from "@/features/memberships/types/membership-types";
 import {
 	canSetIssueStatus,
 	type Permissions,
 } from "@/features/memberships/lib/permissions";
 
-import { ISSUE_PRIORITIES, statusOptionsFor } from "../constants";
+import { useWorkflow } from "@/features/workflow/hooks/use-workflow";
+
+import { ISSUE_PRIORITIES, typeOptionsFor } from "../constants";
 import {
 	issueDetailsSchema,
 	TIssueDetailsValues,
@@ -19,33 +27,46 @@ import {
 import { Sprint } from "../types/issue-types";
 import { NO_SPRINT, UNASSIGNED } from "./IssueForm";
 import Avatar from "@/components/ui/avatar";
-import { ICommonUserEntity } from "@/types/common";
+import { DELETED_USER_NAME, ICommonUserEntity } from "@/types/common";
 
 type Props = {
+	workspaceId: string;
+	projectId: string;
 	defaultValues: TIssueDetailsValues;
 	onSubmit: (values: TIssueDetailsValues) => Promise<boolean | void>;
 	isSubmitting: boolean;
 	members: Member[];
 	sprints: Sprint[];
-	/** Read-only — the reporter is set at creation and never edited here. */
-	reporter?: ICommonUserEntity;
+	/** The workspace's labels to pick from. */
+	labels: Label[];
+	/**
+	 * Read-only — the reporter is set at creation and never edited here.
+	 * `null` once their account is deleted; `undefined` if not embedded.
+	 */
+	reporter?: ICommonUserEntity | null;
 	/** Which of the controls below the viewer's role may actually change. */
 	permissions: Permissions;
+	/** Whether the viewer may edit this issue's fields (`canEditIssue`). */
+	canEditFields: boolean;
 };
 
 /**
  * Right "Details" panel of the issue detail page: the issue's metadata
- * (status, priority, assignee, sprint) plus the read-only reporter. Saved on
- * its own, independent of the content form on the left.
+ * (status, type, priority, assignee, sprint, labels, story points) plus the read-only
+ * reporter. Saved on its own, independent of the content form on the left.
  */
 export default function IssueDetailsPanel({
+	workspaceId,
+	projectId,
 	defaultValues,
 	onSubmit,
 	isSubmitting,
 	members,
 	sprints,
+	labels,
 	reporter,
 	permissions,
+	canEditFields,
 }: Props) {
 	const methods = useForm<TIssueDetailsValues>({
 		resolver: zodResolver(issueDetailsSchema),
@@ -56,15 +77,19 @@ export default function IssueDetailsPanel({
 
 	// Derived from the *saved* status, not the form's live value: recomputing on
 	// selection would let one save walk the issue several stages down the flow.
-	// Options the viewer's role may not move the issue to (e.g. DONE for a
-	// MEMBER) are dropped; a lone entry disables the control.
-	const statusOptions = statusOptionsFor(defaultValues.status).filter(
+	// Options the viewer's role may not move the issue to (e.g. a completed
+	// status for a MEMBER) are dropped; a lone entry disables the control.
+	const { view: workflow } = useWorkflow(workspaceId, projectId);
+	const statusOptions = (
+		workflow?.optionsFrom(defaultValues.statusId) ?? []
+	).filter(
 		(s) =>
-			s.value === defaultValues.status ||
-			canSetIssueStatus(permissions, s.value),
+			s.id === defaultValues.statusId ||
+			canSetIssueStatus(permissions, s.category),
 	);
-	const canEditFields = permissions.canEditIssueFields;
 	const canSave = canEditFields || permissions.canChangeIssueStatus;
+	// A sub-issue's type is SUBTASK for good, so its Select is display only.
+	const typeOptions = typeOptionsFor(defaultValues.type);
 
 	const handleSubmit = async (values: TIssueDetailsValues) => {
 		const success = await onSubmit(values);
@@ -78,15 +103,22 @@ export default function IssueDetailsPanel({
 				<h4 className="text-sm font-semibold mb-4">Details</h4>
 				<FormWrapper methods={methods} onSubmit={handleSubmit}>
 					<FormSelect
-						name="status"
+						name="statusId"
 						label="Status"
 						placeholder="Select status"
 						className="bg-accent text-accent-foreground"
-						isDisabled={statusOptions.length === 1}
+						isDisabled={statusOptions.length <= 1}
 						options={statusOptions.map((s) => ({
-							value: s.value,
-							label: s.label,
+							value: s.id,
+							label: s.name,
 						}))}
+					/>
+					<FormSelect
+						name="type"
+						label="Type"
+						placeholder="Select type"
+						isDisabled={!canEditFields || typeOptions.length === 1}
+						options={typeOptions}
 					/>
 					<FormSelect
 						name="priority"
@@ -126,6 +158,17 @@ export default function IssueDetailsPanel({
 							})),
 						]}
 					/>
+					<FormLabelSelect
+						name="labelIds"
+						labels={labels}
+						isDisabled={!canEditFields}
+					/>
+					<FormTextField
+						name="timeEstimate"
+						label="Story points"
+						placeholder="Not estimated"
+						isDisabled={!canEditFields}
+					/>
 
 					{canSave && (
 						<div className="flex justify-end">
@@ -149,7 +192,9 @@ export default function IssueDetailsPanel({
 							src={reporter?.avatarUrl}
 						/>
 					)}
-					<p className="text-sm">{reporter?.name ?? "--"}</p>
+					<p className={reporter === null ? "text-sm text-muted" : "text-sm"}>
+						{reporter === null ? DELETED_USER_NAME : (reporter?.name ?? "--")}
+					</p>
 				</div>
 			</div>
 		</div>

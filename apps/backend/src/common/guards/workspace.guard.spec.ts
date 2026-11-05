@@ -1,4 +1,4 @@
-import { ALL_PERMISSIONS } from "@/common/permissions/permissions";
+import { ALL_PERMISSIONS } from "@taskforge/shared";
 import { WorkspaceAccess } from "@/common/permissions/workspace-access";
 import { PrismaService } from "@/prisma/prisma.service";
 import { ExecutionContext, ForbiddenException } from "@nestjs/common";
@@ -36,6 +36,7 @@ describe("WorkspaceGuard", () => {
       role: WorkspaceRole.OWNER,
       roleId: "role-owner",
       assignedRole: { systemKey: WorkspaceRole.OWNER, permissions: [] },
+      workspace: { suspendedAt: null },
     });
     guard = new WorkspaceGuard({
       membership: { findUnique },
@@ -74,6 +75,7 @@ describe("WorkspaceGuard", () => {
         },
         include: {
           assignedRole: { select: { systemKey: true, permissions: true } },
+          workspace: { select: { suspendedAt: true } },
         },
       });
       expect(request.workspaceId).toBe("workspace-A");
@@ -114,7 +116,10 @@ describe("WorkspaceGuard", () => {
 
   describe("the permissions it attaches", () => {
     const permissionsFor = async (membership: object) => {
-      findUnique.mockResolvedValue(membership);
+      findUnique.mockResolvedValue({
+        workspace: { suspendedAt: null },
+        ...membership,
+      });
       const request = requestFor("workspace-A");
       await guard.canActivate(contextFor(request));
       return [...(request.access?.permissions ?? [])].sort();
@@ -150,7 +155,12 @@ describe("WorkspaceGuard", () => {
           roleId: null,
           assignedRole: null,
         }),
-      ).resolves.toEqual(["issue:create", "issue:edit:own", "issue:status"]);
+      ).resolves.toEqual([
+        "comment:create",
+        "issue:create",
+        "issue:edit:own",
+        "issue:status",
+      ]);
     });
 
     it("ignore stored keys that aren't in the catalog", async () => {
@@ -176,6 +186,28 @@ describe("WorkspaceGuard", () => {
       await expect(
         guard.canActivate(contextFor(requestFor(undefined))),
       ).rejects.toThrow("Workspace ID missing");
+    });
+
+    it("rejects a member of a suspended workspace with WORKSPACE_SUSPENDED", async () => {
+      findUnique.mockResolvedValue({
+        role: WorkspaceRole.OWNER,
+        roleId: "role-owner",
+        assignedRole: { systemKey: WorkspaceRole.OWNER, permissions: [] },
+        workspace: { suspendedAt: new Date() },
+      });
+      const request = requestFor("workspace-A");
+
+      const error: unknown = await guard
+        .canActivate(contextFor(request))
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(ForbiddenException);
+      expect((error as ForbiddenException).getResponse()).toMatchObject({
+        statusCode: 403,
+        code: "WORKSPACE_SUSPENDED",
+      });
+      // Not even the owner gets in, and nothing is attached.
+      expect(request.access).toBeUndefined();
     });
 
     it("rejects a user who is not a member", async () => {

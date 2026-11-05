@@ -11,9 +11,12 @@ import {
 	FormWrapper,
 } from "@/components/form-element";
 import { issueSchema, TIssueFormValues } from "../schema/issue-schema";
-import { ISSUE_PRIORITIES, ISSUE_STATUSES } from "../constants";
+import { ISSUE_PRIORITIES, typeOptionsFor } from "../constants";
+import FormLabelSelect from "@/features/labels/components/FormLabelSelect";
+import type { Label } from "@/features/labels/types/label-types";
 import { Member } from "@/features/memberships/types/membership-types";
-import { IssueStatus, Sprint } from "../types/issue-types";
+import type { WorkflowStatus } from "@/features/workflow/types/workflow-types";
+import { Sprint } from "../types/issue-types";
 
 type Props = {
 	defaultValues?: TIssueFormValues | undefined;
@@ -25,8 +28,14 @@ type Props = {
 	onCancel?: () => void;
 	members: Member[];
 	sprints: Sprint[];
-	/** Status a new issue starts in. Defaults to BACKLOG. */
-	initialStatus?: IssueStatus;
+	/** The workspace's labels to pick from. */
+	labels: Label[];
+	/** The project's workflow statuses, in column order. */
+	statuses: WorkflowStatus[];
+	/** Status a new issue starts in: the project's default unless given. */
+	initialStatusId: string;
+	/** Sprint a new issue starts in. Defaults to none (the backlog). */
+	initialSprintId?: string;
 };
 
 /** Sentinel ListBox key for "no assignee" (react-aria keys can't be empty). */
@@ -43,7 +52,10 @@ export default function IssueForm({
 	onCancel,
 	members,
 	sprints,
-	initialStatus = "BACKLOG",
+	labels,
+	statuses,
+	initialStatusId,
+	initialSprintId,
 }: Props) {
 	const isEditing = !!defaultValues;
 
@@ -53,9 +65,12 @@ export default function IssueForm({
 			title: "",
 			description: "",
 			assigneeId: null,
-			status: initialStatus,
+			statusId: initialStatusId,
 			priority: "LOW",
-			sprintId: null,
+			type: "TASK",
+			timeEstimate: "",
+			sprintId: initialSprintId ?? null,
+			labelIds: [],
 		},
 		// `defaultValues` is only read once on mount. When editing, the issue is
 		// fetched async, so feed it through `values` to keep the form in sync once
@@ -93,12 +108,12 @@ export default function IssueForm({
 			/>
 			<div className="flex items-center justify-between gap-5 min-w-full">
 				<FormSelect
-					name="status"
+					name="statusId"
 					label="Status"
 					placeholder="Select status"
-					options={ISSUE_STATUSES.map((s) => ({
-						value: s.value,
-						label: s.label,
+					options={statuses.map((s) => ({
+						value: s.id,
+						label: s.name,
 					}))}
 				/>
 				<FormSelect
@@ -109,6 +124,19 @@ export default function IssueForm({
 						value: p.value,
 						label: p.label,
 					}))}
+				/>
+			</div>
+			<div className="flex items-center justify-between gap-5 min-w-full">
+				<FormSelect
+					name="type"
+					label="Type"
+					placeholder="Select type"
+					options={typeOptionsFor("TASK")}
+				/>
+				<FormTextField
+					name="timeEstimate"
+					label="Story points"
+					placeholder="Not estimated"
 				/>
 			</div>
 			<FormSelect
@@ -125,6 +153,7 @@ export default function IssueForm({
 					})),
 				]}
 			/>
+			<FormLabelSelect name="labelIds" labels={labels} />
 			<FormSelect
 				name="sprintId"
 				label="Sprint"

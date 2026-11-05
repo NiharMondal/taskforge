@@ -1,11 +1,17 @@
 "use client";
 
 import MyModal from "@/components/ui/my-modal";
-import type { Permissions } from "@/features/memberships/lib/permissions";
+import IssueActivityPanel from "@/features/activity/components/IssueActivityPanel";
+import {
+	canEditIssue,
+	type Permissions,
+} from "@/features/memberships/lib/permissions";
 import type { Member } from "@/features/memberships/types/membership-types";
+import { useLabels } from "@/features/labels/hooks/use-labels";
 import { useSprints } from "@/features/sprint/hooks/use-sprints";
 
 import { useIssueEditor } from "../hooks/use-issue-editor";
+import { formatEstimate } from "../lib/estimate";
 import type { Issue } from "../types/issue-types";
 import DeleteIssueButton from "./DeleteIssueButton";
 import IssueContentForm from "./IssueContentForm";
@@ -37,6 +43,7 @@ export default function IssueDetailModal({
 	permissions,
 }: TProps) {
 	const { data: sprints = [] } = useSprints(workspaceId, projectId);
+	const { data: labels = [] } = useLabels(workspaceId);
 	const {
 		handleSaveContent,
 		handleSaveDetails,
@@ -56,7 +63,7 @@ export default function IssueDetailModal({
 					key={issue.id}
 					className="grid grid-cols-1 gap-5 xl:grid-cols-6 "
 				>
-					<div className="xl:col-span-4">
+					<div className="flex flex-col gap-4 xl:col-span-4">
 						<IssueContentForm
 							defaultValues={{
 								title: issue.title,
@@ -64,23 +71,35 @@ export default function IssueDetailModal({
 							}}
 							onSubmit={handleSaveContent}
 							isSubmitting={isSavingContent}
-							canEdit={permissions.canEditIssueFields}
+							canEdit={canEditIssue(permissions, issue)}
+						/>
+						<IssueActivityPanel
+							workspaceId={workspaceId}
+							projectId={projectId}
+							issueId={issue.id}
 						/>
 					</div>
 					<div className="xl:col-span-2 flex flex-col gap-3 border-0 xl:border-l pl-4">
 						<IssueDetailsPanel
+							workspaceId={workspaceId}
+							projectId={projectId}
 							defaultValues={{
-								status: issue.status,
+								statusId: issue.statusId,
 								priority: issue.priority,
+								type: issue.type,
+								timeEstimate: formatEstimate(issue.timeEstimate),
 								assigneeId: issue.assigneeId ?? UNASSIGNED,
 								sprintId: issue.sprintId ?? NO_SPRINT,
+								labelIds: issue.labels?.map((l) => l.id) ?? [],
 							}}
 							onSubmit={handleSaveDetails}
 							isSubmitting={isSavingDetails}
 							members={members}
 							sprints={sprints}
+							labels={labels}
 							reporter={issue.reporter}
 							permissions={permissions}
+							canEditFields={canEditIssue(permissions, issue)}
 						/>
 						{/* Once deleted the issue leaves the list, which closes this modal. */}
 						{permissions.canDeleteIssue && (

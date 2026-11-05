@@ -3,6 +3,7 @@ import { toast } from "@heroui/react";
 import { getApiErrorMessage } from "@/lib/api-error";
 
 import { NO_SPRINT, UNASSIGNED } from "../components/IssueForm";
+import { parseEstimate } from "../lib/estimate";
 import type {
 	TIssueContentValues,
 	TIssueDetailsValues,
@@ -12,8 +13,8 @@ import { useUpdateIssue } from "./use-issues";
 
 /**
  * Save handlers for the two independently-saved sections of an issue (content:
- * title + description, details: status/priority/assignee/sprint), shared by the
- * detail page and the detail modal.
+ * title + description, details: status/priority/type/estimate/assignee/
+ * sprint/labels), shared by the detail page and the detail modal.
  *
  * Each handler PATCHes only the fields that actually changed and resolves
  * `false` on failure so the form keeps the user's edits.
@@ -66,11 +67,24 @@ export function useIssueEditor(
 				: (values.assigneeId ?? null);
 		const nextSprint =
 			values.sprintId === NO_SPRINT ? null : (values.sprintId ?? null);
+		const nextEstimate = parseEstimate(values.timeEstimate);
+		// The order a picker reports doesn't matter; compare as sets.
+		const nextLabels = [...values.labelIds].sort();
+		const labelsChanged =
+			nextLabels.join() !==
+			(issue.labels ?? []).map((l) => l.id).sort().join();
 
 		const dto: UpdateIssueDto = {
-			...(values.status !== issue.status && { status: values.status }),
+			...(values.statusId !== issue.statusId && {
+				statusId: values.statusId,
+			}),
 			...(values.priority !== issue.priority && {
 				priority: values.priority,
+			}),
+			...(values.type !== issue.type && { type: values.type }),
+			// Cleared is `null`, sent like the assignee and sprint below.
+			...(nextEstimate !== (issue.timeEstimate ?? null) && {
+				timeEstimate: nextEstimate,
 			}),
 			...(nextAssignee !== (issue.assigneeId ?? null) && {
 				assigneeId: nextAssignee,
@@ -78,6 +92,7 @@ export function useIssueEditor(
 			...(nextSprint !== (issue.sprintId ?? null) && {
 				sprintId: nextSprint,
 			}),
+			...(labelsChanged && { labelIds: nextLabels }),
 		};
 		return patch(dto, saveDetails);
 	};

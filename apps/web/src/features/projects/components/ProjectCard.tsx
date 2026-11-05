@@ -8,7 +8,7 @@ import {
 	Chip,
 	toast,
 } from "@heroui/react";
-import { Pencil, Trash2 } from "lucide-react";
+import { Pencil, Trash } from "lucide-react";
 import Link from "next/link";
 
 import type { Project } from "../types/project-types";
@@ -60,7 +60,7 @@ export default function ProjectCard({ project, canManage }: ProjectCardProps) {
 		<>
 			<Card className="relative h-full transition-shadow hover:shadow-md">
 				<Link
-					href={`/projects/${project.id}/board`}
+					href={`/projects/${project.id}/active-sprint`}
 					aria-label={`Open ${project.name}`}
 					className="absolute inset-0 z-0 rounded-[inherit]"
 				/>
@@ -87,7 +87,7 @@ export default function ProjectCard({ project, canManage }: ProjectCardProps) {
 								className="text-danger"
 								onClick={openDelete}
 							>
-								<Trash2 className="size-4" aria-hidden />
+								<Trash className="size-4" aria-hidden />
 							</Button>
 						</div>
 					)}

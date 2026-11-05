@@ -56,3 +56,13 @@ export function getApiErrorMessage(
   if (error instanceof Error) return error.message || fallback;
   return fallback;
 }
+
+/**
+ * The `code` on an error body, when the backend sent one — e.g.
+ * `"PLAN_LIMIT"`, `"ACCOUNT_SUSPENDED"` or `"WORKSPACE_SUSPENDED"`.
+ */
+export function apiErrorCode(error: unknown): string | undefined {
+  if (!(error instanceof ApiError)) return undefined;
+  const code = (error.data as { code?: unknown } | undefined)?.code;
+  return typeof code === "string" ? code : undefined;
+}

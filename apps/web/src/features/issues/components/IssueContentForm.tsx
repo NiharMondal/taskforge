@@ -144,8 +144,8 @@ export default function IssueContentForm({
 						// Reuse tiptap prose styling but drop the editor's fixed
 						// height so the read view hugs its content.
 						style={{ height: "auto", overflow: "visible" }}
-						className={`tiptap-content min-h-12 rounded-2xl border border-transparent transition-colors ${
-							canEdit ? "cursor-text hover:border-border" : ""
+						className={`tiptap-content min-h-12 rounded-2xl border transition-colors border-border ${
+							canEdit ? "cursor-text hover:border-accent" : ""
 						} ${safeDescription ? "" : "text-muted"}`}
 						dangerouslySetInnerHTML={{
 							__html: safeDescription || "No description added",

@@ -1,4 +1,5 @@
 import { Access } from "@/common/decorators/access.decorator";
+import { PaginationQueryDto } from "@/common/dto/pagination-query.dto";
 import { RequirePermission } from "@/common/decorators/require-permission.decorator";
 import { WorkspaceId } from "@/common/decorators/workspaceId.decorator";
 import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
@@ -10,11 +11,15 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
   HttpStatus,
   Param,
   Patch,
+  Post,
+  Query,
   UseGuards,
 } from "@nestjs/common";
+import { TransferOwnershipDto } from "./dto/transfer-ownership.dto";
 import { UpdateRoleDto } from "./dto/update-role.dto";
 import { MembershipService } from "./membership.service";
 
@@ -25,13 +30,17 @@ export class MembershipController {
 
   // find all members of a workspace
   @Get()
-  async findAllByWorkspaceId(@WorkspaceId() workspaceId: string) {
-    const members =
-      await this.membershipService.findAllByWorkspaceId(workspaceId);
+  async findAllByWorkspaceId(
+    @WorkspaceId() workspaceId: string,
+    @Query() query: PaginationQueryDto,
+  ) {
+    const { data, metaData } =
+      await this.membershipService.findAllByWorkspaceId(workspaceId, query);
     return sendResponse({
       statusCode: HttpStatus.OK,
       message: "Members fetched successfully",
-      data: members,
+      data,
+      metaData,
     });
   }
 
@@ -43,6 +52,38 @@ export class MembershipController {
     return sendResponse({
       statusCode: HttpStatus.OK,
       message: "Membership fetched successfully",
+      data: membership,
+    });
+  }
+
+  // Hand the workspace to another member (the OWNER only).
+  @Post("transfer-ownership")
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission("workspace:transfer")
+  async transferOwnership(
+    @WorkspaceId() workspaceId: string,
+    @Access() access: WorkspaceAccess,
+    @Body() dto: TransferOwnershipDto,
+  ) {
+    const member = await this.membershipService.transferOwnership(
+      workspaceId,
+      access,
+      dto.userId,
+    );
+    return sendResponse({
+      statusCode: HttpStatus.OK,
+      message: "Ownership transferred",
+      data: member,
+    });
+  }
+
+  // Leave the workspace yourself. Declared before `:userId`, like `GET me`.
+  @Delete("me")
+  async leave(@Access() access: WorkspaceAccess) {
+    const membership = await this.membershipService.leave(access);
+    return sendResponse({
+      statusCode: HttpStatus.OK,
+      message: "You left the workspace",
       data: membership,
     });
   }
@@ -74,7 +115,7 @@ export class MembershipController {
       workspaceId,
       userId,
       access,
-      dto.role,
+      dto,
     );
     return sendResponse({
       statusCode: HttpStatus.OK,

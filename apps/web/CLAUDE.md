@@ -26,7 +26,7 @@ The backend lives alongside this app at `../backend/` (see the root `CLAUDE.md`)
 - `.claude/AI_GUIDE.md` — project-level architectural rules (workspace scoping, optimistic updates, no monolithic components).
 - `.claude/FORM_GUIDE.md` — the canonical form pattern with a worked example.
 - `.claude/migrations/` — historical schema-change notes from the two-repo era (all applied).
-- `spec/` — feature specs written before implementation (`auth.md`, `layout.md`, `projects.md`, `cloudinary.md`, `sprint-on-create-issue.md`). These document backend contracts and intended UX; consult the relevant one before changing a feature.
+- `spec/` — feature specs written before implementation (`auth.md`, `layout.md`, `projects.md`, `cloudinary.md`, `sprint-on-create-issue.md`, `audit-log.md`, `account.md`, `admin.md`). These document backend contracts and intended UX; consult the relevant one before changing a feature.
 
 Never invent an API shape. If a contract is unclear, ask rather than guess.
 
@@ -46,25 +46,29 @@ Auth tokens identify the *user*; the workspace header identifies the *tenant*. A
 
 ```
 app/
-  (auth)/           — login, register (no shell)
+  (marketing)/      — public site: landing (`/`), pricing, terms, privacy (own header/footer)
+  (auth)/           — login, register, verify-email, forgot-password, reset-password: split screen, form + brand panel, header back to `/`
   (dashboard)/      — server layout gates auth, wraps AppLayout
     dashboard/
     projects/
       [projectId]/
-        board/      — kanban
-        issues/
+        active-sprint/ — the active sprint's kanban (no active sprint → empty state)
+        backlog/    — sprint planning: sprint sections + unscheduled backlog, move issues between them
+        list/       — every issue as a filterable table, sub-issues nested
           [slug]/   — issue detail page ([slug] is the issue id)
-        sprints/
-    settings/       — general, members, profile
-    issues/         — redirect → /projects (no workspace-wide issues endpoint)
+        workflow/   — the project's statuses and allowed moves (editable on Pro)
+    settings/       — members, roles, general, labels, billing, audit-log (`audit:read` only), profile
+    issues/         — redirect → /projects (the only workspace-wide issue read is the dashboard's `GET /issues/assigned`, `useAssignedIssues`)
+  (admin)/admin/    — platform admin console (platform staff only; own server layout, no workspace)
+    workspaces/[workspaceId]/, users/[userId]/, audit-log/ (ADMIN only)
   invitations/accept/
 ```
 
-Issues are project-scoped: always under `/projects/[projectId]/issues` or `/projects/[projectId]/board`. `/` redirects to `/dashboard`.
+Issues are project-scoped: pages live under `/projects/[projectId]/` (`active-sprint`, `backlog`, `list`, `list/[slug]`, `workflow`); the backend route is still `/projects/:projectId/issues`. `/` is the public landing page; it sends a signed-in visitor to `/dashboard` (it reads `auth()` itself, since the proxy lets everyone through to public routes). `/pricing` renders the same `PlanCard`s as Settings → Billing (`features/billing/components/PlanCard.tsx`, from `PLAN_META`) with links to `/register`. The Terms and Privacy pages are placeholders (marked "Draft" on the page) until the real text is written; the register form links to both. "Sign out" in the workspace menu lands on `/`; a session that expires lands on `/login`. The public pages and the auth layout share `BoardPreview` (`features/marketing/components/`, a static decorative board) and the `.hero-glow`, `.grid-pattern` and `.brand-panel` backgrounds in `globals.css`.
 
 ### Feature structure
 
-Each domain lives in `src/features/<name>/` (`auth`, `dashboard`, `invitations`, `issues`, `memberships`, `profile`, `projects`, `settings`, `sprint`, `workspace`):
+Each domain lives in `src/features/<name>/` (`activity`, `admin`, `audit`, `auth`, `billing`, `comments`, `dashboard`, `invitations`, `issues`, `labels`, `marketing`, `memberships`, `profile`, `projects`, `roles`, `settings`, `sprint`, `workflow`, `workspace`):
 
 ```
 api/          — async functions calling `api.*` from lib/axios
@@ -75,9 +79,11 @@ types/        — TypeScript interfaces matching backend shapes
 constants.ts  — display metadata for enums (labels, ordering, chip colors)
 ```
 
-Shared UI primitives go in `src/components/` (`ui/`, `form-element/`); layout components (sidebar, header) in `src/components/layout/`.
+Shared UI primitives go in `src/components/` (`ui/`, `form-element/`); layout components (sidebar, header) in `src/components/layout/`. Values the API also enforces — enums, field limits, the permission catalog, status transitions, rank helpers, the response envelope — come from `@taskforge/shared` (`packages/shared/`); import them from there rather than restating them. The feature `types/` files re-export the enum types so existing imports keep working.
 
-Enum display metadata is centralized — e.g. `features/issues/constants.ts` owns `ISSUE_STATUSES`, `BOARD_STATUSES`, `ISSUE_PRIORITIES`, and the `STATUS_META`/`PRIORITY_META` lookups that chips, selects, and grouped lists all read. Add a status there, not inline.
+Enum display metadata is centralized — e.g. `features/issues/constants.ts` owns `ISSUE_PRIORITIES`, `PRIORITY_META` and the type metadata that chips and selects read.
+
+**Statuses are per project, not an enum.** `useWorkflow(workspaceId, projectId)` (`features/workflow/`, key `workflowKeys.detail`) returns the project's workflow and a `view` (`workflowView`): statuses in column order, `byId`, `boardStatuses` (non-`BACKLOG` categories), `defaultStatus`, `firstUnstarted`, `canMove(from, to)` and `optionsFrom(statusId)` for pickers. Issues carry `statusId` plus an embedded `status: { id, name, color, category }`; render it with `StatusChip` (a dot in the status's color). Never compare a status by name — use `status.category` (`COMPLETED` is "done"). `canSetIssueStatus(permissions, category)` gates completing. The project's **Workflow** tab (`/projects/[projectId]/workflow`, `WorkflowEditor`) edits statuses and moves on Pro with `project:manage`; read-only otherwise. A workflow mutation invalidates the workflow and the project's issues. Creating a project offers "Same as <project>" (sent as `workflowFromProjectId`, Pro only).
 
 ### API layer
 
@@ -92,18 +98,19 @@ export const getIssues = (projectId: string) =>
 queryFn: async () => (await getIssues(projectId)).data
 ```
 
-`getIssues` is the exception to that one-liner: the issues endpoint is paginated (default 20, max 100), so it walks every page (using `metaData.hasNextPage`) and returns the full list — the board and list render the whole project. That is a stop-gap (one serial request per 100 issues); the real fix is per-lane pagination.
+The list endpoints are the exception to that one-liner: issues, projects, sprints, memberships, invitations and workspaces are paginated (default 20, max 100), so their API functions call `getAllPages` (`src/lib/get-all-pages.ts`), which walks every page (using `metaData.hasNextPage`) and returns the full list — the board and list render the whole project, and pickers, id lookups and the workspace switcher need every row. Calling `api.get` on one of them silently gets the first 20. Walking is a stop-gap (one serial request per 100 rows); for issues the real fix is per-lane pagination.
 
 A user's email is `User.email` (the backend's `Auth` table holds only sign-in methods: password hash or Google id). Only the profile (`/users/:id`) and the members roster select it, so `ICommonUserEntity` has no `email`; read a member's with `getMemberEmail` / `getMemberName` (`features/memberships/lib/member.ts`).
 
 Mutations use `.message` from the envelope for toast feedback. Every rejection is normalized to `ApiError` (`src/lib/api-error.ts`) by the response interceptor — render error text with `getApiErrorMessage(error, fallback)` rather than branching on Axios internals.
 
-**The HTTP layer must not know how auth or workspace selection works.** `lib/auth-token.ts` and `lib/active-workspace.ts` are registration seams: the auth/workspace layers register getters, and the interceptor calls them. `axios.ts` never imports `next-auth`. A backend 401 calls `notifyUnauthorized()`, whose handler (registered in `src/provider/auth-provider.tsx`) signs the user out — the Auth.js cookie can still look valid after the backend token expires.
+**The HTTP layer must not know how auth or workspace selection works.** `lib/auth-token.ts` and `lib/active-workspace.ts` are registration seams: the auth/workspace layers register getters, and the interceptor calls them. `axios.ts` never imports `next-auth`. A backend 401 on a signed request first asks for a renewed token (`refreshAuthToken()`, deduped across concurrent failures) and retries once; if that fails it calls `notifyUnauthorized()`, whose handler (registered in `src/provider/auth-provider.tsx`) signs the user out — the Auth.js cookie can still look valid after the backend session ends.
 
 ### React Query conventions
 
 - Each feature exports a key registry: `issueKeys`, `projectKeys`, `sprintKeys`, … Use it; don't hand-write key arrays.
-- Keys scope by workspace and project: `["issues", workspaceId, projectId]`. Detail queries get their own key (`[..., issueId]`) — sharing the list key overwrote the cached array with a single object.
+- Keys scope by workspace and project: `["issues", workspaceId, projectId]`. Detail queries get their own key (`[..., issueId]`) — sharing the list key overwrote the cached array with a single object. An issue's history (`issueKeys.activity`, `[..., issueId, "activity"]`) sits under its detail key on purpose, so anything that invalidates the issue refreshes its history too.
+- The issue page's **Activity** section (`features/activity/components/IssueActivityPanel`) merges comments and history into one timeline (All / Comments / History); `ActivityItem.describeChange` turns each recorded change into a sentence.
 - `queryFn` unwraps `.data` — caches hold plain arrays/objects, not envelopes. Optimistic updates depend on this.
 - Optimistic updates follow cancel → snapshot → mutate → rollback-on-error → invalidate-on-settle (see `useUpdateIssue` in `src/features/issues/hooks/use-issues.ts`, which also invalidates the detail key so a detail-page edit reconciles).
 - Defaults live in `src/lib/query-client.ts`: `staleTime` 60s, `retry` 1, no refetch on window focus; SSR-safe client-per-request via `getQueryClient()`.
@@ -112,18 +119,76 @@ Mutations use `.message` from the envelope for toast feedback. Every rejection i
 
 `src/features/issues/components/board/` — `@dnd-kit/core` + `@dnd-kit/sortable`.
 
-- Lane order comes from `BOARD_STATUSES` (all statuses except `BACKLOG`; backlog is triage and appears on the list view only).
-- Card position persists as `Issue.rank`, a fractional index (`fractional-indexing`) computed by `features/issues/lib/rank.ts`. `rankBetween(prev, next)` returns `undefined` on invalid bounds so the caller can fall back to a status-only PATCH; `compareIssueRank` sorts un-ranked rows last. Moving a card is a single-row PATCH — no renumbering.
-- A drag may only land back in its starting lane or in one of that lane's `STATUS_TRANSITIONS` (`features/issues/constants.ts`) — the same rule as the status Selects. The backend enforces the same map (`apps/backend/src/modules/issues/status-transitions.ts`) on every `PATCH` that changes `status`, so change both together.
+- The board is the **active sprint's**: `BoardView` filters the project issue list to `sprintId === activeSprint.id` (memoized — the resync below compares by reference) and shows `SprintSummaryCard` above the lanes, then `IssueFilterBar` (search, assignees and labels, via `filterIssues` in `lib/issue-filters.ts` — the List tab uses the same). Lanes show the filtered cards, but a drop's rank is computed against the *full* lane (`rankForPosition`), so a key never lands on a hidden card's key. With no active sprint it renders an empty state linking to the backlog. Issues outside the sprint live on the backlog and the List tab.
+- Lanes are the project's workflow statuses outside the `BACKLOG` category (`workflow.boardStatuses`), keyed by status id, in column order; backlog work is triage and appears on the backlog and list views only. Columns regroup when the issues *or* the workflow change.
+- Card position persists as `Issue.rank`, a fractional index computed by `rankBetween` (`@taskforge/shared`, re-exported from `features/issues/lib/rank.ts`; the API appends with the same helper). `rankBetween(prev, next)` returns `undefined` on invalid bounds so the caller can fall back to a status-only PATCH; `compareIssueRank` sorts un-ranked rows last. Moving a card is a single-row PATCH — no renumbering.
+- A drag may only land back in its starting lane or in a status the project's workflow allows from it (`workflow.canMove`, i.e. `isAllowedTransition` over the project's transitions) — the same rule as the status Selects, and what the backend enforces on every `PATCH` that changes `statusId`.
 - `BoardView` mirrors server data into local column state and resyncs by reference comparison during render (not an effect), so an in-progress drag is never clobbered. The stable `EMPTY_ISSUES` constant exists to keep that comparison from looping.
 
 ### Roles and permissions
 
-The JWT has no role — it comes from the membership roster. `useWorkspacePermissions()` (`features/memberships/hooks/`) returns the viewer's flags (`canCreateIssue`, `canEditIssueFields`, `canChangeIssueStatus`, `canMarkIssueDone`, `canDeleteIssue`, `canManageProjects`, `canManageSprints`, `canDeleteWorkspace`), computed by `getPermissions` in `features/memberships/lib/permissions.ts`. That file mirrors the backend rules (create/delete and project/sprint writes are OWNER/ADMIN; a MEMBER may change `status` — never to `DONE` — and board `rank`; a VIEWER is read-only), so **change both together**. Which roster row is "me" comes from the access token's `sub` (what the backend authorizes as), not the cached session id. Flags are all `false` *while loading*; if the role still can't be determined afterwards (roster failed, user not on it) the hook **fails open** (`UNRESTRICTED_PERMISSIONS`, `isRoleKnown: false`, plus a dev-only `[permissions]` console warning) so a lookup problem never locks an owner out. Hide or disable controls with these flags rather than letting users hit a 403 toast — but they are UX only; the backend is the authority.
+The JWT has no role. `useWorkspacePermissions()` (`features/memberships/hooks/`) reads `GET /memberships/me` (`useMyMembership`, key `membershipKeys.me`, under the roster's key so invalidating the roster refreshes it) — the backend resolves the viewer's role, built-in or custom, into permission keys — and `permissionsFrom` (`features/memberships/lib/permissions.ts`) turns them into flags: `canManageWorkspace`, `canManageMembers`, `canManageInvitations`, `canManageRoles`, `canReadAuditLog`, `canCreateIssue`, `canEditAnyIssue`, `canEditOwnIssues`, `canChangeIssueStatus`, `canMarkIssueDone`, `canDeleteIssue`, `canManageProjects`, `canManageSprints`, `canManageLabels`, `canComment`, `canDeleteAnyComment`, `canDeleteWorkspace`, `canTransferOwnership`, `canManageBilling`, `canLeaveWorkspace`, plus `granted` (the key set), `isOwner` and `userId` ("me": the backend's answer, else the access token's `sub`). There is no copy of the role rules on the web. Per-row rules are helpers: `canEditIssue(permissions, issue)` (any issue, or one you reported or are assigned to), `canSetIssueStatus`, `holdsAll(permissions, keys)` — the backend's no-escalation rule, used to offer only roles the viewer could hand out — and `outranks(permissions, keys)` — holding all of a member's keys plus one more, the backend's rule for changing or removing a member, used to lock roster rows (an Admin can't act on another Admin). Flags are all `false` *while loading*; if `/memberships/me` still can't be read afterwards the hook **fails open** (`UNRESTRICTED_PERMISSIONS`, `isRoleKnown: false`, plus a dev-only `[permissions]` console warning) so a lookup problem never locks an owner out. Hide or disable controls with these flags rather than letting users hit a 403 toast — but they are UX only; the backend is the authority.
+
+Roles live in `features/roles/` (`useRoles`, `roleKeys.list`; `GET /roles` for any member). Settings → Roles (`RolesSettings`) creates custom roles — from scratch or copied from any role — and edits and deletes them with `role:manage`; built-ins are view-only. The role editor (`RoleForm`) lists `PERMISSION_GROUPS` from `features/roles/constants.ts`: labels and descriptions for the grantable keys in `@taskforge/shared`, each of which needs an entry there. The Members tab and the invite form pick from the same roles by `roleId`; show a role with `RoleChip` (`assignedRole`, falling back to the enum for rows predating roles). A role mutation invalidates the roles list and everything under `["memberships", workspaceId]`.
+
+### Audit log
+
+`features/audit/` (`spec/audit-log.md`). Settings → Audit log (`AuditLogSettings`, `useAuditLog`,
+key `auditKeys.list(workspaceId, { page, limit, entityType })`) reads `GET /audit-log` one page at a
+time — it does **not** walk pages like the other lists — with an entity-type filter and
+Previous/Next from `metaData`. It needs `audit:read` (`canReadAuditLog`): the tab is hidden without
+it (`SettingsTab.requires`, filtered in `SettingsNav`), and the page shows a no-access card for a
+deep link or a 403. Row types come from `@taskforge/shared`'s `audit.ts` (`AuditMetadata` per
+action); `lib/describe-audit-event.ts` turns a row into a sentence ("changed Bob's role from Member
+to Admin") and `auditActorName` names who did it ("System" for Stripe's webhook). A new action
+needs a case there. Nothing invalidates the log: it refetches on mount (`staleTime: 0`).
+
+### Platform admin console
+
+`features/admin/` (`spec/admin.md`; backend: `apps/backend/spec/admin-spec.md`). `/admin` is for
+platform staff (`User.platformRole`, from `GET /users/me`), granted only by the backend's
+`set-platform-role` script. `app/(admin)/admin/layout.tsx` is a server layout **outside**
+`(dashboard)` (no `WorkspaceProvider`): it calls `auth()`, reads `/users/me` with the session's
+access token (`fetchPlatformRole`, plain `fetch`) and calls `notFound()` without a role. The sidebar's
+`AdminNavLink` shows "Admin" only to staff. Both are UX: the backend checks the role on every
+request. ADMIN (not SUPPORT) gets action cards on the detail pages (suspend/lift, sign out
+everywhere, delete — each with a required reason, `AdminActionDialog`) and the Audit log tab;
+`useAdminViewer()` says which (`canAct`), and hides actions on yourself and other admins. `adminKeys` carry **no workspace id** (the data is platform-wide), and the admin API
+functions don't use `inWorkspace`. List state (`?search=&plan=&page=`) lives in the URL: the server
+page parses it (`parseAdminListParams`) and the client list navigates (`useAdminListNavigation`), so
+"back" keeps it. Lists fetch one page at a time, like the audit log.
+
+### Suspensions
+
+Platform staff can suspend an account or a workspace (`spec/admin.md`). A suspended account's
+sign-in shows `SUSPENDED_MESSAGE` (`features/auth/constants.ts`; code `account_suspended` from the
+Credentials and verification providers, `/login?suspended=1` from Google's `signIn` callback and from
+a session that ends with `session.error === "AccountSuspended"`). A suspended workspace stays in
+`GET /workspaces` with `suspended: true`; `SuspendedWorkspaceGate` replaces the dashboard's pages
+with a notice and the user's other workspaces, and `WorkspaceProvider` refetches the list on any
+403 `WORKSPACE_SUSPENDED` (`apiErrorCode` in `lib/api-error.ts`). The staff's reason never reaches
+the app.
+
+### Billing and plan limits
+
+`features/billing/` (backend contract: `apps/backend/spec/billing-spec.md`). Settings → Billing
+(`BillingSettings`, `useBilling`, key `billingKeys.detail(workspaceId)`) shows any member the plan,
+usage and plan cards; the owner (`canManageBilling`) gets "Upgrade" (`POST /billing/checkout`) and
+"Manage billing" (`/billing/portal`), both of which return a Stripe URL the browser is sent to.
+**The plan changes only when Stripe's webhook reaches the backend**, so on return
+(`?checkout=success`) the page polls `GET /billing` every 2s for up to 30s, then drops the param.
+Limit numbers come from `@taskforge/shared` (`PLAN_LIMITS`, `FREE_OWNED_WORKSPACES`,
+`PRO_TRIAL_DAYS`). A write the plan refuses is a **402 with `code: "PLAN_LIMIT"`**: show it with
+`useErrorToast()` (`features/billing/lib/plan-limit.ts`), which adds an "Upgrade" action, instead of
+a plain danger toast. The invite button and "New role" also read `useBilling` and disable
+themselves with an upgrade hint when the limit is already reached; the browser never counts
+workspaces itself (the create-workspace cap is the backend's 402). Mutations that change seat usage
+(sending or revoking an invitation, removing a member) invalidate the billing key. `GET /workspaces`
+carries each workspace's `plan`; `ProBadge` shows it in the switcher.
 
 ### Rendering user HTML
 
-Issue descriptions are stored as HTML and the backend does not sanitize them. Pass anything bound for `dangerouslySetInnerHTML` through `sanitizeHtml` (`src/lib/sanitize-html.ts`, DOMPurify with an allowlist matching what the TipTap editor can emit). It returns `""` when there is no DOM (server render) rather than passing input through.
+Issue descriptions and comments are stored as HTML and the backend does not sanitize them. Pass anything bound for `dangerouslySetInnerHTML` through `sanitizeHtml` (`src/lib/sanitize-html.ts`, DOMPurify with an allowlist matching what the TipTap editor can emit). It returns `""` when there is no DOM (server render) rather than passing input through.
 
 ### Error and loading UI
 
@@ -131,9 +196,14 @@ Issue descriptions are stored as HTML and the backend does not sanitize them. Pa
 
 ### Auth (Auth.js v5)
 
-- `src/lib/auth.ts` — full Node runtime; exports `handlers`, `auth`, `signIn`, `signOut`. The Credentials provider delegates to the backend `/auth/login` and stores the returned `accessToken` in the JWT.
-- `src/lib/auth.config.ts` — Edge-safe subset (no axios, no providers); used by `proxy.ts` and the server layout. Its `authorized` callback owns the public/auth-route lists.
+- `src/lib/auth.ts` — full Node runtime; exports `handlers`, `auth`, `signIn`, `signOut`. The `credentials` provider delegates to the backend `/auth/login` (a 403 becomes code `email_unverified`), the `email-verification` provider posts the emailed link's token to `/auth/verify-email` (used by `/verify-email`), and `events.signOut` revokes the backend refresh token. Every provider stores the backend's `accessToken`, `accessTokenExpiresAt` and `refreshToken` in the JWT.
+- Sign-up is confirmed by email: the register form shows a "check your email" notice instead of signing in, and remembers `callbackUrl` in `localStorage` for after verification (`features/auth/lib/callback-url.ts`).
+- Access tokens last 15 minutes. The `jwt` callback (`auth.config.ts`) renews through the refresh token when under 5 minutes are left or when `update({ refreshAccessToken: true })` forces it, using `lib/backend-session.ts` (plain `fetch`: the proxy is Edge). `SessionProvider` refetches every 4 minutes. The refresh token never reaches the client session; a refused one sets `session.error`, which signs the user out.
+- `src/lib/auth.config.ts` — Edge-safe subset (no axios, no providers); used by `proxy.ts` and the server layout. Its `authorized` callback owns the public/auth-route lists: `PUBLIC_PREFIXES` (`/login`, `/register`, `/verify-email`, `/forgot-password`, `/reset-password`, `/api/auth`, `/pricing`, `/terms`, `/privacy`) match whole path segments, and `/` is matched exactly — never add `"/"` to the list, which would make every route public.
 - The proxy at `src/proxy.ts` is an optimistic UX guard only; the `(dashboard)` server layout re-checks the session, and the backend is the real security boundary.
+- Settings → Profile also has `ChangePasswordCard` (`PATCH /auth/password`, only when `GET /users/me` says `hasPassword`; a Google-only account gets "Email me a link" to set one). Success ends every backend session, so it signs out to `/login?passwordChanged=1`, where the login form shows a notice.
+- "Forgot password?" on the login form leads to `/forgot-password`, which emails a link to `/reset-password?token=…`; setting the password there signs out to `/login?passwordReset=1`. Neither page is in `AUTH_ROUTES`, so a signed-in Google-only user can use them (`spec/auth.md`).
+- Settings → Profile ends with `DownloadDataCard` (`GET /users/me/export`, saved as a JSON file) and `DeleteAccountCard` (`DELETE /users/me`: type the email, plus the password when `hasPassword`; signs out to `/login?accountDeleted=1`; a 409 names the workspaces to transfer or delete first) — `spec/account.md`. A deleted user's issues and comments stay, so `Issue.reporterId`/`reporter`, `IssueComment.userId`/`user` and a `comment.deleted` row's `author` may be `null`: render them as `DELETED_USER_NAME` ("Deleted user", `src/types/common.ts`).
 - Profile edits call `useSession().update()`, which the `jwt` callback mirrors into `token.name`/`token.picture` so the header updates without re-login.
 
 ### Providers

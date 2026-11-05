@@ -5,16 +5,13 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 
 import { FormSelect, FormTextField, FormWrapper } from "@/components/form-element";
-import { ASSIGNABLE_ROLES, ROLE_LABELS } from "@/features/memberships/constants";
+import type { Role } from "@/features/roles/types/role-types";
 
 import { inviteSchema, type TInviteFormValues } from "../schema/invitation-schema";
 
-const ROLE_OPTIONS = ASSIGNABLE_ROLES.map((role) => ({
-	value: role,
-	label: ROLE_LABELS[role],
-}));
-
 type Props = {
+	/** The roles the inviter may hand out (see `InviteMemberButton`). */
+	roles: Role[];
 	onSubmit: (
 		values: TInviteFormValues,
 	) => Promise<boolean | void> | boolean | void;
@@ -24,20 +21,24 @@ type Props = {
 };
 
 export default function InviteForm({
+	roles,
 	onSubmit,
 	isSubmitting,
 	onSuccess,
 	onCancel,
 }: Props) {
+	// Member by default, as before roles could be custom.
+	const defaultRoleId =
+		(roles.find((r) => r.systemKey === "MEMBER") ?? roles[0])?.id ?? "";
 	const methods = useForm<TInviteFormValues>({
 		resolver: zodResolver(inviteSchema),
-		defaultValues: { email: "", role: "MEMBER" },
+		defaultValues: { email: "", roleId: defaultRoleId },
 	});
 
 	const handleFormSubmit = async (values: TInviteFormValues) => {
 		const success = await onSubmit(values);
 		if (success === false) return;
-		methods.reset();
+		methods.reset({ email: "", roleId: defaultRoleId });
 		onSuccess?.();
 	};
 
@@ -52,9 +53,9 @@ export default function InviteForm({
 			/>
 
 			<FormSelect
-				name="role"
+				name="roleId"
 				label="Role"
-				options={ROLE_OPTIONS}
+				options={roles.map((r) => ({ value: r.id, label: r.name }))}
 				isRequired
 			/>
 

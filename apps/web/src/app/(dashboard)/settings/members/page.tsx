@@ -1,4 +1,7 @@
+import type { Metadata } from "next";
 import MembersSettings from "@/features/settings/components/MembersSettings";
+
+export const metadata: Metadata = { title: "Members" };
 
 /**
  * `/settings/members` — workspace roster, role management, and invitations.

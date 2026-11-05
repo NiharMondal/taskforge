@@ -1,10 +1,15 @@
 import type { Metadata } from "next";
 
+import { publicPageMetadata } from "@/lib/seo";
+
 import LegalPage from "@/features/marketing/components/LegalPage";
 
-export const metadata: Metadata = {
-	title: "Terms of Service · TaskForge",
-};
+export const metadata: Metadata = publicPageMetadata({
+	title: "Terms of Service",
+	description:
+		"The terms that apply when you use TaskForge, including your account, your workspaces and paid plans.",
+	path: "/terms",
+});
 
 // Placeholder: replace the sections below with the real terms before launch.
 export default function TermsPage() {

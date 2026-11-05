@@ -1,10 +1,15 @@
 import type { Metadata } from "next";
 
+import { publicPageMetadata } from "@/lib/seo";
+
 import LegalPage from "@/features/marketing/components/LegalPage";
 
-export const metadata: Metadata = {
-	title: "Privacy Policy · TaskForge",
-};
+export const metadata: Metadata = publicPageMetadata({
+	title: "Privacy Policy",
+	description:
+		"How TaskForge collects, uses and protects your data, and the services that process it on our behalf.",
+	path: "/privacy",
+});
 
 // Placeholder: replace the bracketed text with the real policy before launch.
 // The service providers listed are the ones the app actually uses.

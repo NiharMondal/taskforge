@@ -22,7 +22,9 @@ export const config = {
    * Run on everything except Next internals, static assets and the Auth.js
    * routes. Those are public anyway, and reading the session here as well
    * would renew an expiring backend token twice for one `/api/auth/session`
-   * request.
+   * request. The metadata routes (`robots.txt`, `sitemap.xml`, the share
+   * image) are skipped too: crawlers have no session, and the `authorized`
+   * callback would send them to /login.
    */
-  matcher: ["/((?!api/auth|_next/static|_next/image|favicon.ico|.*\\.(?:png|jpg|jpeg|svg|gif|webp|ico)$).*)"],
+  matcher: ["/((?!api/auth|_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|opengraph-image|.*\\.(?:png|jpg|jpeg|svg|gif|webp|ico)$).*)"],
 };

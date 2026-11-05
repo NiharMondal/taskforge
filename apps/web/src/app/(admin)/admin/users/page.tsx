@@ -1,5 +1,8 @@
+import type { Metadata } from "next";
 import AdminUserList from "@/features/admin/components/AdminUserList";
 import { parseAdminListParams } from "@/features/admin/lib/list-params";
+
+export const metadata: Metadata = { title: "Users" };
 
 /**
  * `/admin/users?search=&page=` — every account. The list's state is the URL,

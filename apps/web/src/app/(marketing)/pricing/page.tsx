@@ -1,4 +1,4 @@
-import { PRO_TRIAL_DAYS } from "@taskforge/shared";
+import { PLAN_LIMITS, PRO_TRIAL_DAYS } from "@taskforge/shared";
 import type { Metadata } from "next";
 import Link from "next/link";
 
@@ -7,10 +7,13 @@ import ContactSalesLink from "@/features/billing/components/ContactSalesLink";
 import PlanCard from "@/features/billing/components/PlanCard";
 import type { SubscriptionPlan } from "@/features/billing/types/billing-types";
 import { PRIMARY_LINK, SECONDARY_LINK } from "@/features/marketing/constants";
+import { publicPageMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = {
-	title: "Pricing · TaskForge",
-};
+export const metadata: Metadata = publicPageMetadata({
+	title: "Pricing",
+	description: `TaskForge is free for teams of up to ${PLAN_LIMITS.FREE.members}. Pro adds unlimited seats, custom roles and custom workflows, with a ${PRO_TRIAL_DAYS}-day free trial.`,
+	path: "/pricing",
+});
 
 /**
  * The public plan cards: the same `PLAN_META` as Settings → Billing. Free and

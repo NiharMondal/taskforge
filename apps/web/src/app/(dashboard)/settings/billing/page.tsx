@@ -1,6 +1,9 @@
+import type { Metadata } from "next";
 import { Suspense } from "react";
 
 import BillingSettings from "@/features/billing/components/BillingSettings";
+
+export const metadata: Metadata = { title: "Billing" };
 
 /**
  * `/settings/billing` — the workspace's plan, and where Stripe sends the

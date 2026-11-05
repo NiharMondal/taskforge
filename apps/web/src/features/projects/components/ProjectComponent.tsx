@@ -9,7 +9,10 @@ import ProjectList from "./ProjectList";
 import { useBoolean } from "ahooks";
 import MyModal from "@/components/ui/my-modal";
 import ProjectForm from "./ProjectForm";
-import { DEFAULT_WORKFLOW, TProjectFormValues } from "../schema/project-schema";
+import {
+	toCreateProjectDto,
+	type TProjectFormValues,
+} from "../schema/project-schema";
 import { toast } from "@heroui/react";
 import { useRouter } from "next/navigation";
 import { useBilling } from "@/features/billing/hooks/use-billing";
@@ -34,18 +37,9 @@ export default function ProjectComponent() {
 	const showError = useErrorToast();
 	const router = useRouter();
 
-	const handleCreateProject = async ({
-		workflowFrom,
-		...values
-	}: TProjectFormValues) => {
+	const handleCreateProject = async (values: TProjectFormValues) => {
 		try {
-			const res = await createProject({
-				...values,
-				...(workflowFrom &&
-					workflowFrom !== DEFAULT_WORKFLOW && {
-						workflowFromProjectId: workflowFrom,
-					}),
-			});
+			const res = await createProject(toCreateProjectDto(values));
 			// On Pro, offer to shape the new project's statuses right away;
 			// it can also be done later from its Workflow tab.
 			toast.success(res.message || "Project created successfully", {

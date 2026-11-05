@@ -20,6 +20,7 @@
     "db:generate": "pnpm --filter @taskforge/backend exec prisma generate",
     "db:migrate": "pnpm --filter @taskforge/backend exec prisma migrate dev",
     "db:studio": "pnpm --filter @taskforge/backend run studio",
-    "postinstall": "pnpm run db:generate"
+    "postinstall": "pnpm run db:generate",
+    "stripe": "stripe listen --all-snapshot --forward-to localhost:5001/api/v1/billing/webhook"
   }
 }

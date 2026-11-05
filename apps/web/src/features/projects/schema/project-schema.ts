@@ -5,6 +5,8 @@ import {
 } from "@taskforge/shared";
 import { z } from "zod";
 
+import type { CreateProjectDto } from "../types/project-types";
+
 // Limits are the backend's CreateProjectDto / UpdateProjectDto ones.
 export const projectSchema = z.object({
 	name: z
@@ -32,3 +34,20 @@ export const projectSchema = z.object({
 export const DEFAULT_WORKFLOW = "__default__";
 
 export type TProjectFormValues = z.infer<typeof projectSchema>;
+
+/**
+ * The `POST /projects` body for a submitted form. `workflowFrom` is the form's
+ * own field: it becomes `workflowFromProjectId`, or is left out for the default
+ * workflow. Sending it as is gets a 400 ("property workflowFrom should not
+ * exist"), so every create call goes through here.
+ */
+export const toCreateProjectDto = ({
+	workflowFrom,
+	...values
+}: TProjectFormValues): CreateProjectDto => ({
+	...values,
+	...(workflowFrom &&
+		workflowFrom !== DEFAULT_WORKFLOW && {
+			workflowFromProjectId: workflowFrom,
+		}),
+});

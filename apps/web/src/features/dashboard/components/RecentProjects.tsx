@@ -10,7 +10,10 @@ import { useWorkspacePermissions } from "@/features/memberships/hooks/use-worksp
 import ProjectCard from "@/features/projects/components/ProjectCard";
 import ProjectFormModal from "@/features/projects/components/ProjectFormModal";
 import { useCreateProject } from "@/features/projects/hooks/use-projects";
-import type { TProjectFormValues } from "@/features/projects/schema/project-schema";
+import {
+  toCreateProjectDto,
+  type TProjectFormValues,
+} from "@/features/projects/schema/project-schema";
 import type { Project } from "@/features/projects/types/project-types";
 import { useWorkspace } from "@/features/workspace/context/workspace-context";
 
@@ -31,7 +34,7 @@ export default function RecentProjects({ projects }: { projects: Project[] }) {
 
   const handleCreateProject = async (values: TProjectFormValues) => {
     try {
-      const res = await createProject(values);
+      const res = await createProject(toCreateProjectDto(values));
       if (res.success) {
         toast.success(res.message || "Project created successfully");
       }

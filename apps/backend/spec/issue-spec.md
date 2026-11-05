@@ -103,12 +103,14 @@ Base path: `/projects/:projectId/issues`
   "timeEstimate": 3,
   "sprintId": "uuid-optional",
   "assigneeId": "uuid-optional",
+  "labelIds": ["uuid", "uuid"],
   "parentIssueId": "uuid-optional"
 }
 ```
 
 - `type` is `EPIC`, `STORY`, `TASK` or `BUG` (default `TASK`). `SUBTASK` can't be sent: an issue created with `parentIssueId` is a sub-issue, typed `SUBTASK`, and sending `type` with `parentIssueId` is a `400`.
 - `timeEstimate` holds **story points** despite its name: a whole number from 0 to 100, or `null` for not estimated.
+- `labelIds`: up to 10 unique ids of this workspace's labels (`spec/label-spec.md`); one from another workspace is a `403`.
 
 **What the backend does:**
 1. Validates the request body with `CreateIssueDto`.
@@ -222,9 +224,12 @@ Rules are permissions on the member's `Role` (`issue:status`, `issue:status:done
   "type": "STORY",
   "timeEstimate": 5,
   "sprintId": "uuid-or-null",
-  "assigneeId": "uuid-or-null"
+  "assigneeId": "uuid-or-null",
+  "labelIds": ["uuid"]
 }
 ```
+
+`labelIds` replaces the issue's labels (`[]` removes them all; leave it out to keep them) and is a content field like the title. The list and single-issue responses embed `labels: [{ id, name, color }]`.
 
 `type` and `timeEstimate` follow the create rules and are content fields (`issue:edit:any` / `issue:edit:own`); `timeEstimate: null` clears the estimate. A sub-issue's type can't be changed (`400`), but it can be estimated.
 

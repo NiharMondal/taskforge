@@ -7,6 +7,7 @@ import { useWorkspace } from "@/features/workspace/context/workspace-context";
 import { toast } from "@heroui/react";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { useSprints } from "@/features/sprint/hooks/use-sprints";
+import { useLabels } from "@/features/labels/hooks/use-labels";
 import type { IssueStatus } from "../types/issue-types";
 import { parseEstimate } from "../lib/estimate";
 type TProps = {
@@ -36,6 +37,7 @@ export default function CreateIssueModal({
 		projectId!,
 	);
 	const { data: sprints = [] } = useSprints(workspaceId, projectId);
+	const { data: labels = [] } = useLabels(workspaceId);
 
 	const handleCreateIssue = async (values: TIssueFormValues) => {
 		try {
@@ -65,6 +67,7 @@ export default function CreateIssueModal({
 					onSubmit={handleCreateIssue}
 					members={members}
 					sprints={sprints}
+					labels={labels}
 					onCancel={onOpenChange}
 					onSuccess={onOpenChange}
 					initialStatus={defaultStatus}

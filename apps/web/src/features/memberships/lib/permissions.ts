@@ -32,6 +32,8 @@ export interface Permissions {
 	canDeleteIssue: boolean;
 	canManageProjects: boolean;
 	canManageSprints: boolean;
+	/** Create, edit and delete the workspace's labels (`label:manage`). */
+	canManageLabels: boolean;
 	/** Write comments, and edit or delete your own (`comment:create`). */
 	canComment: boolean;
 	/** Delete anyone's comment (`comment:delete:any`). */
@@ -54,6 +56,7 @@ export function getPermissions(role: WorkspaceRole | undefined): Permissions {
 		canDeleteIssue: isManager,
 		canManageProjects: isManager,
 		canManageSprints: isManager,
+		canManageLabels: isManager,
 		canComment: isManager || isMember,
 		canDeleteAnyComment: isManager,
 		canDeleteWorkspace: role === "OWNER",

@@ -1,6 +1,9 @@
 import { IsOptionalNonNull } from "@/common/decorators/is-optional-non-null.decorator";
 import { IssueStatus, IssuePriority, IssueType } from "generated/prisma/enums";
 import {
+  ArrayMaxSize,
+  ArrayUnique,
+  IsArray,
   IsEnum,
   IsIn,
   IsInt,
@@ -15,6 +18,7 @@ import {
 } from "class-validator";
 import {
   ISSUE_TYPE_MESSAGE,
+  MAX_ISSUE_LABELS,
   MAX_STORY_POINTS,
   SELECTABLE_ISSUE_TYPES,
 } from "./create-issue.dto";
@@ -58,6 +62,14 @@ export class UpdateIssueDto {
   @IsOptional()
   @IsUUID()
   assigneeId?: string;
+
+  /** Replaces the issue's labels; `[]` removes them all. */
+  @IsOptionalNonNull()
+  @IsArray()
+  @ArrayMaxSize(MAX_ISSUE_LABELS)
+  @ArrayUnique()
+  @IsUUID("all", { each: true })
+  labelIds?: string[];
 
   /**
    * Board position within the target `(project, status)` lane: a base-62

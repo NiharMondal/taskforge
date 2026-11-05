@@ -9,6 +9,8 @@ export interface IssueFilters {
 	search: string;
 	/** Selected assignee user ids; empty means everyone. */
 	assigneeIds: string[];
+	/** Selected label ids; an issue matches with any of them. Empty: all. */
+	labelIds: string[];
 	/** An `IssueStatus`, or `ALL`. */
 	status: string;
 	/** A sprint id, `NO_SPRINT` (the backlog), or `ALL`. */
@@ -18,6 +20,7 @@ export interface IssueFilters {
 export const EMPTY_FILTERS: IssueFilters = {
 	search: "",
 	assigneeIds: [],
+	labelIds: [],
 	status: ALL,
 	sprint: ALL,
 };
@@ -25,6 +28,7 @@ export const EMPTY_FILTERS: IssueFilters = {
 export const isFiltered = (f: IssueFilters) =>
 	f.search.trim() !== "" ||
 	f.assigneeIds.length > 0 ||
+	f.labelIds.length > 0 ||
 	f.status !== ALL ||
 	f.sprint !== ALL;
 
@@ -47,6 +51,8 @@ export function filterIssues(
 				`${projectKey ?? ""}-${i.number}`.toLowerCase().includes(q)) &&
 			(f.assigneeIds.length === 0 ||
 				(!!i.assigneeId && f.assigneeIds.includes(i.assigneeId))) &&
+			(f.labelIds.length === 0 ||
+				!!i.labels?.some((l) => f.labelIds.includes(l.id))) &&
 			(f.status === ALL || i.status === f.status) &&
 			(f.sprint === ALL ||
 				(f.sprint === NO_SPRINT ? !i.sprintId : i.sprintId === f.sprint)),

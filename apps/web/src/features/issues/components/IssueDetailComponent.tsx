@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 
 import ErrorAlert from "@/components/ui/error-alert";
 import CommentsPanel from "@/features/comments/components/CommentsPanel";
+import { useLabels } from "@/features/labels/hooks/use-labels";
 import { useMemberships } from "@/features/memberships/hooks/use-memberships";
 import { useWorkspacePermissions } from "@/features/memberships/hooks/use-workspace-permissions";
 import { useSprints } from "@/features/sprint/hooks/use-sprints";
@@ -45,6 +46,7 @@ export default function IssueDetailComponent({ projectId, issueId }: Props) {
 	} = useSingleIssue(workspaceId, projectId, issueId);
 	const { data: members = [] } = useMemberships(workspaceId);
 	const { data: sprints = [] } = useSprints(workspaceId, projectId);
+	const { data: labels = [] } = useLabels(workspaceId);
 	const permissions = useWorkspacePermissions();
 
 	const {
@@ -72,6 +74,7 @@ export default function IssueDetailComponent({ projectId, issueId }: Props) {
 				timeEstimate: formatEstimate(issue.timeEstimate),
 				assigneeId: issue.assigneeId ?? UNASSIGNED,
 				sprintId: issue.sprintId ?? NO_SPRINT,
+				labelIds: issue.labels?.map((l) => l.id) ?? [],
 			},
 		[issue],
 	);
@@ -147,6 +150,7 @@ export default function IssueDetailComponent({ projectId, issueId }: Props) {
 					isSubmitting={isSavingDetails}
 					members={members}
 					sprints={sprints}
+					labels={labels}
 					reporter={issue.reporter}
 					permissions={permissions}
 				/>

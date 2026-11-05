@@ -7,6 +7,7 @@ import { useBoolean } from "ahooks";
 import { ListTodo, Plus } from "lucide-react";
 
 import ErrorAlert from "@/components/ui/error-alert";
+import { useLabels } from "@/features/labels/hooks/use-labels";
 import { useMemberships } from "@/features/memberships/hooks/use-memberships";
 import { useWorkspacePermissions } from "@/features/memberships/hooks/use-workspace-permissions";
 import { getMemberName } from "@/features/memberships/lib/member";
@@ -42,6 +43,7 @@ export default function IssuesView({ projectId }: { projectId: string }) {
 	const { data: projects } = useProjects(workspaceId);
 	const project = projects?.find((p) => p.id === projectId);
 	const { data: members = [] } = useMemberships(workspaceId);
+	const { data: labels = [] } = useLabels(workspaceId);
 	const { data: sprints = [] } = useSprints(workspaceId, projectId);
 	const permissions = useWorkspacePermissions();
 	const {
@@ -135,6 +137,7 @@ export default function IssuesView({ projectId }: { projectId: string }) {
 						members={members}
 						sprints={sprints}
 						showStatus
+						labels={labels}
 					/>
 					{visible.length === 0 ? (
 						<p className="rounded-lg border border-dashed border-border py-12 text-center text-sm text-muted">

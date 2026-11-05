@@ -1,5 +1,7 @@
 import { CircleUserRound, MessageSquare } from "lucide-react";
 
+import { LabelChips } from "@/features/labels/components/LabelChip";
+
 import type { Issue } from "../../types/issue-types";
 import IssueKey from "../IssueKey";
 import ParentTag from "../ParentTag";
@@ -25,6 +27,7 @@ export default function IssueCardBody({
         <ParentTag issue={issue} />
       </div>
       <p className="-mt-1 text-sm font-medium">{issue.title}</p>
+      <LabelChips labels={issue.labels} />
       <div className="flex items-center justify-between gap-2">
         <PriorityChip priority={issue.priority} />
         {commentCount > 0 && (

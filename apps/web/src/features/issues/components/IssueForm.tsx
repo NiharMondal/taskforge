@@ -16,6 +16,8 @@ import {
 	ISSUE_STATUSES,
 	typeOptionsFor,
 } from "../constants";
+import FormLabelSelect from "@/features/labels/components/FormLabelSelect";
+import type { Label } from "@/features/labels/types/label-types";
 import { Member } from "@/features/memberships/types/membership-types";
 import { IssueStatus, Sprint } from "../types/issue-types";
 
@@ -29,6 +31,8 @@ type Props = {
 	onCancel?: () => void;
 	members: Member[];
 	sprints: Sprint[];
+	/** The workspace's labels to pick from. */
+	labels: Label[];
 	/** Status a new issue starts in. Defaults to BACKLOG. */
 	initialStatus?: IssueStatus;
 	/** Sprint a new issue starts in. Defaults to none (the backlog). */
@@ -49,6 +53,7 @@ export default function IssueForm({
 	onCancel,
 	members,
 	sprints,
+	labels,
 	initialStatus = "BACKLOG",
 	initialSprintId,
 }: Props) {
@@ -65,6 +70,7 @@ export default function IssueForm({
 			type: "TASK",
 			timeEstimate: "",
 			sprintId: initialSprintId ?? null,
+			labelIds: [],
 		},
 		// `defaultValues` is only read once on mount. When editing, the issue is
 		// fetched async, so feed it through `values` to keep the form in sync once
@@ -147,6 +153,7 @@ export default function IssueForm({
 					})),
 				]}
 			/>
+			<FormLabelSelect name="labelIds" labels={labels} />
 			<FormSelect
 				name="sprintId"
 				label="Sprint"

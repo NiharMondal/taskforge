@@ -1,10 +1,11 @@
 "use client";
 
-import { Button, cn, Input, TextField } from "@heroui/react";
+import { Button, cn, Input, ListBox, Select, TextField } from "@heroui/react";
 import { Search, X } from "lucide-react";
 
 import Avatar from "@/components/ui/avatar";
 import { TFSelect } from "@/components/ui/TFSelect";
+import type { Label } from "@/features/labels/types/label-types";
 import type { Member } from "@/features/memberships/types/membership-types";
 import { getMemberName } from "@/features/memberships/lib/member";
 import type { Sprint } from "@/features/sprint/types/sprint-types";
@@ -27,11 +28,14 @@ interface Props {
 	sprints?: Sprint[];
 	/** Shows the status picker (the List tab); the board's lanes are statuses. */
 	showStatus?: boolean;
+	/** The workspace's labels; the label picker shows once there are any. */
+	labels?: Label[];
 }
 
 /**
- * Search, assignee avatars, and optional status / sprint pickers — the filter
- * row of the List tab and the active sprint board (see `filterIssues`).
+ * Search, assignee avatars, a label picker, and optional status / sprint
+ * pickers — the filter row of the List tab and the active sprint board (see
+ * `filterIssues`).
  */
 export default function IssueFilterBar({
 	filters,
@@ -39,6 +43,7 @@ export default function IssueFilterBar({
 	members,
 	sprints,
 	showStatus = false,
+	labels = [],
 }: Props) {
 	const set = (patch: Partial<IssueFilters>) =>
 		onChange({ ...filters, ...patch });
@@ -92,6 +97,47 @@ export default function IssueFilterBar({
 						);
 					})}
 			</div>
+
+			{labels.length > 0 && (
+				<Select
+					aria-label="Filter by label"
+					selectionMode="multiple"
+					value={filters.labelIds}
+					onChange={(keys) => set({ labelIds: keys.map(String) })}
+					placeholder="All labels"
+					className="w-40"
+				>
+					<Select.Trigger>
+						<Select.Value>
+							{({ isPlaceholder }) =>
+								isPlaceholder
+									? "All labels"
+									: filters.labelIds.length === 1
+										? labels.find((l) => l.id === filters.labelIds[0])?.name
+										: `${filters.labelIds.length} labels`
+							}
+						</Select.Value>
+						<Select.Indicator />
+					</Select.Trigger>
+					<Select.Popover>
+						<ListBox>
+							{labels.map((l) => (
+								<ListBox.Item key={l.id} id={l.id} textValue={l.name}>
+									<span className="flex items-center gap-2">
+										<span
+											aria-hidden
+											className="size-2.5 shrink-0 rounded-full"
+											style={{ backgroundColor: l.color }}
+										/>
+										{l.name}
+									</span>
+									<ListBox.ItemIndicator />
+								</ListBox.Item>
+							))}
+						</ListBox>
+					</Select.Popover>
+				</Select>
+			)}
 
 			{showStatus && (
 				<TFSelect

@@ -16,6 +16,7 @@ const FIELD_RULES = {
   timeEstimate: "content",
   sprintId: "content",
   assigneeId: "content",
+  labelIds: "content",
   status: "status",
   rank: "status",
 } as const satisfies Record<string, "content" | "status">;

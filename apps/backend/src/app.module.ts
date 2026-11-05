@@ -11,6 +11,7 @@ import { CloudinaryModule } from "@/cloudinary/cloudinary.module";
 import { CommentModule } from "./modules/comments/comment.module";
 import { InvitationModule } from "./modules/invitations/invitation.module";
 import { IssueModule } from "./modules/issues/issue.module";
+import { LabelModule } from "./modules/labels/label.module";
 import { MembershipModule } from "./modules/memberships/membership.module";
 import { ProjectModule } from "./modules/projects/project.module";
 import { SprintModule } from "./modules/sprints/sprint.module";
@@ -29,6 +30,7 @@ import { WorkspaceModule } from "./modules/workspace/workspace.module";
     ProjectModule,
     IssueModule,
     CommentModule,
+    LabelModule,
     SprintModule,
   ],
   controllers: [AppController],

@@ -18,6 +18,7 @@ import Avatar from "@/components/ui/avatar";
 import { IssueTypeIcon, PriorityIcon } from "@/features/issues/components/IssueIcons";
 import IssueKey from "@/features/issues/components/IssueKey";
 import ParentTag from "@/features/issues/components/ParentTag";
+import { LabelChips } from "@/features/labels/components/LabelChip";
 import StatusChip from "@/features/issues/components/StatusChip";
 import type { Issue } from "@/features/issues/types/issue-types";
 import { initialsOf } from "@/util/initials";
@@ -131,6 +132,11 @@ export function BacklogIssueRowBody({
 			>
 				{issue.title}
 			</Link>
+			<LabelChips
+				labels={issue.labels}
+				max={2}
+				className="hidden shrink-0 flex-nowrap md:flex"
+			/>
 			<StatusChip status={issue.status} />
 			<span
 				className="hidden w-8 shrink-0 rounded bg-surface-tertiary px-1.5 py-0.5 text-center text-xs text-muted tabular-nums sm:block"

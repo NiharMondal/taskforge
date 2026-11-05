@@ -55,7 +55,7 @@ app/
         backlog/    — sprint planning: sprint sections + unscheduled backlog, move issues between them
         list/       — every issue as a filterable table, sub-issues nested
           [slug]/   — issue detail page ([slug] is the issue id)
-    settings/       — general, members, profile
+    settings/       — members, general, labels, profile
     issues/         — redirect → /projects (no workspace-wide issues endpoint)
   invitations/accept/
 ```
@@ -64,7 +64,7 @@ Issues are project-scoped: pages live under `/projects/[projectId]/` (`active-sp
 
 ### Feature structure
 
-Each domain lives in `src/features/<name>/` (`auth`, `comments`, `dashboard`, `invitations`, `issues`, `memberships`, `profile`, `projects`, `settings`, `sprint`, `workspace`):
+Each domain lives in `src/features/<name>/` (`auth`, `comments`, `dashboard`, `invitations`, `issues`, `labels`, `memberships`, `profile`, `projects`, `settings`, `sprint`, `workspace`):
 
 ```
 api/          — async functions calling `api.*` from lib/axios
@@ -112,7 +112,7 @@ Mutations use `.message` from the envelope for toast feedback. Every rejection i
 
 `src/features/issues/components/board/` — `@dnd-kit/core` + `@dnd-kit/sortable`.
 
-- The board is the **active sprint's**: `BoardView` filters the project issue list to `sprintId === activeSprint.id` (memoized — the resync below compares by reference) and shows `SprintSummaryCard` above the lanes, then `IssueFilterBar` (search + assignees, via `filterIssues` in `lib/issue-filters.ts` — the List tab uses the same). Lanes show the filtered cards, but a drop's rank is computed against the *full* lane (`rankForPosition`), so a key never lands on a hidden card's key. With no active sprint it renders an empty state linking to the backlog. Issues outside the sprint live on the backlog and the List tab.
+- The board is the **active sprint's**: `BoardView` filters the project issue list to `sprintId === activeSprint.id` (memoized — the resync below compares by reference) and shows `SprintSummaryCard` above the lanes, then `IssueFilterBar` (search, assignees and labels, via `filterIssues` in `lib/issue-filters.ts` — the List tab uses the same). Lanes show the filtered cards, but a drop's rank is computed against the *full* lane (`rankForPosition`), so a key never lands on a hidden card's key. With no active sprint it renders an empty state linking to the backlog. Issues outside the sprint live on the backlog and the List tab.
 - Lane order comes from `BOARD_STATUSES` (all statuses except `BACKLOG`; backlog is triage and appears on the list view only).
 - Card position persists as `Issue.rank`, a fractional index (`fractional-indexing`) computed by `features/issues/lib/rank.ts`. `rankBetween(prev, next)` returns `undefined` on invalid bounds so the caller can fall back to a status-only PATCH; `compareIssueRank` sorts un-ranked rows last. Moving a card is a single-row PATCH — no renumbering.
 - A drag may only land back in its starting lane or in one of that lane's `STATUS_TRANSITIONS` (`features/issues/constants.ts`) — the same rule as the status Selects. The backend enforces the same map (`apps/backend/src/modules/issues/status-transitions.ts`) on every `PATCH` that changes `status`, so change both together.
@@ -120,7 +120,7 @@ Mutations use `.message` from the envelope for toast feedback. Every rejection i
 
 ### Roles and permissions
 
-The JWT has no role — it comes from the membership roster. `useWorkspacePermissions()` (`features/memberships/hooks/`) returns the viewer's flags (`canCreateIssue`, `canEditIssueFields`, `canChangeIssueStatus`, `canMarkIssueDone`, `canDeleteIssue`, `canManageProjects`, `canManageSprints`, `canComment`, `canDeleteAnyComment`, `canDeleteWorkspace`) and `userId` (the same "me", for authorship checks such as editing your own comment), computed by `getPermissions` in `features/memberships/lib/permissions.ts`. That file mirrors the backend rules (create/delete and project/sprint writes are OWNER/ADMIN; a MEMBER may change `status` — never to `DONE` — and board `rank`; a VIEWER is read-only), so **change both together**. Which roster row is "me" comes from the access token's `sub` (what the backend authorizes as), not the cached session id. Flags are all `false` *while loading*; if the role still can't be determined afterwards (roster failed, user not on it) the hook **fails open** (`UNRESTRICTED_PERMISSIONS`, `isRoleKnown: false`, plus a dev-only `[permissions]` console warning) so a lookup problem never locks an owner out. Hide or disable controls with these flags rather than letting users hit a 403 toast — but they are UX only; the backend is the authority.
+The JWT has no role — it comes from the membership roster. `useWorkspacePermissions()` (`features/memberships/hooks/`) returns the viewer's flags (`canCreateIssue`, `canEditIssueFields`, `canChangeIssueStatus`, `canMarkIssueDone`, `canDeleteIssue`, `canManageProjects`, `canManageSprints`, `canManageLabels`, `canComment`, `canDeleteAnyComment`, `canDeleteWorkspace`) and `userId` (the same "me", for authorship checks such as editing your own comment), computed by `getPermissions` in `features/memberships/lib/permissions.ts`. That file mirrors the backend rules (create/delete and project/sprint writes are OWNER/ADMIN; a MEMBER may change `status` — never to `DONE` — and board `rank`; a VIEWER is read-only), so **change both together**. Which roster row is "me" comes from the access token's `sub` (what the backend authorizes as), not the cached session id. Flags are all `false` *while loading*; if the role still can't be determined afterwards (roster failed, user not on it) the hook **fails open** (`UNRESTRICTED_PERMISSIONS`, `isRoleKnown: false`, plus a dev-only `[permissions]` console warning) so a lookup problem never locks an owner out. Hide or disable controls with these flags rather than letting users hit a 403 toast — but they are UX only; the backend is the authority.
 
 ### Rendering user HTML
 

@@ -45,3 +45,29 @@ describe.each([
     },
   );
 });
+
+describe.each([
+  ["CreateIssueDto", CreateIssueDto, { title: "New issue" }],
+  ["UpdateIssueDto", UpdateIssueDto, {}],
+] as const)("%s labelIds", (_name, dto, base) => {
+  const check = (fields: object) => invalidFields(dto, { ...base, ...fields });
+  const uuid = (n: number) =>
+    `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+
+  it.each([
+    ["an empty list", []],
+    ["ten labels", Array.from({ length: 10 }, (_, i) => uuid(i))],
+  ])("accepts %s", async (_label, labelIds) => {
+    expect(await check({ labelIds })).toEqual([]);
+  });
+
+  it.each([
+    ["null", null],
+    ["a string", uuid(1)],
+    ["a non-uuid", ["label-1"]],
+    ["duplicates", [uuid(1), uuid(1)]],
+    ["eleven labels", Array.from({ length: 11 }, (_, i) => uuid(i))],
+  ])("refuses %s", async (_label, labelIds) => {
+    expect(await check({ labelIds })).toEqual(["labelIds"]);
+  });
+});

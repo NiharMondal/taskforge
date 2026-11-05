@@ -9,6 +9,8 @@
  * assuming they're present (AI_GUIDE → "never guess API").
  */
 
+import type { IssueLabelRef } from "@/features/labels/types/label-types";
+
 export type IssueStatus =
   | "BACKLOG"
   | "TODO"
@@ -82,6 +84,8 @@ export interface Issue {
   assigneeId?: string | null;
   reporter?: IssueUser;
   assignee?: IssueUser | null;
+  /** List and detail routes: the issue's labels, alphabetically. */
+  labels?: IssueLabelRef[];
   /** List route only. The thread itself comes from the comments route. */
   _count?: { comments: number };
   createdAt: string;
@@ -100,6 +104,8 @@ export interface CreateIssueDto {
   type?: IssueType;
   /** Story points; `null` clears the estimate. */
   timeEstimate?: number | null;
+  /** Workspace label ids. On update the list replaces the issue's labels. */
+  labelIds?: string[];
   assigneeId?: string | null;
   sprintId?: string | null;
   /**

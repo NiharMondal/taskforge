@@ -22,6 +22,7 @@ import Link from "next/link";
 import ErrorAlert from "@/components/ui/error-alert";
 import { getApiErrorMessage } from "@/lib/api-error";
 
+import { useLabels } from "@/features/labels/hooks/use-labels";
 import { useMemberships } from "@/features/memberships/hooks/use-memberships";
 import { useWorkspacePermissions } from "@/features/memberships/hooks/use-workspace-permissions";
 import { getMemberName } from "@/features/memberships/lib/member";
@@ -155,6 +156,7 @@ export default function BoardView({ projectId }: { projectId: string }) {
 	const project = projects?.find((p) => p.id === projectId);
 
 	const { data: members = [] } = useMemberships(workspaceId);
+	const { data: labels = [] } = useLabels(workspaceId);
 	const permissions = useWorkspacePermissions();
 
 	const sprintsQuery = useSprints(workspaceId, projectId);
@@ -428,6 +430,7 @@ export default function BoardView({ projectId }: { projectId: string }) {
 						filters={filters}
 						onChange={setFilters}
 						members={members}
+						labels={labels}
 					/>
 					{isFiltered(filters) && (
 						<span className="text-xs text-muted">

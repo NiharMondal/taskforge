@@ -9,6 +9,8 @@ import {
 	FormTextField,
 	FormWrapper,
 } from "@/components/form-element";
+import FormLabelSelect from "@/features/labels/components/FormLabelSelect";
+import type { Label } from "@/features/labels/types/label-types";
 import { Member } from "@/features/memberships/types/membership-types";
 import {
 	canSetIssueStatus,
@@ -35,6 +37,8 @@ type Props = {
 	isSubmitting: boolean;
 	members: Member[];
 	sprints: Sprint[];
+	/** The workspace's labels to pick from. */
+	labels: Label[];
 	/** Read-only — the reporter is set at creation and never edited here. */
 	reporter?: ICommonUserEntity;
 	/** Which of the controls below the viewer's role may actually change. */
@@ -43,7 +47,7 @@ type Props = {
 
 /**
  * Right "Details" panel of the issue detail page: the issue's metadata
- * (status, type, priority, assignee, sprint, story points) plus the read-only
+ * (status, type, priority, assignee, sprint, labels, story points) plus the read-only
  * reporter. Saved on its own, independent of the content form on the left.
  */
 export default function IssueDetailsPanel({
@@ -52,6 +56,7 @@ export default function IssueDetailsPanel({
 	isSubmitting,
 	members,
 	sprints,
+	labels,
 	reporter,
 	permissions,
 }: Props) {
@@ -142,6 +147,11 @@ export default function IssueDetailsPanel({
 								label: sprint.name,
 							})),
 						]}
+					/>
+					<FormLabelSelect
+						name="labelIds"
+						labels={labels}
+						isDisabled={!canEditFields}
 					/>
 					<FormTextField
 						name="timeEstimate"

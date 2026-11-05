@@ -4,6 +4,7 @@ import MyModal from "@/components/ui/my-modal";
 import CommentsPanel from "@/features/comments/components/CommentsPanel";
 import type { Permissions } from "@/features/memberships/lib/permissions";
 import type { Member } from "@/features/memberships/types/membership-types";
+import { useLabels } from "@/features/labels/hooks/use-labels";
 import { useSprints } from "@/features/sprint/hooks/use-sprints";
 
 import { useIssueEditor } from "../hooks/use-issue-editor";
@@ -39,6 +40,7 @@ export default function IssueDetailModal({
 	permissions,
 }: TProps) {
 	const { data: sprints = [] } = useSprints(workspaceId, projectId);
+	const { data: labels = [] } = useLabels(workspaceId);
 	const {
 		handleSaveContent,
 		handleSaveDetails,
@@ -83,11 +85,13 @@ export default function IssueDetailModal({
 								timeEstimate: formatEstimate(issue.timeEstimate),
 								assigneeId: issue.assigneeId ?? UNASSIGNED,
 								sprintId: issue.sprintId ?? NO_SPRINT,
+								labelIds: issue.labels?.map((l) => l.id) ?? [],
 							}}
 							onSubmit={handleSaveDetails}
 							isSubmitting={isSavingDetails}
 							members={members}
 							sprints={sprints}
+							labels={labels}
 							reporter={issue.reporter}
 							permissions={permissions}
 						/>

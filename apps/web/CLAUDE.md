@@ -46,6 +46,7 @@ Auth tokens identify the *user*; the workspace header identifies the *tenant*. A
 
 ```
 app/
+  (marketing)/      — public site: landing (`/`), pricing, terms, privacy (own header/footer)
   (auth)/           — login, register, verify-email (no shell)
   (dashboard)/      — server layout gates auth, wraps AppLayout
     dashboard/
@@ -61,11 +62,11 @@ app/
   invitations/accept/
 ```
 
-Issues are project-scoped: pages live under `/projects/[projectId]/` (`active-sprint`, `backlog`, `list`, `list/[slug]`, `workflow`); the backend route is still `/projects/:projectId/issues`. `/` redirects to `/dashboard`.
+Issues are project-scoped: pages live under `/projects/[projectId]/` (`active-sprint`, `backlog`, `list`, `list/[slug]`, `workflow`); the backend route is still `/projects/:projectId/issues`. `/` is the public landing page; it sends a signed-in visitor to `/dashboard` (it reads `auth()` itself, since the proxy lets everyone through to public routes). `/pricing` renders the same `PlanCard`s as Settings → Billing (`features/billing/components/PlanCard.tsx`, from `PLAN_META`) with links to `/register`. The Terms and Privacy pages are placeholders (marked "Draft" on the page) until the real text is written; the register form links to both.
 
 ### Feature structure
 
-Each domain lives in `src/features/<name>/` (`activity`, `auth`, `billing`, `comments`, `dashboard`, `invitations`, `issues`, `labels`, `memberships`, `profile`, `projects`, `roles`, `settings`, `sprint`, `workflow`, `workspace`):
+Each domain lives in `src/features/<name>/` (`activity`, `auth`, `billing`, `comments`, `dashboard`, `invitations`, `issues`, `labels`, `marketing`, `memberships`, `profile`, `projects`, `roles`, `settings`, `sprint`, `workflow`, `workspace`):
 
 ```
 api/          — async functions calling `api.*` from lib/axios
@@ -158,7 +159,7 @@ Issue descriptions and comments are stored as HTML and the backend does not sani
 - `src/lib/auth.ts` — full Node runtime; exports `handlers`, `auth`, `signIn`, `signOut`. The `credentials` provider delegates to the backend `/auth/login` (a 403 becomes code `email_unverified`), the `email-verification` provider posts the emailed link's token to `/auth/verify-email` (used by `/verify-email`), and `events.signOut` revokes the backend refresh token. Every provider stores the backend's `accessToken`, `accessTokenExpiresAt` and `refreshToken` in the JWT.
 - Sign-up is confirmed by email: the register form shows a "check your email" notice instead of signing in, and remembers `callbackUrl` in `localStorage` for after verification (`features/auth/lib/callback-url.ts`).
 - Access tokens last 15 minutes. The `jwt` callback (`auth.config.ts`) renews through the refresh token when under 5 minutes are left or when `update({ refreshAccessToken: true })` forces it, using `lib/backend-session.ts` (plain `fetch`: the proxy is Edge). `SessionProvider` refetches every 4 minutes. The refresh token never reaches the client session; a refused one sets `session.error`, which signs the user out.
-- `src/lib/auth.config.ts` — Edge-safe subset (no axios, no providers); used by `proxy.ts` and the server layout. Its `authorized` callback owns the public/auth-route lists (`/verify-email` is public).
+- `src/lib/auth.config.ts` — Edge-safe subset (no axios, no providers); used by `proxy.ts` and the server layout. Its `authorized` callback owns the public/auth-route lists: `PUBLIC_PREFIXES` (`/login`, `/register`, `/verify-email`, `/api/auth`, `/pricing`, `/terms`, `/privacy`) match whole path segments, and `/` is matched exactly — never add `"/"` to the list, which would make every route public.
 - The proxy at `src/proxy.ts` is an optimistic UX guard only; the `(dashboard)` server layout re-checks the session, and the backend is the real security boundary.
 - Profile edits call `useSession().update()`, which the `jwt` callback mirrors into `token.name`/`token.picture` so the header updates without re-login.
 

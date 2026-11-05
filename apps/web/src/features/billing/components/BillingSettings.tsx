@@ -18,7 +18,7 @@ import {
 } from "@heroui/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { PLAN_LIMITS } from "@taskforge/shared";
-import { Check, CreditCard, Mail, Sparkles } from "lucide-react";
+import { CreditCard, Sparkles } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import ErrorAlert from "@/components/ui/error-alert";
@@ -33,7 +33,6 @@ import {
 	ACTIVATION_TIMEOUT_MS,
 	PLAN_META,
 	PLAN_ORDER,
-	SALES_EMAIL,
 	STATUS_LABELS,
 } from "../constants";
 import {
@@ -43,6 +42,8 @@ import {
 } from "../hooks/use-billing";
 import { seatUsage } from "../lib/plan-limit";
 import type { Billing, SubscriptionPlan } from "../types/billing-types";
+import ContactSalesLink from "./ContactSalesLink";
+import PlanCard from "./PlanCard";
 
 const longDate = (iso: string | null) => formatDate(iso ?? "", "MMMM dd, yyyy");
 
@@ -190,7 +191,7 @@ export default function BillingSettings() {
 					<PlanCard
 						key={plan}
 						plan={plan}
-						billing={billing}
+						isCurrent={billing.plan === plan}
 						action={
 							<PlanAction
 								plan={plan}
@@ -266,47 +267,6 @@ function Usage({ billing }: { billing: Billing }) {
 	);
 }
 
-function PlanCard({
-	plan,
-	billing,
-	action,
-}: {
-	plan: SubscriptionPlan;
-	billing: Billing;
-	action: React.ReactNode;
-}) {
-	const meta = PLAN_META[plan];
-	const isCurrent = billing.plan === plan;
-
-	return (
-		<Card className={isCurrent ? "ring-2 ring-accent" : undefined}>
-			<CardHeader>
-				<CardTitle className="flex items-center gap-2">
-					{meta.name}
-					{isCurrent && (
-						<Chip size="sm" variant="soft" color="accent">
-							Current
-						</Chip>
-					)}
-				</CardTitle>
-				<CardDescription>{meta.tagline}</CardDescription>
-			</CardHeader>
-			<CardContent className="flex flex-1 flex-col gap-4">
-				<p className="text-lg font-semibold">{meta.price}</p>
-				<ul className="flex flex-1 flex-col gap-2">
-					{meta.features.map((feature) => (
-						<li key={feature} className="flex gap-2 text-sm">
-							<Check className="mt-0.5 size-4 shrink-0 text-success" />
-							{feature}
-						</li>
-					))}
-				</ul>
-				{action}
-			</CardContent>
-		</Card>
-	);
-}
-
 /** What a plan card offers this viewer. */
 function PlanAction({
 	plan,
@@ -322,16 +282,7 @@ function PlanAction({
 	isUpgrading: boolean;
 }) {
 	if (plan === "ENTERPRISE") {
-		if (billing.plan === "ENTERPRISE" || !SALES_EMAIL) return null;
-		return (
-			<a
-				href={`mailto:${SALES_EMAIL}?subject=${encodeURIComponent("TaskForge Enterprise")}`}
-				className="inline-flex items-center gap-2 text-sm font-medium text-accent hover:underline"
-			>
-				<Mail className="size-4" />
-				Contact us
-			</a>
-		);
+		return billing.plan === "ENTERPRISE" ? null : <ContactSalesLink />;
 	}
 
 	if (plan !== "PRO" || billing.plan !== "FREE") return null;

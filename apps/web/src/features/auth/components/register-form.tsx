@@ -7,6 +7,7 @@ import { useForm } from "react-hook-form";
 import { FormTextField, FormWrapper } from "@/components/form-element";
 import { getApiErrorMessage } from "@/lib/api-error";
 import PasswordVisibilityToggle from "./password-visibility-toggle";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { register } from "../api/auth-api";
@@ -124,6 +125,27 @@ export function RegisterForm() {
 					? "Creating account…"
 					: "Create Account"}
 			</Button>
+
+			{/* Opens in a new tab so the half-filled form isn't lost. */}
+			<p className="text-center text-xs text-muted">
+				By creating an account, you agree to the{" "}
+				<Link
+					href="/terms"
+					target="_blank"
+					className="text-accent hover:underline"
+				>
+					Terms of Service
+				</Link>{" "}
+				and{" "}
+				<Link
+					href="/privacy"
+					target="_blank"
+					className="text-accent hover:underline"
+				>
+					Privacy Policy
+				</Link>
+				.
+			</p>
 		</FormWrapper>
 	);
 }

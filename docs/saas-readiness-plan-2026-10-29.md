@@ -9,7 +9,7 @@ The steps go from easiest to hardest. Each one is one PR from `develop` and leav
 | 1 | ✅ Shared email helpers (refactor) — done | S | — |
 | 2 | ✅ Health check endpoint — done | S | — |
 | 3 | ✅ Close the billing known gaps — done | S | — |
-| 4 | Public pages: landing, pricing, terms, privacy | S–M | — |
+| 4 | ✅ Public pages: landing, pricing, terms, privacy — done | S–M | — |
 | 5 | Change password | M | 1 |
 | 6 | Forgot / reset password | M | 1 |
 | 7 | Scheduled cleanup jobs | M | (6, for its table) |
@@ -78,7 +78,9 @@ The steps go from easiest to hardest. Each one is one PR from `develop` and leav
 - Unit: transfer to a user who already owns 2 Free workspaces returns 402.
 - e2e: two parallel invitations at 4 of 5 seats give one 201 and one 402.
 
-## Step 4 — Public pages: landing, pricing, terms, privacy
+## Step 4 — Public pages: landing, pricing, terms, privacy ✅
+
+**Status: done (2026-10-30).** `(marketing)` route group with landing, pricing, terms and privacy (`apps/web/spec/marketing.md`); the old `app/page.tsx` redirect is gone. `PlanCard` is now `features/billing/components/PlanCard.tsx` (`isCurrent` prop), and the Enterprise "Contact us" link is `ContactSalesLink`, shared by both pages. Beyond the plan: `PUBLIC_PREFIXES` now matches whole path segments (it used to make `/pricingx` public, and would have done the same for any future route sharing a prefix), and the sidebar's brand is a shared `BrandLink`. Terms and Privacy are still placeholder text. Typecheck, lint and `next build` pass; the public routes were smoke-tested on a production build.
 
 **Why.** `/` redirects to `/dashboard` (`apps/web/src/app/page.tsx:7`). Stripe and Google OAuth review expect a public site with a privacy policy and terms.
 

@@ -1,6 +1,6 @@
 import { cn } from "@heroui/react";
-import { Anvil } from "lucide-react";
-import Link from "next/link";
+
+import BrandLink from "@/components/ui/brand-link";
 
 import { NAV_ITEMS } from "./nav-items";
 import SidebarItem from "./SidebarItem";
@@ -22,15 +22,7 @@ export default function Sidebar({ className }: { className?: string }) {
       )}
     >
       <div className="flex h-14 shrink-0 items-center border-b border-border px-4">
-        <Link
-          href="/dashboard"
-          className="flex items-center gap-2 rounded-md text-sm font-semibold text-foreground outline-none focus-visible:ring-2 focus-visible:ring-accent"
-        >
-          <span className="flex size-7 items-center justify-center rounded-lg bg-accent text-accent-foreground">
-            <Anvil className="size-4" aria-hidden />
-          </span>
-          TaskForge
-        </Link>
+        <BrandLink href="/dashboard" />
       </div>
 
       <nav className="flex-1 space-y-1 overflow-y-auto p-2">

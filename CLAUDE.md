@@ -46,7 +46,7 @@ pnpm --filter @taskforge/backend <script>   # any app script from the root
 
 Backend needs a reachable `DATABASE_URL` (`apps/backend/.env`); the web app reads `apps/web/.env.local`. `generated/` (Prisma client) is gitignored and rebuilt by `pnpm install` / `pnpm db:generate`. `prisma/migrations/` **is** committed: `pnpm db:migrate` builds a fresh database from it, and schema changes ship as a new migration folder in the same commit. Backend CORS origins come from `CORS_ORIGINS` (comma-separated; unset = `localhost:3000` / `:3001`). Both `.env.example` files list what the code actually reads.
 
-CI (`.github/workflows/ci.yml`) runs on every PR and push to `main`: frozen install, `lint:check`, `typecheck`, `build`, `test`, then `prisma migrate deploy`, a `prisma migrate diff --exit-code` check that the migrated database matches `schema.prisma` (a schema edit without its migration fails the build), and `test:e2e` against a Postgres service.
+CI (`.github/workflows/ci.yml`) runs only on code headed for `main` — pushes to `main` and PRs into it (the `develop → main` release PR) — not on feature PRs into `develop`: frozen install, `lint:check`, `typecheck`, `build`, `test`, then `prisma migrate deploy`, a `prisma migrate diff --exit-code` check that the migrated database matches `schema.prisma` (a schema edit without its migration fails the build), and `test:e2e` against a Postgres service.
 
 Node is pinned to 24 in `.nvmrc` (CI reads it) and `engines` in the root `package.json`. `fractional-indexing` is pinned to the same exact version in both apps, since both generate board ranks that must stay compatible.
 

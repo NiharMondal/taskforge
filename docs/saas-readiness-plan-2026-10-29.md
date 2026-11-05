@@ -12,7 +12,7 @@ The steps go from easiest to hardest. Each one is one PR from `develop` and leav
 | 4 | ✅ Public pages: landing, pricing, terms, privacy — done | S–M | — |
 | 5 | ✅ Change password — done | M | 1 |
 | 6 | ✅ Forgot / reset password — done | M | 1 |
-| 7 | Scheduled cleanup jobs | M | (6, for its table) |
+| 7 | ✅ Scheduled cleanup jobs — done | M | (6, for its table) |
 | 8 | Email on issue assignment | M | 1 |
 | 9 | Workspace audit log | M | — |
 | 10 | Account deletion and data export | M–L | 1 |
@@ -170,7 +170,15 @@ Unit tests, typecheck and lint pass, and the pages were checked in a browser aga
 - A Google-only account gets an `EMAIL` auth row.
 - All refresh tokens are revoked.
 
-## Step 7 — Scheduled cleanup jobs
+## Step 7 — Scheduled cleanup jobs ✅
+
+**Status: done (2026-10-30, branch `implement-change-password-functionality`).** `src/modules/maintenance/` (`spec/maintenance-spec.md`), every task from the plan including `PasswordReset`, plus `pnpm run cleanup`. Beyond the plan, for hosting on Render's free tier (the instance sleeps after 15 idle minutes, so an in-process `@Cron` doesn't fire):
+- `POST /api/v1/maintenance/cleanup`, guarded by `Authorization: Bearer <CRON_SECRET>` (503 while unset), and `.github/workflows/cleanup.yml`, which calls it daily once the repo has a `BACKEND_URL` variable and a `CRON_SECRET` secret.
+- The advisory lock is the transaction-level one, held by a transaction that stays open for the run. A session-level `pg_try_advisory_lock` could be unlocked on a different pooled connection than the one that took it.
+- Opening the link of an invitation the cleanup marked `EXPIRED` says "Invitation has expired", as it did for an expired `PENDING` one.
+- `@nestjs/schedule` is 6.x: 12.x is ESM-only and doesn't load under the backend's Jest.
+
+Unit tests, typecheck and lint pass; `pnpm run cleanup` ran against a dev database.
 
 **Depends on:** nothing. Include the `PasswordReset` task only once step 6 exists.
 

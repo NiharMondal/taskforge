@@ -7,6 +7,7 @@ import { PrismaModule } from "@/prisma/prisma.module";
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { APP_GUARD } from "@nestjs/core";
+import { ScheduleModule } from "@nestjs/schedule";
 import { CloudinaryModule } from "@/cloudinary/cloudinary.module";
 import { ActivityModule } from "./modules/activity/activity.module";
 import { BillingModule } from "./modules/billing/billing.module";
@@ -15,6 +16,7 @@ import { HealthModule } from "./modules/health/health.module";
 import { InvitationModule } from "./modules/invitations/invitation.module";
 import { IssueModule } from "./modules/issues/issue.module";
 import { LabelModule } from "./modules/labels/label.module";
+import { MaintenanceModule } from "./modules/maintenance/maintenance.module";
 import { MembershipModule } from "./modules/memberships/membership.module";
 import { ProjectModule } from "./modules/projects/project.module";
 import { RoleModule } from "./modules/roles/role.module";
@@ -25,6 +27,7 @@ import { WorkspaceModule } from "./modules/workspace/workspace.module";
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    ScheduleModule.forRoot(),
     PrismaModule,
     CloudinaryModule,
     AuthModule,
@@ -42,6 +45,7 @@ import { WorkspaceModule } from "./modules/workspace/workspace.module";
     BillingModule,
     WorkflowModule,
     HealthModule,
+    MaintenanceModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: JwtAuthGuard }],

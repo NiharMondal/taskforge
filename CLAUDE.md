@@ -50,6 +50,8 @@ Backend needs a reachable `DATABASE_URL` (`apps/backend/.env`); the web app read
 
 CI (`.github/workflows/ci.yml`) runs only on code headed for `main` — pushes to `main` and PRs into it (the `develop → main` release PR) — not on feature PRs into `develop`: frozen install, `lint:check`, `typecheck`, `build`, `test`, then `prisma migrate deploy`, a `prisma migrate diff --exit-code` check that the migrated database matches `schema.prisma` (a schema edit without its migration fails the build), and `test:e2e` against a Postgres service.
 
+`.github/workflows/cleanup.yml` calls the backend's `POST /api/v1/maintenance/cleanup` daily, for hosts that sleep through its in-process cron (Render's free tier); it is skipped until the repo has a `BACKEND_URL` variable and a `CRON_SECRET` secret (`apps/backend/spec/maintenance-spec.md`).
+
 Node is pinned to 24 in `.nvmrc` (CI reads it) and `engines` in the root `package.json`. `fractional-indexing` is a dependency of `@taskforge/shared` only, so both apps generate board ranks with the same version.
 
 ## The web/backend contract

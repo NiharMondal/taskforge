@@ -1,9 +1,12 @@
 name: CI
 
+# Only code headed for main is checked: pushes to main, and PRs into it
+# (by convention only `develop` opens those).
 on:
   push:
     branches: [main]
   pull_request:
+    branches: [main]
 
 concurrency:
   group: ci-${{ github.ref }}
